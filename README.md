@@ -1,5 +1,7 @@
 # Reclaim
 
+Repo: https://github.com/jlanzone21/reclaim-app (private)
+
 A desktop and Android chat app that helps people struggling with
 pornography addiction connect to real resources: scripture, local church
 small groups, accountability partners, sermons, encouragement, and
@@ -146,8 +148,28 @@ launcher and daemon JVMs — a `JAVA_TOOL_OPTIONS` user environment variable
 env var set persistently.
 
 Also note: Gradle 8.14.3 can't compile build scripts on JDK 25 ("Unsupported
-class file major version 69") — use a JDK 21 `JAVA_HOME` (Android Studio's
-bundled JBR works) for the Gradle build itself.
+class file major version 69") — you need a JDK 21 `JAVA_HOME` for the Gradle
+build itself. **Don't rely on Android Studio's bundled JBR for this** — it
+tracks newer JDKs and had already moved to JDK 25 as of a September 2026
+Android Studio update, breaking this again. This machine has a dedicated
+Eclipse Temurin 21 install for exactly this purpose:
+`C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot`.
+
+## Release build (signed)
+
+```bash
+cd android
+.\gradlew.bat assembleRelease
+```
+
+Output: `android/app/build/outputs/apk/release/app-release.apk`. Signed with
+`android/app/reclaim-release.keystore` — passwords are in
+`android/keystore.properties`, which is gitignored (never commit either
+file). **Back up the keystore somewhere safe** — if you lose it, any future
+release build gets a different signing identity and Android won't treat it
+as an update to an already-installed copy. This keystore is self-signed and
+not tied to a Play Store listing; it's enough to install and run the app as
+a normal release build.
 
 ## Connecting a real agent backend
 
