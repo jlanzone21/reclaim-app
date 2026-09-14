@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Reclaim</string>
+    <string name="title_activity_main">Reclaim</string>
+    <string name="package_name">com.reclaim.app</string>
+    <string name="custom_url_scheme">com.reclaim.app</string>
+</resources>

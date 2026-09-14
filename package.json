@@ -1,0 +1,32 @@
+{
+  "name": "reclaim",
+  "version": "0.1.0",
+  "description": "Reclaim — connects people struggling with pornography addiction to scripture, community, accountability, and counseling. Never a substitute for human connection.",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/cli": "^8.5.1",
+    "@capacitor/core": "^8.5.1",
+    "electron": "^32.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.reclaim.app",
+    "productName": "Reclaim",
+    "files": [
+      "main.js",
+      "web/**/*"
+    ],
+    "win": {
+      "target": "nsis"
+    }
+  },
+  "dependencies": {
+    "sql.js": "^1.14.2"
+  }
+}

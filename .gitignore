@@ -1,0 +1,40 @@
+# Node / Electron
+node_modules/
+dist/
+*.log
+npm-debug.log*
+
+# Android / Gradle build output
+android/local.properties
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/
+android/app/release/
+
+# Capacitor-generated (regenerated from web/ via `npx cap sync`)
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+
+# Android signing — NEVER commit keystores or credentials
+*.keystore
+*.jks
+android/keystore.properties
+
+# Android Studio / IDE
+android/.idea/
+*.iml
+android/local.properties
+
+# OS junk
+Thumbs.db
+.DS_Store
+
+# Build output artifacts (regeneratable, often large binaries)
+*.apk
+*.aab
+
+# Local session/debug cruft
+.claude/scheduled_tasks.lock
+android/gradle_debug_out.txt
