@@ -23,20 +23,46 @@
 
   const connStatus = document.getElementById("connStatus");
   const settingsForm = document.getElementById("settingsForm");
+  const providerSelect = document.getElementById("providerSelect");
+  const apiKeyLabel = document.getElementById("apiKeyLabel");
   const apiKeyInput = document.getElementById("apiKeyInput");
   const modelSelect = document.getElementById("modelSelect");
   const settingsStatus = document.getElementById("settingsStatus");
   const clearKeyBtn = document.getElementById("clearKeyBtn");
 
+  const AGENT_CLASSES = { anthropic: ClaudeAgent, gemini: GeminiAgent };
+
   function createAgent() {
-    const apiKey = SettingsStore.getApiKey();
-    return apiKey ? new ClaudeAgent(apiKey, SettingsStore.getModel()) : new ResourcesAgent();
+    const provider = SettingsStore.getProvider();
+    const apiKey = SettingsStore.getApiKey(provider);
+    if (!apiKey) return new ResourcesAgent();
+    const AgentClass = AGENT_CLASSES[provider];
+    return new AgentClass(apiKey, SettingsStore.getModel(provider));
   }
 
   function updateConnStatus() {
-    const connected = !!SettingsStore.getApiKey();
-    connStatus.dataset.state = connected ? "claude" : "mock";
-    connStatus.querySelector(".conn-label").textContent = connected ? "Claude" : "Mock agent";
+    const provider = SettingsStore.getProvider();
+    const connected = !!SettingsStore.getApiKey(provider);
+    connStatus.dataset.state = connected ? provider : "mock";
+    connStatus.querySelector(".conn-label").textContent = connected
+      ? SettingsStore.PROVIDERS[provider].label
+      : "Mock agent";
+  }
+
+  function populateSettingsForm(provider) {
+    const meta = SettingsStore.PROVIDERS[provider];
+    apiKeyLabel.textContent = `${meta.label} API key`;
+    apiKeyInput.placeholder = meta.keyPlaceholder;
+    apiKeyInput.value = SettingsStore.getApiKey(provider);
+
+    modelSelect.innerHTML = "";
+    meta.models.forEach((m) => {
+      const opt = document.createElement("option");
+      opt.value = m.value;
+      opt.textContent = m.label;
+      modelSelect.appendChild(opt);
+    });
+    modelSelect.value = SettingsStore.getModel(provider);
   }
 
   let agent = createAgent();
@@ -55,8 +81,8 @@
     if (name === "checkin") CheckInView.renderRecentList();
     if (name === "insights") InsightsView.refresh();
     if (name === "settings") {
-      apiKeyInput.value = SettingsStore.getApiKey();
-      modelSelect.value = SettingsStore.getModel();
+      providerSelect.value = SettingsStore.getProvider();
+      populateSettingsForm(providerSelect.value);
       settingsStatus.hidden = true;
     }
   }
@@ -88,40 +114,62 @@
     settingsStatus.className = "settings-status " + (ok ? "settings-status-ok" : "settings-status-error");
   }
 
+  async function testProviderConnection(provider, key, model) {
+    if (provider === "anthropic") {
+      const client = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true });
+      await client.messages.create({
+        model,
+        max_tokens: 8,
+        thinking: { type: "disabled" },
+        messages: [{ role: "user", content: "Say OK." }],
+      });
+    } else if (provider === "gemini") {
+      const ai = new GoogleGenAI({ apiKey: key });
+      await ai.models.generateContent({ model, contents: "Say OK." });
+    }
+  }
+
+  function authErrorMessage(provider, err) {
+    const isAuthError =
+      (provider === "anthropic" && err instanceof Anthropic.AuthenticationError) ||
+      (provider === "gemini" && err instanceof GoogleGenAIApiError && (err.status === 400 || err.status === 401 || err.status === 403));
+    if (isAuthError) return "That key was rejected — double-check it and try again.";
+    return `Couldn't connect: ${err.message || "unknown error"}`;
+  }
+
+  providerSelect.addEventListener("change", () => {
+    populateSettingsForm(providerSelect.value);
+    settingsStatus.hidden = true;
+  });
+
   settingsForm.addEventListener("submit", async (e) => {
     e.preventDefault();
+    const provider = providerSelect.value;
     const key = apiKeyInput.value.trim();
     const model = modelSelect.value;
     const submitBtn = settingsForm.querySelector('button[type="submit"]');
 
     if (!key) {
-      SettingsStore.setApiKey("");
+      SettingsStore.setProvider(provider);
+      SettingsStore.setApiKey(provider, "");
       agent = createAgent();
       updateConnStatus();
-      showSettingsStatus("Key removed — using the mock agent.", true);
+      showSettingsStatus("No key set for this provider — using the mock agent.", true);
       return;
     }
 
     submitBtn.disabled = true;
     submitBtn.textContent = "Connecting…";
     try {
-      const testClient = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true });
-      await testClient.messages.create({
-        model,
-        max_tokens: 8,
-        thinking: { type: "disabled" },
-        messages: [{ role: "user", content: "Say OK." }],
-      });
-      SettingsStore.setApiKey(key);
-      SettingsStore.setModel(model);
+      await testProviderConnection(provider, key, model);
+      SettingsStore.setProvider(provider);
+      SettingsStore.setApiKey(provider, key);
+      SettingsStore.setModel(provider, model);
       agent = createAgent();
       updateConnStatus();
-      showSettingsStatus("Connected — Reclaim is now talking to Claude.", true);
+      showSettingsStatus(`Connected — Reclaim is now talking to ${SettingsStore.PROVIDERS[provider].label}.`, true);
     } catch (err) {
-      const msg = err instanceof Anthropic.AuthenticationError
-        ? "That key was rejected — double-check it and try again."
-        : `Couldn't connect: ${err.message || "unknown error"}`;
-      showSettingsStatus(msg, false);
+      showSettingsStatus(authErrorMessage(provider, err), false);
     } finally {
       submitBtn.disabled = false;
       submitBtn.textContent = "Save and connect";
@@ -129,11 +177,14 @@
   });
 
   clearKeyBtn.addEventListener("click", () => {
-    SettingsStore.setApiKey("");
+    const provider = providerSelect.value;
+    SettingsStore.setApiKey(provider, "");
     apiKeyInput.value = "";
-    agent = createAgent();
-    updateConnStatus();
-    showSettingsStatus("Key removed — using the mock agent.", true);
+    if (provider === SettingsStore.getProvider()) {
+      agent = createAgent();
+      updateConnStatus();
+    }
+    showSettingsStatus("Key removed for this provider.", true);
   });
 
   // ---- Welcome / crisis modals ----

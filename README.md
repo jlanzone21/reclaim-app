@@ -176,7 +176,7 @@ a normal release build.
 
 ## The AI agent
 
-Two agent implementations share one event contract, defined in the header
+Three agent implementations share one event contract, defined in the header
 comment of `web/js/resourcesAgent.js`:
 
 ```js
@@ -190,39 +190,81 @@ await agent.send(userText, {
 ```
 
 - **`ResourcesAgent`** (`web/js/resourcesAgent.js`) — scripted keyword
-  matching, no API key needed. Used as the automatic fallback.
-- **`ClaudeAgent`** (`web/js/claudeAgent.js`) — a real conversational agent
-  backed by the Claude API, called **directly from the client** with the
-  user's own API key (entered in the Settings tab, stored in `localStorage`
-  only — never sent anywhere but Anthropic). It has nine tools, one per
-  `ResourceRepo` query function (scripture, sermons, articles, devotionals,
-  bible plans, coping mechanisms, small groups, accountability programs,
-  counseling centers) — tool names and output shapes intentionally match
-  what `ResourcesAgent` already produced, so `app.js`'s rendering code
-  (`renderToolResult`) needs no agent-specific branching. `app.js` picks
-  whichever agent applies at startup and again whenever Settings changes
-  (`createAgent()`).
+  matching, no API key needed. The automatic fallback when no provider key
+  is set.
+- **`ClaudeAgent`** (`web/js/claudeAgent.js`) and **`GeminiAgent`**
+  (`web/js/geminiAgent.js`) — real conversational agents, each called
+  **directly from the client** with the user's own API key for that
+  provider (entered in the Settings tab — separate key + model per
+  provider, stored in `localStorage` only, never sent anywhere but that
+  provider's own API). `app.js`'s `createAgent()` picks whichever one
+  applies, based on `SettingsStore.getProvider()`, at startup and again
+  whenever Settings changes.
 
-**Crisis detection runs before either agent is invoked** — same
-`CRISIS_PATTERNS` regex check, shared by both classes. This is deliberate:
-it must never depend on model judgment, so it's a hard gate in front of the
-API call, not an instruction in the system prompt (the system prompt does
-also tell Claude how to react to softer distress signals, as defense in
-depth — see `CLAUDE_SYSTEM_PROMPT` in `claudeAgent.js`).
+Both real agents share one set of tools and one system prompt, defined once
+in **`web/js/agentTools.js`** (`AGENT_TOOL_DEFS`, `AGENT_SYSTEM_PROMPT`,
+`executeAgentTool`) and adapted to each provider's own tool-schema wrapper.
+Nine tools, one per `ResourceRepo` query function (scripture, sermons,
+articles, devotionals, bible plans, coping mechanisms, small groups,
+accountability programs, counseling centers) — tool names and output shapes
+intentionally match what `ResourcesAgent` already produced, so `app.js`'s
+rendering code (`renderToolResult`) needs no agent-specific branching.
 
-### Browser-bundling the Anthropic SDK
+**Crisis detection runs before any agent is invoked** — same
+`CRISIS_PATTERNS` regex check (`agentIsCrisis` in `agentTools.js`), shared
+by all three. This is deliberate: it must never depend on model judgment,
+so it's a hard gate in front of the API call, not an instruction in the
+system prompt (the system prompt does also tell the model how to react to
+softer distress signals, as defense in depth).
+
+### Why OpenAI isn't in the picker
+
+We evaluated it and hit a hard blocker: OpenAI's API sends no
+`Access-Control-Allow-Origin` header, so it flatly refuses any direct
+browser-origin request (confirmed empirically — this is not something
+`dangerouslyAllowBrowser` fixes, that flag only bypasses the SDK's *own*
+client-side guard, not actual CORS enforcement by the browser engine).
+Claude's and Gemini's APIs both allow this; OpenAI's does not.
+
+Supporting OpenAI for real would mean routing its calls through native
+networking instead of the WebView's `fetch` — an Electron main-process IPC
+relay for desktop, Capacitor's native HTTP plugin for Android — plus giving
+up real token streaming for it (both of those bypasses realistically only
+carry non-streaming responses without much extra work), matching Gemini's
+already-non-streaming approach below. That's a real, scoped follow-up if
+it's wanted later — not implemented now.
+
+### Streaming, and why Gemini fakes it
+
+`ClaudeAgent` streams for real — a manual loop over
+`client.messages.stream()`, accumulating `input_json_delta` per tool-use
+block and executing each tool the moment its block closes (see `_runTurn`).
+
+`GeminiAgent` does **not** truly stream. The Gemini *Developer API* (a
+personal API key, as opposed to a Vertex AI/enterprise setup) doesn't
+support combining real-time streaming with function calling — Google's own
+SDK samples say so outright. Since tool-calling is the part that actually
+matters (grounding answers in the real resource database), `GeminiAgent`
+makes a normal request per turn and reveals the final text client-side
+word-by-word via `agentStreamText` (the same helper used for the fixed
+crisis-response message) — visually indistinguishable from real streaming,
+just not token-level under the hood.
+
+### Browser-bundling the SDKs
 
 `web/` has no build step — everything loads as plain `<script>` tags, which
 is what keeps Electron, Capacitor, and this session's browser preview all
-trivially in sync. `@anthropic-ai/sdk` ships as a Node/bundler package with
-no prebuilt browser file, so it's bundled once via esbuild into
-`web/js/vendor/anthropic-sdk.bundle.js` (committed, same pattern as the
-vendored `sql-wasm.js`/`.wasm`). Rebuild it after upgrading the SDK:
+trivially in sync. Neither `@anthropic-ai/sdk` nor `@google/genai` ships a
+prebuilt browser file, so each is bundled once via esbuild into
+`web/js/vendor/*.bundle.js` (committed, same pattern as the vendored
+`sql-wasm.js`/`.wasm`). Rebuild after upgrading either SDK:
 
 ```bash
 npm run build:sdk
 ```
 
-`ClaudeAgent` constructs the client with `dangerouslyAllowBrowser: true` —
-intentional here: this is a local app, not a public website, and the key is
-the user's own, entered and stored only on their own device.
+Both agents construct their client with browser access explicitly allowed
+(`dangerouslyAllowBrowser: true` for Claude; Gemini's SDK needs no
+equivalent flag) — intentional here: this is a local app, not a public
+website, and each key is the user's own, entered and stored only on their
+own device.
