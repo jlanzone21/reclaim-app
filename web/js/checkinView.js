@@ -1,6 +1,8 @@
 const CheckInView = (function () {
   let selectedType = "resisted";
   let selectedTags = new Set();
+  let selectedMood = null;
+  let selectedUrge = null;
 
   let els = {};
 
@@ -9,6 +11,9 @@ const CheckInView = (function () {
       whenInput: document.getElementById("checkinWhen"),
       tagGrid: document.getElementById("conditionTags"),
       notes: document.getElementById("checkinNotes"),
+      sleepInput: document.getElementById("checkinSleep"),
+      moodScale: document.getElementById("moodScale"),
+      urgeScale: document.getElementById("urgeScale"),
       form: document.getElementById("checkinForm"),
       list: document.getElementById("checkinList"),
       typeBtns: Array.from(document.querySelectorAll(".type-btn")),
@@ -16,6 +21,8 @@ const CheckInView = (function () {
 
     setDefaultWhen();
     renderTagGrid();
+    wireScalePicker(els.moodScale, (v) => (selectedMood = v));
+    wireScalePicker(els.urgeScale, (v) => (selectedUrge = v));
     renderRecentList();
 
     els.typeBtns.forEach((btn) => {
@@ -23,6 +30,25 @@ const CheckInView = (function () {
     });
 
     els.form.addEventListener("submit", handleSubmit);
+  }
+
+  function wireScalePicker(container, onChange) {
+    Array.from(container.querySelectorAll(".scale-btn")).forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const isSelected = btn.classList.contains("selected");
+        container.querySelectorAll(".scale-btn").forEach((b) => b.classList.remove("selected"));
+        if (isSelected) {
+          onChange(null); // clicking the already-selected value clears it (fields are optional)
+        } else {
+          btn.classList.add("selected");
+          onChange(parseInt(btn.dataset.value, 10));
+        }
+      });
+    });
+  }
+
+  function resetScalePicker(container) {
+    container.querySelectorAll(".scale-btn").forEach((b) => b.classList.remove("selected"));
   }
 
   function setDefaultWhen() {
@@ -64,17 +90,26 @@ const CheckInView = (function () {
     e.preventDefault();
     const whenValue = els.whenInput.value;
     const timestamp = whenValue ? new Date(whenValue).toISOString() : new Date().toISOString();
+    const sleepValue = els.sleepInput.value.trim();
 
     CheckInStore.add({
       timestamp,
       type: selectedType,
       tags: Array.from(selectedTags),
       notes: els.notes.value.trim(),
+      mood_rating: selectedMood,
+      urge_intensity: selectedUrge,
+      sleep_hours: sleepValue ? parseFloat(sleepValue) : null,
     });
 
     selectedTags = new Set();
+    selectedMood = null;
+    selectedUrge = null;
     renderTagGrid();
+    resetScalePicker(els.moodScale);
+    resetScalePicker(els.urgeScale);
     els.notes.value = "";
+    els.sleepInput.value = "";
     setType("resisted");
     setDefaultWhen();
     renderRecentList();
@@ -111,8 +146,19 @@ const CheckInView = (function () {
       tags.className = "checkin-row-tags";
       tags.textContent = entry.tags.length ? entry.tags.join(", ") : "";
 
+      const ratingParts = [];
+      if (entry.mood_rating != null) ratingParts.push(`Mood ${entry.mood_rating}/5`);
+      if (entry.urge_intensity != null) ratingParts.push(`Urge ${entry.urge_intensity}/5`);
+      if (entry.sleep_hours != null) ratingParts.push(`${entry.sleep_hours}h sleep`);
+
       meta.appendChild(when);
       if (entry.tags.length) meta.appendChild(tags);
+      if (ratingParts.length) {
+        const ratings = document.createElement("div");
+        ratings.className = "checkin-row-tags";
+        ratings.textContent = ratingParts.join(" · ");
+        meta.appendChild(ratings);
+      }
       if (entry.notes) {
         const notes = document.createElement("div");
         notes.className = "checkin-row-notes";

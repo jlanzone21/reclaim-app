@@ -1027,6 +1027,29 @@ body {
   font-weight: 600;
 }
 
+.scale-picker {
+  display: flex;
+  gap: 8px;
+}
+
+.scale-btn {
+  flex: 1;
+  padding: 9px 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.scale-btn.selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-elevated));
+  color: var(--accent);
+}
+
 .checkin-submit {
   margin-top: 22px;
   width: 100%;

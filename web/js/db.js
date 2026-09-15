@@ -42,12 +42,25 @@ const DB = (function () {
       type TEXT NOT NULL,
       tags TEXT,
       notes TEXT,
+      mood_rating INTEGER,
+      urge_intensity INTEGER,
+      sleep_hours REAL,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS app_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_resources_type ON resources(type);
     CREATE INDEX IF NOT EXISTS idx_checkins_timestamp ON checkins(timestamp);
   `;
+
+  // Bump whenever SEED_RESOURCES/SEED_BIBLE_PLANS content changes materially.
+  // ensureSeeded() re-syncs placeholder (is_sample=1) content up to this
+  // version without ever touching checkins or user-added (is_sample=0) rows.
+  const CURRENT_SEED_VERSION = 3;
 
   let sqlJs = null;
   let db = null;
@@ -90,12 +103,28 @@ const DB = (function () {
     saveTimer = setTimeout(persistNow, 250);
   }
 
-  function seedIfEmpty() {
-    const countRow = get("SELECT COUNT(*) AS n FROM resources");
-    if (countRow && countRow.n > 0) return;
+  function getMeta(key) {
+    const row = get("SELECT value FROM app_meta WHERE key = ?", [key]);
+    return row ? row.value : null;
+  }
+
+  function setMeta(key, value) {
+    if (getMeta(key) === null) run("INSERT INTO app_meta (key, value) VALUES (?, ?)", [key, value]);
+    else run("UPDATE app_meta SET value = ? WHERE key = ?", [value, key]);
+  }
+
+  function ensureSeeded() {
+    const version = parseInt(getMeta("seed_version") || "0", 10);
+    if (version >= CURRENT_SEED_VERSION) return;
 
     run("BEGIN");
     try {
+      const oldSamplePlanIds = all("SELECT id FROM resources WHERE type = 'bible_plan' AND is_sample = 1").map((r) => r.id);
+      if (oldSamplePlanIds.length) {
+        run(`DELETE FROM bible_plan_days WHERE plan_id IN (${oldSamplePlanIds.map(() => "?").join(",")})`, oldSamplePlanIds);
+      }
+      run("DELETE FROM resources WHERE is_sample = 1");
+
       for (const r of SEED_RESOURCES) {
         insertResource(r);
       }
@@ -113,6 +142,7 @@ const DB = (function () {
       run("ROLLBACK");
       throw e;
     }
+    setMeta("seed_version", String(CURRENT_SEED_VERSION));
     persistNow();
   }
 
@@ -162,14 +192,22 @@ const DB = (function () {
     return rows.length ? rows[0] : null;
   }
 
+  function migrateColumns() {
+    const cols = all("PRAGMA table_info(checkins)").map((c) => c.name);
+    if (!cols.includes("mood_rating")) run("ALTER TABLE checkins ADD COLUMN mood_rating INTEGER");
+    if (!cols.includes("urge_intensity")) run("ALTER TABLE checkins ADD COLUMN urge_intensity INTEGER");
+    if (!cols.includes("sleep_hours")) run("ALTER TABLE checkins ADD COLUMN sleep_hours REAL");
+  }
+
   async function init() {
     if (ready) return ready;
     ready = (async () => {
       sqlJs = await initSqlJs({ locateFile });
       const existing = loadPersisted();
       db = existing ? new sqlJs.Database(existing) : new sqlJs.Database();
-      db.run(SCHEMA_SQL);
-      seedIfEmpty();
+      db.exec(SCHEMA_SQL); // exec (not run) — run only executes the first statement of a multi-statement string
+      migrateColumns();
+      ensureSeeded();
     })();
     return ready;
   }

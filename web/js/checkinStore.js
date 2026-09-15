@@ -3,7 +3,19 @@
  * This is the raw data a future ML/pattern-recognition feature would train
  * on, so keep the shape stable:
  *
- *   { id, timestamp (ISO string), type: 'resisted' | 'slipped', tags: string[], notes }
+ *   {
+ *     id, timestamp (ISO string), type: 'resisted' | 'slipped',
+ *     tags: string[], notes,
+ *     mood_rating: 1-5 | null,      // how they felt overall at check-in time
+ *     urge_intensity: 1-5 | null,   // how strong the pull/urge was
+ *     sleep_hours: number | null,   // hours slept the night before
+ *   }
+ *
+ * The three rating fields are optional (null when skipped) — self-reported
+ * mood/urge/sleep are well-documented relapse-risk correlates, included so
+ * a future model has more than just tags/notes to learn from, but the
+ * check-in form must never feel like homework, so none of them are
+ * required.
  *
  * Everything stays on-device — nothing is sent anywhere. Callers must wait
  * for DB.init() to resolve (done once, at app startup) before using this.
@@ -25,14 +37,24 @@ const CheckInStore = (function () {
       type: entry.type,
       tags: entry.tags || [],
       notes: entry.notes || "",
+      mood_rating: entry.mood_rating ?? null,
+      urge_intensity: entry.urge_intensity ?? null,
+      sleep_hours: entry.sleep_hours ?? null,
     };
-    DB.run("INSERT INTO checkins (id, timestamp, type, tags, notes) VALUES (?, ?, ?, ?, ?)", [
-      record.id,
-      record.timestamp,
-      record.type,
-      JSON.stringify(record.tags),
-      record.notes,
-    ]);
+    DB.run(
+      `INSERT INTO checkins (id, timestamp, type, tags, notes, mood_rating, urge_intensity, sleep_hours)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        record.id,
+        record.timestamp,
+        record.type,
+        JSON.stringify(record.tags),
+        record.notes,
+        record.mood_rating,
+        record.urge_intensity,
+        record.sleep_hours,
+      ]
+    );
     DB.scheduleSave();
     return record;
   }

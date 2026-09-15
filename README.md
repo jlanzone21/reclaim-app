@@ -52,13 +52,15 @@ persisted as a base64 blob in `localStorage` (see `web/js/db.js`), which is
 plenty for this app's scale and keeps everything on-device — nothing is
 sent anywhere.
 
-- `web/js/db.js` — sql.js init, schema, and the save/load-from-localStorage
-  persistence layer. Schema: a single `resources` table (type, title,
-  subtitle, body, url, contact, area, duration_min, tags, is_sample) covering
-  scripture, sermons, articles, devotionals, bible plans, coping mechanisms,
-  small groups, accountability programs, and counseling centers; a
-  `bible_plan_days` table for multi-day plans; and a `checkins` table for
-  self-reported user data.
+- `web/js/db.js` — sql.js init, schema, migrations, and the
+  save/load-from-localStorage persistence layer. Schema: a `resources`
+  table (type, title, subtitle, body, url, contact, area, duration_min,
+  tags, is_sample) covering scripture, sermons, articles, devotionals,
+  bible plans, coping mechanisms, small groups, accountability programs,
+  and counseling centers (currently ~75 rows across those 9 categories); a
+  `bible_plan_days` table for multi-day plans (4 plans, 5–14 days each); a
+  `checkins` table for self-reported user data; and an `app_meta`
+  key/value table used to track the seed content version.
 - `web/js/seedData.js` — the actual bundled content. **All of it is
   placeholder data** — every church, counseling center, and accountability
   program uses a fake (555) phone number, and sermons/articles/devotionals
@@ -71,9 +73,38 @@ sent anywhere.
 - `web/js/checkinStore.js` — same external API as before, now backed by the
   `checkins` table instead of a raw localStorage JSON blob.
 
+### Editing the resource content
+
+`seedData.js` isn't just loaded once — `db.js`'s `ensureSeeded()` re-syncs it
+on every app start, gated by `CURRENT_SEED_VERSION`. **Bump
+`CURRENT_SEED_VERSION` in `db.js` whenever you change `seedData.js`
+materially**, or existing installs won't see the update. On a version bump,
+`ensureSeeded()` deletes every `is_sample=1` row and re-inserts fresh from
+`seedData.js` — it never touches `checkins` or any `is_sample=0` (real) row
+you've added, so this is safe to do repeatedly without losing a user's
+check-in history or hand-entered real resources.
+
+**sql.js gotcha, documented so it doesn't get reintroduced**: schema/DDL
+setup must use `db.exec(sql)`, not `db.run(sql)` — `run()` silently executes
+only the *first* statement of a multi-statement string. This bit us once
+already (a `CREATE TABLE` further down `SCHEMA_SQL` was never actually
+running).
+
+### Check-in fields and future ML use
+
 Because it's a real SQL database, this is also the natural home for
 whatever the future ML/pattern-recognition feature needs — it can just add
 tables or query `checkins` directly, no separate data pipeline required.
+`checkins` already carries more than the minimum for that: alongside
+`type` (resisted/slipped), `tags` (condition/trigger multi-select), and
+free-text `notes`, it has three optional 1–5-ish self-rated fields —
+`mood_rating`, `urge_intensity`, and `sleep_hours` — chosen because they're
+well-documented relapse-risk correlates, not just because they were easy to
+add. All three are nullable; the Check-In form never requires them, since a
+form that feels like homework stops getting filled in. New columns on an
+existing table need their own migration (`migrateColumns()` in `db.js`,
+using `PRAGMA table_info` to check before `ALTER TABLE ... ADD COLUMN`) —
+`CREATE TABLE IF NOT EXISTS` only helps on a brand-new database.
 
 Everything (chat, check-in, insights) waits on `DB.init()` at startup before
 becoming interactive — it's fast (WASM init + an in-memory query), but it is
