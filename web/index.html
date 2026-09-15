@@ -26,6 +26,10 @@
         <svg viewBox="0 0 24 24" width="17" height="17"><path fill="currentColor" d="M4 20V10h3v10H4Zm6.5 0V4h3v16h-3ZM17 20v-7h3v7h-3Z"/></svg>
         Insights
       </button>
+      <button type="button" class="nav-item" data-view="settings">
+        <svg viewBox="0 0 24 24" width="17" height="17"><path fill="currentColor" d="M11.1 2.2c-.4 0-.8.3-.9.7l-.3 1.5a7.9 7.9 0 0 0-1.8.8L6.7 4.4a1 1 0 0 0-1.2.2L4.1 5.9a1 1 0 0 0-.2 1.2l.8 1.4a7.9 7.9 0 0 0-.8 1.8l-1.5.3a1 1 0 0 0-.7.9v2c0 .4.3.8.7.9l1.5.3c.2.6.5 1.2.8 1.8l-.8 1.4a1 1 0 0 0 .2 1.2l1.4 1.3a1 1 0 0 0 1.2.2l1.4-.8c.6.3 1.2.6 1.8.8l.3 1.5c.1.4.5.7.9.7h2c.4 0 .8-.3.9-.7l.3-1.5c.6-.2 1.2-.5 1.8-.8l1.4.8a1 1 0 0 0 1.2-.2l1.3-1.3a1 1 0 0 0 .2-1.2l-.8-1.4c.3-.6.6-1.2.8-1.8l1.5-.3c.4-.1.7-.5.7-.9v-2a1 1 0 0 0-.7-.9l-1.5-.3a7.9 7.9 0 0 0-.8-1.8l.8-1.4a1 1 0 0 0-.2-1.2l-1.3-1.3a1 1 0 0 0-1.2-.2l-1.4.8a7.9 7.9 0 0 0-1.8-.8l-.3-1.5a1 1 0 0 0-.9-.7h-2ZM12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7Z"/></svg>
+        Settings
+      </button>
 
       <div class="sidebar-spacer"></div>
 
@@ -171,6 +175,39 @@
           </div>
         </div>
       </section>
+
+      <!-- Settings view -->
+      <section class="view view-settings" data-view-panel="settings" hidden>
+        <div class="view-topbar">
+          <h2>Settings</h2>
+        </div>
+        <div class="view-scroll">
+          <div class="content-column">
+            <p class="view-subtitle">Connect Reclaim to Claude so it can actually converse and reason about which resources fit your situation, instead of the built-in scripted responses. Your API key is stored only on this device and sent only to Anthropic.</p>
+
+            <form id="settingsForm" class="checkin-form">
+              <label class="field-label" for="apiKeyInput">Anthropic API key</label>
+              <input type="password" id="apiKeyInput" class="field-input" placeholder="sk-ant-..." autocomplete="off" spellcheck="false" />
+
+              <label class="field-label" for="modelSelect">Model</label>
+              <select id="modelSelect" class="field-input">
+                <option value="claude-sonnet-5">Claude Sonnet 5 (recommended)</option>
+                <option value="claude-haiku-4-5">Claude Haiku 4.5 (faster, cheaper)</option>
+                <option value="claude-opus-5">Claude Opus 5 (most capable)</option>
+              </select>
+
+              <button type="submit" class="checkin-submit">Save and connect</button>
+            </form>
+
+            <div class="settings-status" id="settingsStatus" hidden></div>
+
+            <div class="checkin-recent">
+              <h3>Without a key</h3>
+              <p class="view-subtitle" style="margin:0">Reclaim falls back to a scripted mock agent — useful for trying out the app, but it can't hold a real conversation or reason about what you need. <button type="button" class="secondary-btn" id="clearKeyBtn" style="margin-top:10px">Remove saved key</button></p>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   </div>
 
@@ -258,6 +295,9 @@
   <script src="js/checkinStore.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/resourcesAgent.js"></script>
+  <script src="js/vendor/anthropic-sdk.bundle.js"></script>
+  <script src="js/settingsStore.js"></script>
+  <script src="js/claudeAgent.js"></script>
   <script src="js/checkinView.js"></script>
   <script src="js/insightsView.js"></script>
   <script src="js/app.js"></script>

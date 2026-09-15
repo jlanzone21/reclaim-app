@@ -260,6 +260,25 @@ body {
   border: 1px solid var(--border);
 }
 
+.settings-status {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+}
+
+.settings-status-ok {
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+  color: var(--success);
+  border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
+}
+
+.settings-status-error {
+  background: var(--crisis-bg);
+  color: var(--crisis);
+  border: 1px solid var(--crisis-border);
+}
+
 .conn-dot {
   width: 6px;
   height: 6px;

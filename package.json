@@ -6,14 +6,16 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "build:sdk": "esbuild web-build/anthropic-entry.js --bundle --format=iife --platform=browser --outfile=web/js/vendor/anthropic-sdk.bundle.js"
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.1",
     "@capacitor/cli": "^8.5.1",
     "@capacitor/core": "^8.5.1",
     "electron": "^32.0.0",
-    "electron-builder": "^25.0.0"
+    "electron-builder": "^25.0.0",
+    "esbuild": "^0.28.2"
   },
   "build": {
     "appId": "com.reclaim.app",
@@ -27,6 +29,7 @@
     }
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.126.0",
     "sql.js": "^1.14.2"
   }
 }

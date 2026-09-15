@@ -21,7 +21,25 @@
   const tplCrisisCard = document.getElementById("tpl-crisis-card");
   const tplCrisisLine = document.getElementById("tpl-crisis-line");
 
-  const agent = new ResourcesAgent();
+  const connStatus = document.getElementById("connStatus");
+  const settingsForm = document.getElementById("settingsForm");
+  const apiKeyInput = document.getElementById("apiKeyInput");
+  const modelSelect = document.getElementById("modelSelect");
+  const settingsStatus = document.getElementById("settingsStatus");
+  const clearKeyBtn = document.getElementById("clearKeyBtn");
+
+  function createAgent() {
+    const apiKey = SettingsStore.getApiKey();
+    return apiKey ? new ClaudeAgent(apiKey, SettingsStore.getModel()) : new ResourcesAgent();
+  }
+
+  function updateConnStatus() {
+    const connected = !!SettingsStore.getApiKey();
+    connStatus.dataset.state = connected ? "claude" : "mock";
+    connStatus.querySelector(".conn-label").textContent = connected ? "Claude" : "Mock agent";
+  }
+
+  let agent = createAgent();
   let busy = true; // stays true (composer disabled) until the database is ready
 
   // ---- View navigation (Chat / Check-In / Insights) ----
@@ -36,6 +54,11 @@
     });
     if (name === "checkin") CheckInView.renderRecentList();
     if (name === "insights") InsightsView.refresh();
+    if (name === "settings") {
+      apiKeyInput.value = SettingsStore.getApiKey();
+      modelSelect.value = SettingsStore.getModel();
+      settingsStatus.hidden = true;
+    }
   }
 
   navItems.forEach((btn) => {
@@ -43,6 +66,7 @@
   });
 
   input.placeholder = "Loading…";
+  updateConnStatus();
   DB.init()
     .then(() => {
       CheckInView.init();
@@ -55,6 +79,62 @@
       console.error("Failed to initialize local database", err);
       input.placeholder = "Something went wrong loading the app — try restarting.";
     });
+
+  // ---- Settings ----
+
+  function showSettingsStatus(text, ok) {
+    settingsStatus.hidden = false;
+    settingsStatus.textContent = text;
+    settingsStatus.className = "settings-status " + (ok ? "settings-status-ok" : "settings-status-error");
+  }
+
+  settingsForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const key = apiKeyInput.value.trim();
+    const model = modelSelect.value;
+    const submitBtn = settingsForm.querySelector('button[type="submit"]');
+
+    if (!key) {
+      SettingsStore.setApiKey("");
+      agent = createAgent();
+      updateConnStatus();
+      showSettingsStatus("Key removed — using the mock agent.", true);
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Connecting…";
+    try {
+      const testClient = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true });
+      await testClient.messages.create({
+        model,
+        max_tokens: 8,
+        thinking: { type: "disabled" },
+        messages: [{ role: "user", content: "Say OK." }],
+      });
+      SettingsStore.setApiKey(key);
+      SettingsStore.setModel(model);
+      agent = createAgent();
+      updateConnStatus();
+      showSettingsStatus("Connected — Reclaim is now talking to Claude.", true);
+    } catch (err) {
+      const msg = err instanceof Anthropic.AuthenticationError
+        ? "That key was rejected — double-check it and try again."
+        : `Couldn't connect: ${err.message || "unknown error"}`;
+      showSettingsStatus(msg, false);
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Save and connect";
+    }
+  });
+
+  clearKeyBtn.addEventListener("click", () => {
+    SettingsStore.setApiKey("");
+    apiKeyInput.value = "";
+    agent = createAgent();
+    updateConnStatus();
+    showSettingsStatus("Key removed — using the mock agent.", true);
+  });
 
   // ---- Welcome / crisis modals ----
 

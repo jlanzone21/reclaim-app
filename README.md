@@ -32,10 +32,13 @@ Android builds ship.
 
 ## Current state
 
-- UI, mocked agent logic, Check-In, and Insights are complete (`web/`).
-- Crisis detection (`web/js/resourcesAgent.js`, `CRISIS_PATTERNS`) is a
-  simple keyword/phrase matcher. It is a safety net, not a clinical tool —
-  treat any gaps you notice as bugs to fix, and lean toward over-triggering
+- UI, Check-In, and Insights are complete (`web/`).
+- Two agents: a scripted mock (no key needed) and a real Claude-backed one
+  (needs the user's own API key, entered in Settings) — see "The AI agent"
+  below.
+- Crisis detection (`CRISIS_PATTERNS`, shared by both agents) is a simple
+  keyword/phrase matcher. It is a safety net, not a clinical tool — treat
+  any gaps you notice as bugs to fix, and lean toward over-triggering
   rather than under-triggering.
 
 ## The database
@@ -171,10 +174,10 @@ as an update to an already-installed copy. This keystore is self-signed and
 not tied to a Play Store listing; it's enough to install and run the app as
 a normal release build.
 
-## Connecting a real agent backend
+## The AI agent
 
-Replace `ResourcesAgent` in `web/js/app.js` with a class exposing the same
-`send()` contract (see the header comment in `web/js/resourcesAgent.js`):
+Two agent implementations share one event contract, defined in the header
+comment of `web/js/resourcesAgent.js`:
 
 ```js
 await agent.send(userText, {
@@ -186,5 +189,40 @@ await agent.send(userText, {
 });
 ```
 
-Keep the crisis-detection behavior (or an equivalent) on whatever backend
-replaces this — it should run before any model call, not depend on it.
+- **`ResourcesAgent`** (`web/js/resourcesAgent.js`) — scripted keyword
+  matching, no API key needed. Used as the automatic fallback.
+- **`ClaudeAgent`** (`web/js/claudeAgent.js`) — a real conversational agent
+  backed by the Claude API, called **directly from the client** with the
+  user's own API key (entered in the Settings tab, stored in `localStorage`
+  only — never sent anywhere but Anthropic). It has nine tools, one per
+  `ResourceRepo` query function (scripture, sermons, articles, devotionals,
+  bible plans, coping mechanisms, small groups, accountability programs,
+  counseling centers) — tool names and output shapes intentionally match
+  what `ResourcesAgent` already produced, so `app.js`'s rendering code
+  (`renderToolResult`) needs no agent-specific branching. `app.js` picks
+  whichever agent applies at startup and again whenever Settings changes
+  (`createAgent()`).
+
+**Crisis detection runs before either agent is invoked** — same
+`CRISIS_PATTERNS` regex check, shared by both classes. This is deliberate:
+it must never depend on model judgment, so it's a hard gate in front of the
+API call, not an instruction in the system prompt (the system prompt does
+also tell Claude how to react to softer distress signals, as defense in
+depth — see `CLAUDE_SYSTEM_PROMPT` in `claudeAgent.js`).
+
+### Browser-bundling the Anthropic SDK
+
+`web/` has no build step — everything loads as plain `<script>` tags, which
+is what keeps Electron, Capacitor, and this session's browser preview all
+trivially in sync. `@anthropic-ai/sdk` ships as a Node/bundler package with
+no prebuilt browser file, so it's bundled once via esbuild into
+`web/js/vendor/anthropic-sdk.bundle.js` (committed, same pattern as the
+vendored `sql-wasm.js`/`.wasm`). Rebuild it after upgrading the SDK:
+
+```bash
+npm run build:sdk
+```
+
+`ClaudeAgent` constructs the client with `dangerouslyAllowBrowser: true` —
+intentional here: this is a local app, not a public website, and the key is
+the user's own, entered and stored only on their own device.
