@@ -397,17 +397,20 @@ true. Older versions stored users' own Claude/Gemini API keys in
 
 ### Testing the AI on Android
 
-Build a **debug** APK (debug builds allow inspecting the WebView from a
-computer):
+Build a **release** APK and install it over the existing app. It's signed
+with the same key, so the phone keeps its check-ins. (A debug build is
+signed with a different key; Android won't install it over the release app,
+and uninstalling first wipes that phone's data. Only use debug builds on a
+phone without real data.)
 
 ```bash
 npx cap sync android
 cd android
-.\gradlew.bat assembleDebug
+.\gradlew.bat assembleRelease
 ```
 
-Install `android/app/build/outputs/apk/debug/app-debug.apk`, open Chat, and
-tap the badge in the chat header:
+Install `android/app/build/outputs/apk/release/app-release.apk`, open Chat,
+and tap the badge in the chat header:
 
 - **"This device can't run Reclaim's AI…"** with a reason → the WebView
   doesn't support it. The reason says which part is missing (WebGPU itself,
@@ -416,7 +419,8 @@ tap the badge in the chat header:
   "Reclaim AI", and send a few messages. If it fails with a memory message,
   the phone can't fit the 2B model.
 
-For more detail, connect the phone by USB with USB debugging on, open
+For more detail, use a **debug** build on a spare phone (release builds
+can't be inspected): connect it by USB with USB debugging on, open
 `chrome://inspect` in desktop Chrome, pick the Reclaim WebView, and run
 `await navigator.gpu?.requestAdapter()` in its console (`null` or
 `undefined` means no WebGPU). Also check the phone's **Android System
