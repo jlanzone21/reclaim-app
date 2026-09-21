@@ -1,216 +1,144 @@
-// Reclaim's only AI agent: streams from the gateway (gateway/server.js) and runs tool calls here, against ResourceRepo.
+// Reclaim's AI agent: the on-device model (LocalModel) picks at most one resource from a fixed list, the app looks it up here, and the model writes a short reply that is checked before it's shown.
 const RECLAIM_TOOL_NAMES = new Set(AGENT_TOOL_DEFS.map((t) => t.name));
-const RECLAIM_CALL_ID = /^[A-Za-z0-9_-]{1,64}$/;
-const RECLAIM_MAX_TURNS = 12;
-const RECLAIM_MAX_TOOL_ROUNDS = 6;
-const RECLAIM_TIMEOUT_MS = 90000;
+const RECLAIM_ROUTER_SCHEMA = {
+  type: "object",
+  properties: {
+    resource: { type: "string", enum: [...RECLAIM_TOOL_NAMES, "off_topic", "none"] },
+    theme: { type: "string", enum: [...AGENT_THEME_ENUM, "none"] },
+  },
+  required: ["resource", "theme"],
+};
+const RECLAIM_HISTORY_MESSAGES = 6;
+const RECLAIM_CLIP_CHARS = 600;
+// Telling a struggling person "I can't help with that" is the worst failure here, so these words veto an off_topic routing.
+const RECLAIM_ON_TOPIC =
+  /\b(lonel|alone|isolat|stress|anxi|worr|sad|depress|down\b|low\b|angry|anger|mad\b|upset|frustrat|ashamed|shame|guilt|tempt|urge|crav|slip|relaps|fail|porn|lust|sex|masturb|god|jesus|christ|pray|faith|church|bible|forgiv|sleep|bored|tired|exhaust|hurt|scared|afraid|hopeless|wife|husband|girlfriend|boyfriend|spouse|marri|family|feel|struggl|addict|recover)/i;
+const RECLAIM_OFF_TOPIC_REPLY =
+  "I'm only here to help with recovery, faith, and finding support, so I can't help with that one. Is anything weighing on you today?";
 
-class ReclaimAIError extends Error {
-  constructor(kind, status, code) {
-    super(`${kind}${status ? ` (${status}${code ? ` ${code}` : ""})` : ""}`);
-    this.kind = kind; // "unavailable" | "rejected" | "too_long" | "empty"
-    this.status = status;
-    this.code = code;
-  }
+const clip = (text, n = RECLAIM_CLIP_CHARS) => (text.length > n ? `${text.slice(0, n)}…` : text);
+
+// The app, not the model, introduces each card: a small model asked to talk about specific resources misquotes or refuses them.
+function cardIntro(name, theme) {
+  const about = theme && theme !== "in-the-moment" ? ` about ${theme}` : "";
+  return AGENT_TOOL_DEFS.find((t) => t.name === name).intro.replace("{about}", about);
+}
+
+// Small models invent verses, quotes, and contacts despite instructions, so any sentence containing one is dropped.
+const RECLAIM_UNSAFE_SENTENCE = [
+  /\b(?:[1-3]\s?)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)?\s\d{1,3}:\d{1,3}/, // Bible reference, e.g. "1 John 4:16"
+  /["“][^"”]{12,}["”]/, // quoted passage
+  /\(?\b\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b/, // phone number
+  /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|org|net|io|app)\b/i, // link or site
+];
+
+function cleanReply(text, cardShown) {
+  const sentences = text.trim().split(/(?<=[.!?])\s+/);
+  const kept = sentences.filter((s) => !RECLAIM_UNSAFE_SENTENCE.some((re) => re.test(s))).slice(0, 3);
+  if (kept.length) return kept.join(" ");
+  return cardShown ? "" : "I'm glad you reached out. I'm here with you.";
 }
 
 class ReclaimAgent {
-  constructor({ onStatus } = {}) {
+  constructor() {
     this.history = [];
     this.fallback = new ResourcesAgent();
-    this.onStatus = onStatus || (() => {});
-  }
-
-  async checkStatus() {
-    const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), 8000);
-    try {
-      const res = await fetch(`${RECLAIM_AI_URL}/v1/status`, {
-        headers: { authorization: `Bearer ${RECLAIM_AI_KEY}` },
-        signal: ac.signal,
-      });
-      const body = res.ok ? await res.json() : null;
-      this.onStatus(body && body.ok ? "online" : "basic");
-    } catch (e) {
-      this.onStatus("basic");
-    } finally {
-      clearTimeout(timer);
-    }
+    this._idCounter = 0;
   }
 
   async send(userText, handlers) {
-    // Crisis detection must run before any network call and never depend on the model.
+    // Crisis detection must run before the model is involved and never depend on it.
     if (agentIsCrisis(userText)) {
       handlers.onCrisis({ lines: CRISIS_LINES });
       await agentStreamText(CRISIS_REPLY, handlers.onTextDelta);
-      this.history.push({ role: "user", content: userText }, { role: "assistant", content: CRISIS_REPLY });
+      this._remember(userText, CRISIS_REPLY);
       handlers.onDone();
       return;
     }
 
-    this._trimHistory();
-    const checkpoint = this.history.length;
-    this.history.push({ role: "user", content: userText });
+    if (!LocalModel.isReady()) {
+      await this.fallback.send(userText, handlers);
+      return;
+    }
 
     let shown = false;
-    const onTextDelta = (chunk) => {
-      shown = true;
-      handlers.onTextDelta(chunk);
-    };
-
     try {
-      for (let round = 0; round < RECLAIM_MAX_TOOL_ROUNDS; round++) {
-        const { text, calls } = await this._request(onTextDelta);
-        const valid = calls.filter((c) => RECLAIM_TOOL_NAMES.has(c.name));
-        if (!text && !valid.length) {
-          if (round === 0) throw new ReclaimAIError("empty");
-          break;
-        }
-
-        const message = { role: "assistant", content: text };
-        if (valid.length) {
-          message.tool_calls = valid.map((c) => ({
-            id: c.id,
-            type: "function",
-            function: { name: c.name, arguments: JSON.stringify(c.args) },
-          }));
-        }
-        this.history.push(message);
-        if (!valid.length) break;
-
-        for (const c of valid) {
-          shown = true;
-          handlers.onToolCallStart({ id: c.id, name: c.name, input: c.args });
-          const output = executeAgentTool(c.name, c.args);
-          handlers.onToolCallEnd({ id: c.id, output });
-          this.history.push({ role: "tool", tool_call_id: c.id, content: JSON.stringify(output) });
-        }
-      }
-      this.onStatus("online");
-    } catch (err) {
-      this.history.length = checkpoint;
-      if (err.kind === "rejected") this.history = [];
-
-      if (err.kind === "too_long") {
-        handlers.onTextDelta("That message is a bit too long for me — could you shorten it?");
-      } else if (shown) {
-        handlers.onTextDelta("\n\n(The connection dropped before I finished — please try again.)");
+      const pick = await this._route(userText);
+      let reply;
+      if (pick && pick.offTopic) {
+        reply = RECLAIM_OFF_TOPIC_REPLY;
       } else {
-        if (err.kind === "unavailable") this.onStatus("basic");
-        console.warn("Reclaim AI unavailable, using the built-in guide:", err.message);
+        let intro = "";
+        if (pick) {
+          const id = `tool_${++this._idCounter}`;
+          const input = pick.theme ? { theme: pick.theme } : {};
+          shown = true;
+          handlers.onToolCallStart({ id, name: pick.resource, input });
+          handlers.onToolCallEnd({ id, output: executeAgentTool(pick.resource, input) });
+          intro = cardIntro(pick.resource, pick.theme);
+        }
+        const messages = this._replyMessages(userText, intro);
+        let raw = await LocalModel.streamChat(messages, { onDelta: () => {} });
+        const previous = this.history.length ? this.history[this.history.length - 1].content : "";
+        if (raw.trim() && previous.includes(raw.trim())) raw = await LocalModel.streamChat(messages, { temperature: 0.8, onDelta: () => {} });
+        if (!raw.trim() && !intro) throw new Error("empty reply");
+        reply = [intro, cleanReply(raw, !!intro)].filter(Boolean).join(" ");
+      }
+      shown = true;
+      await agentStreamText(reply, handlers.onTextDelta);
+      this._remember(userText, reply);
+    } catch (err) {
+      console.warn("On-device AI failed, using the built-in guide:", err);
+      if (!shown) {
         await this.fallback.send(userText, handlers);
         return;
       }
+      handlers.onTextDelta("\n\n(Something went wrong before I finished — please try again.)");
     }
     handlers.onDone();
   }
 
-  // Drops whole oldest turns so every tool result stays paired with the call that produced it.
-  _trimHistory() {
-    let turns = 0;
-    for (let i = this.history.length - 1; i >= 0; i--) {
-      if (this.history[i].role === "user" && ++turns === RECLAIM_MAX_TURNS) {
-        this.history = this.history.slice(i);
-        return;
-      }
+  async _route(userText) {
+    const recent = this.history.slice(-2).map((m) => ({ role: m.role, content: clip(m.content) }));
+    let choice;
+    try {
+      choice = await LocalModel.chooseJson(
+        [{ role: "system", content: AGENT_ROUTER_PROMPT }, ...recent, { role: "user", content: clip(userText) }],
+        RECLAIM_ROUTER_SCHEMA
+      );
+    } catch (err) {
+      if (err instanceof SyntaxError) return null;
+      throw err;
     }
+    if (!choice) return null;
+    if (choice.resource === "off_topic") return RECLAIM_ON_TOPIC.test(userText) ? null : { offTopic: true };
+    if (!RECLAIM_TOOL_NAMES.has(choice.resource)) return null;
+    const takesTheme = !!AGENT_TOOL_DEFS.find((t) => t.name === choice.resource).parameters.properties.theme;
+    return { resource: choice.resource, theme: takesTheme && choice.theme !== "none" ? choice.theme : null };
   }
 
-  async _request(onTextDelta) {
-    const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), RECLAIM_TIMEOUT_MS);
+  _replyMessages(userText, intro) {
+    let personal = "";
     try {
-      let res;
-      try {
-        res = await fetch(`${RECLAIM_AI_URL}/v1/chat`, {
-          method: "POST",
-          headers: { authorization: `Bearer ${RECLAIM_AI_KEY}`, "content-type": "application/json" },
-          body: JSON.stringify({ messages: this.history }),
-          signal: ac.signal,
-        });
-      } catch (e) {
-        throw new ReclaimAIError("unavailable", 0);
-      }
+      personal = buildPersonalContext(CheckInStore.list());
+    } catch (e) {}
+    const context = [
+      `Right now it is ${describeTimeOfDay(new Date())}.`,
+      personal && `About this person, from their own check-ins: ${personal}`,
+      intro && `The app has just said "${intro}" and shown it to them. Your reply comes right after that line, so continue naturally with one or two warm sentences and don't repeat it.`,
+    ]
+      .filter(Boolean)
+      .join("\n");
 
-      if (!res.ok) {
-        let code = "";
-        try {
-          code = (await res.json()).error || "";
-        } catch (e) {}
-        if (code === "message_too_long") throw new ReclaimAIError("too_long", res.status, code);
-        const rejected = res.status === 400 || res.status === 413;
-        throw new ReclaimAIError(rejected ? "rejected" : "unavailable", res.status, code);
-      }
-
-      return await this._readStream(res.body, onTextDelta);
-    } finally {
-      clearTimeout(timer);
-    }
+    return [
+      { role: "system", content: `${AGENT_SYSTEM_PROMPT}\n\n${context}` },
+      ...this.history.slice(-RECLAIM_HISTORY_MESSAGES).map((m) => ({ role: m.role, content: clip(m.content) })),
+      { role: "user", content: clip(userText) },
+    ];
   }
 
-  // Parses the gateway's OpenAI-style SSE; a stream that ends without [DONE] counts as a failure.
-  async _readStream(body, onTextDelta) {
-    const reader = body.getReader();
-    const decoder = new TextDecoder();
-    const calls = [];
-    let buf = "";
-    let text = "";
-    let done = false;
-
-    try {
-      for (;;) {
-        const { value, done: ended } = await reader.read();
-        if (ended) break;
-        buf = (buf + decoder.decode(value, { stream: true })).replace(/\r\n/g, "\n");
-
-        let cut;
-        while ((cut = buf.indexOf("\n\n")) >= 0) {
-          const frame = buf.slice(0, cut);
-          buf = buf.slice(cut + 2);
-          for (const line of frame.split("\n")) {
-            if (!line.startsWith("data:")) continue;
-            const data = line.slice(5).trim();
-            if (data === "[DONE]") {
-              done = true;
-              continue;
-            }
-            let delta;
-            try {
-              delta = JSON.parse(data).choices[0].delta;
-            } catch (e) {
-              continue;
-            }
-            if (!delta) continue;
-            if (delta.content) {
-              text += delta.content;
-              onTextDelta(delta.content);
-            }
-            for (const tc of delta.tool_calls || []) {
-              const i = tc.index == null ? 0 : tc.index;
-              const call = calls[i] || (calls[i] = { id: "", name: "", args: "" });
-              if (tc.id) call.id = tc.id;
-              if (tc.function && tc.function.name) call.name = tc.function.name;
-              if (tc.function && tc.function.arguments) call.args += tc.function.arguments;
-            }
-          }
-        }
-      }
-    } catch (e) {
-      throw new ReclaimAIError("unavailable", 0);
-    }
-    if (!done) throw new ReclaimAIError("unavailable", 0);
-
-    return {
-      text,
-      calls: calls.filter(Boolean).map((c, n) => {
-        let args = {};
-        try {
-          const parsed = JSON.parse(c.args || "{}");
-          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) args = parsed;
-        } catch (e) {}
-        const id = RECLAIM_CALL_ID.test(c.id) ? c.id : `call_${Date.now().toString(36)}_${n}`;
-        return { id, name: c.name, args };
-      }),
-    };
+  _remember(userText, reply) {
+    this.history.push({ role: "user", content: userText }, { role: "assistant", content: reply });
+    this.history = this.history.slice(-2 * RECLAIM_HISTORY_MESSAGES);
   }
 }

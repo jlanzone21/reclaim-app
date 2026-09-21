@@ -22,24 +22,77 @@
   const tplCrisisLine = document.getElementById("tpl-crisis-line");
 
   const connStatus = document.getElementById("connStatus");
+  const aiPanel = document.getElementById("aiPanel");
+  const aiPanelText = document.getElementById("aiPanelText");
+  const aiProgress = document.getElementById("aiProgress");
+  const aiProgressBar = document.getElementById("aiProgressBar");
+  const aiPanelActions = document.getElementById("aiPanelActions");
+  const aiPrimaryBtn = document.getElementById("aiPrimaryBtn");
+  const aiDismissBtn = document.getElementById("aiDismissBtn");
 
-  const CONN_STATES = {
-    checking: { label: "Connecting…", title: "" },
-    online: { label: "Reclaim AI", title: "" },
-    basic: {
-      label: "Basic mode",
-      title: "Reclaim's AI can't be reached right now, so a simpler built-in guide is answering. Crisis resources always work.",
-    },
-  };
+  const BASIC_NOTE = "Meanwhile a simpler built-in guide answers, and crisis resources always work.";
+  // null: panel follows the AI's state; true: opened from the badge; false: dismissed.
+  let aiPanelWanted = null;
 
-  function updateConnStatus(state) {
-    connStatus.dataset.state = state;
-    connStatus.querySelector(".conn-label").textContent = CONN_STATES[state].label;
-    connStatus.title = CONN_STATES[state].title;
+  function renderAiStatus(s) {
+    const pct = Math.round(s.progress * 100);
+    const busy = s.state === "downloading" || s.state === "loading";
+
+    connStatus.dataset.state = s.state === "ready" ? "online" : s.state;
+    connStatus.querySelector(".conn-label").textContent = {
+      checking: "Checking…",
+      unsupported: "Basic mode",
+      available: "Basic mode",
+      downloading: `Downloading ${pct}%`,
+      loading: "Getting ready…",
+      ready: "Reclaim AI",
+      error: "Basic mode",
+    }[s.state];
+    connStatus.title =
+      s.state === "ready" ? "Reclaim's AI runs privately on this device. Your conversations never leave it." : "About Reclaim's AI";
+
+    const panel = {
+      unsupported: {
+        text: `This device can't run Reclaim's AI. ${s.detail} Instead, a simpler built-in guide answers, and crisis resources always work.`,
+        dismiss: "OK",
+      },
+      available: {
+        text: `Reclaim's AI runs privately on this device, so your conversations never leave it. It needs a one-time download of about ${s.downloadMB >= 1000 ? `${Number((s.downloadMB / 1000).toFixed(1))} GB` : `${s.downloadMB} MB`} (Wi-Fi recommended).`,
+        primary: "Download",
+        dismiss: "Not now",
+      },
+      downloading: { text: `Downloading Reclaim's AI… ${pct}%. You can keep using the app while it downloads.` },
+      loading: { text: "Getting Reclaim's AI ready…" },
+      error: { text: `${s.detail} ${BASIC_NOTE}`, primary: "Try again", dismiss: "Not now" },
+    }[s.state];
+
+    const show = !!panel && (busy || (aiPanelWanted === null ? s.state === "available" || s.state === "error" : aiPanelWanted));
+    aiPanel.hidden = !show;
+    if (!show) return;
+    aiPanelText.textContent = panel.text;
+    aiProgress.hidden = !busy;
+    aiProgressBar.style.width = `${pct}%`;
+    aiPanelActions.hidden = busy;
+    aiPrimaryBtn.hidden = !panel.primary;
+    aiPrimaryBtn.textContent = panel.primary || "";
+    aiDismissBtn.textContent = panel.dismiss || "Close";
   }
 
+  connStatus.addEventListener("click", () => {
+    aiPanelWanted = aiPanel.hidden;
+    renderAiStatus(LocalModel.getStatus());
+  });
+  aiDismissBtn.addEventListener("click", () => {
+    aiPanelWanted = false;
+    renderAiStatus(LocalModel.getStatus());
+  });
+  aiPrimaryBtn.addEventListener("click", () => {
+    aiPanelWanted = null;
+    LocalModel.start();
+  });
+
   function createAgent() {
-    return new ReclaimAgent({ onStatus: updateConnStatus });
+    return new ReclaimAgent();
   }
 
   // Provider API keys saved by older versions: no UI can remove them anymore.
@@ -71,8 +124,8 @@
   });
 
   input.placeholder = "Loading…";
-  updateConnStatus("checking");
-  agent.checkStatus();
+  LocalModel.onChange(renderAiStatus);
+  LocalModel.init();
   DB.init()
     .then(() => {
       CheckInView.init();
@@ -89,7 +142,7 @@
   // ---- Welcome / crisis modals ----
 
   // Bump when the notice's substance changes so people who already dismissed it see it again.
-  const WELCOME_VERSION = "2";
+  const WELCOME_VERSION = "3";
 
   function showWelcomeIfNeeded() {
     let seen = false;

@@ -6,7 +6,8 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "vendor:webllm": "node scripts/vendor-webllm.mjs"
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.1",
@@ -27,6 +28,7 @@
     }
   },
   "dependencies": {
+    "@mlc-ai/web-llm": "0.2.85",
     "sql.js": "^1.14.2"
   }
 }

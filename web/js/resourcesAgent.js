@@ -92,7 +92,7 @@ class ResourcesAgent {
       };
     }
 
-    if (/\b(coping|urge|craving|technique|what do i do right now|in the moment)\b/.test(lower)) {
+    if (/\b(coping|urges?|cravings?|tempt\w*|about to|technique|what do i do right now|in the moment)\b/.test(lower)) {
       const mechanisms = ResourceRepo.getCopingMechanisms(theme);
       return {
         toolCalls: [{ name: "coping_toolkit", input: { theme }, output: { mechanisms }, delay: 650 }],

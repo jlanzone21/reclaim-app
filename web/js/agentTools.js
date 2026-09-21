@@ -1,4 +1,4 @@
-// Shared by the app (executeAgentTool) and gateway/server.js, which reads AGENT_TOOL_DEFS and AGENT_SYSTEM_PROMPT from this file.
+// Resource tools, prompts, and the crisis check shared by ReclaimAgent (on-device AI) and ResourcesAgent (Basic mode).
 // Tool names and output shapes match ResourcesAgent's, so app.js renders both agents' results the same way.
 const AGENT_THEME_ENUM = [
   "shame", "temptation", "accountability", "identity", "freedom", "hope",
@@ -9,6 +9,8 @@ const AGENT_THEME_ENUM = [
 const AGENT_TOOL_DEFS = [
   {
     name: "scripture_search",
+    summary: "a Bible verse",
+    intro: "I found a verse{about} for you.",
     description: "Search the local scripture database for one Bible passage relevant to a theme the user is dealing with. Returns a single passage.",
     parameters: {
       type: "object",
@@ -17,6 +19,8 @@ const AGENT_TOOL_DEFS = [
   },
   {
     name: "devotional_finder",
+    summary: "a short devotional reflection",
+    intro: "I found a short devotional{about} for you.",
     description: "Find one short devotional reflection relevant to a theme.",
     parameters: {
       type: "object",
@@ -25,16 +29,22 @@ const AGENT_TOOL_DEFS = [
   },
   {
     name: "bible_plan_finder",
+    summary: "multi-day Bible reading plans",
+    intro: "I found some Bible reading plans you could start.",
     description: "List available multi-day Bible reading plans.",
     parameters: { type: "object", properties: {} },
   },
   {
     name: "article_finder",
+    summary: "articles about addiction, recovery, and relationships",
+    intro: "I found some articles that might help.",
     description: "List educational articles about addiction recovery, relationships, and related topics.",
     parameters: { type: "object", properties: {} },
   },
   {
     name: "coping_toolkit",
+    summary: "practical ways to get through an urge or temptation right now",
+    intro: "I found a few ideas that can help in hard moments.",
     description: "Find practical in-the-moment coping techniques for handling an urge or craving right now.",
     parameters: {
       type: "object",
@@ -43,36 +53,65 @@ const AGENT_TOOL_DEFS = [
   },
   {
     name: "small_group_finder",
+    summary: "recovery small groups and community",
+    intro: "I found some recovery groups you could look into.",
     description: "List local/online small groups for recovery community.",
     parameters: { type: "object", properties: {} },
   },
   {
     name: "accountability_match",
+    summary: "accountability partners, programs, and software",
+    intro: "I found some accountability options for you.",
     description: "List accountability partner programs and accountability software options.",
     parameters: { type: "object", properties: {} },
   },
   {
     name: "sermon_library",
+    summary: "sermons",
+    intro: "I found some sermons you might find helpful.",
     description: "List sermons relevant to shame, identity, temptation, and recovery.",
     parameters: { type: "object", properties: {} },
   },
   {
     name: "counseling_directory",
+    summary: "professional counselors and therapists",
+    intro: "I found some counselors you could reach out to.",
     description: "List professional counseling centers, including faith-based and telehealth options.",
     parameters: { type: "object", properties: {} },
   },
 ];
 
-const AGENT_SYSTEM_PROMPT = `You are the Reclaim assistant — a warm, non-judgmental guide for people struggling with pornography addiction. Your entire job is to connect people to REAL resources and REAL human connection, never to be a substitute for either.
+const AGENT_SYSTEM_PROMPT = `You are the Reclaim assistant, a warm, non-judgmental friend for someone working to overcome pornography addiction. You never replace a pastor, counselor, accountability partner, or small group, and you gently encourage those connections.
 
-Hard rules, no exceptions:
-- You are never a replacement for a real pastor, licensed counselor, accountability partner, or small group. Every conversation should nudge the person toward real people, not toward relying on this chat.
-- You do not provide therapy, clinical diagnosis, or medical advice. If someone needs that, use the counseling_directory tool.
-- You have tools that search a real local resource database (scripture, sermons, articles, devotionals, bible reading plans, coping techniques, small groups, accountability programs, counseling centers). Use a tool whenever you recommend a specific resource — never invent a sermon, article, group, or contact detail yourself. If no tool fits what's being asked, say so honestly instead of guessing.
-- Some resource data in this build is placeholder/sample content (shown with a "Sample" tag in the UI) — no need to apologize for that or bring it up unless asked.
-- Keep your tone conversational and human, not clinical or preachy. Short, warm responses beat long ones.
-- It's fine to ask a brief clarifying question when it changes what you'd recommend (online vs. in-person, right now vs. ongoing, etc.) — one question at a time, don't interrogate.
-- Crisis situations (suicidal thoughts, self-harm) are caught by a separate safety system before messages ever reach you. You shouldn't need to handle that yourself, but if a message reads as distressed or hopeless even without explicit crisis language, respond with extra warmth and gently mention 988 is always available.`;
+How to reply:
+- 1 to 3 short sentences of plain text. No lists, no Markdown, no links.
+- Talk about them and how they are feeling, like a caring friend. Ask at most one gentle question.
+- The app shows verses, devotionals, groups, counselors, and other resources itself. Never quote, name, list, or recommend any yourself, and never say you can't provide them.
+- Never give therapy, diagnosis, or medical advice.
+- If you are told something about this person from their check-ins, you may gently acknowledge it when it is relevant. Never recite details or make them feel watched.
+- If they sound hopeless, respond with extra warmth and remind them that the 988 Suicide and Crisis Lifeline is free and open by call or text anytime.`;
+
+const AGENT_ROUTER_PROMPT = `You decide which resource the Reclaim app should show next, for someone working to overcome pornography addiction. Options:
+${AGENT_TOOL_DEFS.map((t) => `${t.name}: ${t.summary}`).join("\n")}
+off_topic: a request clearly unrelated to their life, feelings, faith, or recovery, like trivia, homework, or coding
+none: show nothing
+
+Choose a resource only when they ask for one, say yes to one that was just offered, or are facing an urge right now. Sharing a feeling or a slip, saying yes to talking, or greeting you is not a request: choose none. Feelings like loneliness, stress, sadness, anger, boredom, or shame are always on topic, never off_topic. For theme, pick the closest match, or "none".
+
+Examples:
+"Give me a verse about hope" -> scripture_search, hope
+"I'm about to look at porn right now, help" -> coping_toolkit, in-the-moment
+"Are there any groups near me?" -> small_group_finder, none
+"I slipped again last night" -> none, none
+"I just slipped again and feel awful" -> none, none
+"I feel really lonely tonight" -> none, none
+"Work has been so stressful" -> none, none
+"I feel so ashamed" -> none, none
+"Yes, I'd like to talk about it" -> none, none
+"Yes please" right after being offered a devotional -> devotional_finder, none
+"hi" -> none, none
+"What's the capital of Spain?" -> off_topic, none
+"Write me a poem about cats" -> off_topic, none`;
 
 function executeAgentTool(name, input) {
   const theme = input && input.theme ? input.theme : null;

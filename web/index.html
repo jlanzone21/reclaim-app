@@ -42,10 +42,10 @@
         <div class="view-topbar">
           <h2>Chat</h2>
           <div class="view-topbar-actions">
-            <span class="conn-status" id="connStatus" data-state="checking">
+            <button type="button" class="conn-status" id="connStatus" data-state="checking" aria-controls="aiPanel">
               <span class="conn-dot"></span>
-              <span class="conn-label">Connecting…</span>
-            </span>
+              <span class="conn-label">Checking…</span>
+            </button>
             <button class="icon-btn" id="clearBtn" title="Clear conversation" aria-label="Clear conversation">
               <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M9 3a1 1 0 0 0-1 1v1H4.5a1 1 0 0 0 0 2H5v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7h.5a1 1 0 1 0 0-2H16V4a1 1 0 0 0-1-1H9Zm1 2V5h4v0h-4ZM7 7h10v12H7V7Zm3 2a1 1 0 0 0-1 1v7a1 1 0 1 0 2 0v-7a1 1 0 0 0-1-1Zm4 0a1 1 0 0 0-1 1v7a1 1 0 1 0 2 0v-7a1 1 0 0 0-1-1Z"/></svg>
             </button>
@@ -55,6 +55,15 @@
         <div class="safety-banner">
           Reclaim connects you to real people and resources — it is never a replacement for human connection, pastoral care, or professional counseling.
           <button type="button" class="safety-banner-link" id="bannerCrisisLink">In crisis? Get help now →</button>
+        </div>
+
+        <div class="ai-panel" id="aiPanel" role="status" aria-live="polite" hidden>
+          <p class="ai-panel-text" id="aiPanelText"></p>
+          <div class="ai-progress" id="aiProgress" hidden><div class="ai-progress-bar" id="aiProgressBar"></div></div>
+          <div class="ai-panel-actions" id="aiPanelActions">
+            <button type="button" class="ai-panel-primary" id="aiPrimaryBtn"></button>
+            <button type="button" class="ai-panel-secondary" id="aiDismissBtn">Not now</button>
+          </div>
         </div>
 
         <main class="chat" id="chat">
@@ -204,7 +213,7 @@
         <li>This app does not provide therapy, diagnosis, or clinical advice.</li>
         <li>It is never a substitute for a real pastor, counselor, or accountability partner.</li>
         <li>Sample resources in this build use placeholder (555) numbers — real local resources should be added before relying on this app.</li>
-        <li>Your chat messages are sent securely to Reclaim's own AI server so it can reply. They aren't saved there.</li>
+        <li>Reclaim's AI runs entirely on your device, so your conversations never leave it. Turning it on downloads it once (about 1 GB).</li>
         <li>Check-in data you log stays on this device (local storage) and is not sent anywhere.</li>
       </ul>
       <p class="modal-crisis">If you are in crisis or thinking about suicide, call or text <strong>988</strong> right now, or call 911.</p>
@@ -282,7 +291,8 @@
   <script src="js/charts.js"></script>
   <script src="js/resourcesAgent.js"></script>
   <script src="js/agentTools.js"></script>
-  <script src="js/config.js"></script>
+  <script src="js/localModel.js"></script>
+  <script src="js/personalContext.js"></script>
   <script src="js/reclaimAgent.js"></script>
   <script src="js/checkinView.js"></script>
   <script src="js/insightsView.js"></script>
