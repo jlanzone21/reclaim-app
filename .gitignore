@@ -27,6 +27,10 @@ android/.idea/
 *.iml
 android/local.properties
 
+# Gateway secrets and local config — NEVER commit
+.env
+gateway/.env
+
 # OS junk
 Thumbs.db
 .DS_Store

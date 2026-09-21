@@ -1,14 +1,5 @@
-/**
- * Provider-neutral tool definitions and system prompt shared by all three
- * agent backends (ClaudeAgent, OpenAIAgent, GeminiAgent). Each provider's
- * tool-calling API wants a slightly different wrapper shape, but the same
- * name/description/JSON-schema and the same execution logic underneath —
- * defined once here so the three agents can't drift apart.
- *
- * Tool names and output shapes intentionally match what the original
- * ResourcesAgent mock produced, so app.js's rendering code
- * (renderToolResult) needs no agent-specific branching.
- */
+// Shared by the app (executeAgentTool) and gateway/server.js, which reads AGENT_TOOL_DEFS and AGENT_SYSTEM_PROMPT from this file.
+// Tool names and output shapes match ResourcesAgent's, so app.js renders both agents' results the same way.
 const AGENT_THEME_ENUM = [
   "shame", "temptation", "accountability", "identity", "freedom", "hope",
   "relapse", "struggle", "loneliness", "community", "grace", "growth",

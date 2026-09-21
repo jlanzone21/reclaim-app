@@ -1,5 +1,5 @@
 /**
- * ResourcesAgent simulates the Reclaim backend agent. It never gives therapy,
+ * ResourcesAgent is the scripted guide ReclaimAgent falls back to when the AI server can't answer. It never gives therapy,
  * diagnoses, or clinical advice — its only job is to connect the user to real
  * scripture, people, and services, and to always point toward human help.
  *
@@ -25,10 +25,7 @@ class ResourcesAgent {
     if (this._isCrisis(userText)) {
       handlers.onCrisis({ lines: CRISIS_LINES });
       await wait(200);
-      await this._streamText(
-        "I'm really glad you told me. Please reach out to one of the numbers above right now, or call 911 if you're in immediate danger — a trained person can help in a way I can't. You don't have to go through this moment alone.",
-        handlers.onTextDelta
-      );
+      await this._streamText(CRISIS_REPLY, handlers.onTextDelta);
       handlers.onDone();
       return;
     }

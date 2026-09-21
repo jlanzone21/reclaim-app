@@ -16,6 +16,9 @@ const CRISIS_LINES = [
   },
 ];
 
+const CRISIS_REPLY =
+  "I'm really glad you told me. Please reach out to one of the numbers above right now, or call 911 if you're in immediate danger — a trained person can help in a way I can't. You don't have to go through this moment alone.";
+
 const CONDITION_TAGS = [
   "Stress",
   "Loneliness",

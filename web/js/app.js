@@ -22,48 +22,32 @@
   const tplCrisisLine = document.getElementById("tpl-crisis-line");
 
   const connStatus = document.getElementById("connStatus");
-  const settingsForm = document.getElementById("settingsForm");
-  const providerSelect = document.getElementById("providerSelect");
-  const apiKeyLabel = document.getElementById("apiKeyLabel");
-  const apiKeyInput = document.getElementById("apiKeyInput");
-  const modelSelect = document.getElementById("modelSelect");
-  const settingsStatus = document.getElementById("settingsStatus");
-  const clearKeyBtn = document.getElementById("clearKeyBtn");
 
-  const AGENT_CLASSES = { anthropic: ClaudeAgent, gemini: GeminiAgent };
+  const CONN_STATES = {
+    checking: { label: "Connecting…", title: "" },
+    online: { label: "Reclaim AI", title: "" },
+    basic: {
+      label: "Basic mode",
+      title: "Reclaim's AI can't be reached right now, so a simpler built-in guide is answering. Crisis resources always work.",
+    },
+  };
+
+  function updateConnStatus(state) {
+    connStatus.dataset.state = state;
+    connStatus.querySelector(".conn-label").textContent = CONN_STATES[state].label;
+    connStatus.title = CONN_STATES[state].title;
+  }
 
   function createAgent() {
-    const provider = SettingsStore.getProvider();
-    const apiKey = SettingsStore.getApiKey(provider);
-    if (!apiKey) return new ResourcesAgent();
-    const AgentClass = AGENT_CLASSES[provider];
-    return new AgentClass(apiKey, SettingsStore.getModel(provider));
+    return new ReclaimAgent({ onStatus: updateConnStatus });
   }
 
-  function updateConnStatus() {
-    const provider = SettingsStore.getProvider();
-    const connected = !!SettingsStore.getApiKey(provider);
-    connStatus.dataset.state = connected ? provider : "mock";
-    connStatus.querySelector(".conn-label").textContent = connected
-      ? SettingsStore.PROVIDERS[provider].label
-      : "Mock agent";
-  }
-
-  function populateSettingsForm(provider) {
-    const meta = SettingsStore.PROVIDERS[provider];
-    apiKeyLabel.textContent = `${meta.label} API key`;
-    apiKeyInput.placeholder = meta.keyPlaceholder;
-    apiKeyInput.value = SettingsStore.getApiKey(provider);
-
-    modelSelect.innerHTML = "";
-    meta.models.forEach((m) => {
-      const opt = document.createElement("option");
-      opt.value = m.value;
-      opt.textContent = m.label;
-      modelSelect.appendChild(opt);
-    });
-    modelSelect.value = SettingsStore.getModel(provider);
-  }
+  // Provider API keys saved by older versions: no UI can remove them anymore.
+  try {
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith("reclaim_api_key_") || k.startsWith("reclaim_model_") || k === "reclaim_agent_provider")
+      .forEach((k) => localStorage.removeItem(k));
+  } catch (e) {}
 
   let agent = createAgent();
   let busy = true; // stays true (composer disabled) until the database is ready
@@ -80,11 +64,6 @@
     });
     if (name === "checkin") CheckInView.renderRecentList();
     if (name === "insights") InsightsView.refresh();
-    if (name === "settings") {
-      providerSelect.value = SettingsStore.getProvider();
-      populateSettingsForm(providerSelect.value);
-      settingsStatus.hidden = true;
-    }
   }
 
   navItems.forEach((btn) => {
@@ -92,7 +71,8 @@
   });
 
   input.placeholder = "Loading…";
-  updateConnStatus();
+  updateConnStatus("checking");
+  agent.checkStatus();
   DB.init()
     .then(() => {
       CheckInView.init();
@@ -106,93 +86,15 @@
       input.placeholder = "Something went wrong loading the app — try restarting.";
     });
 
-  // ---- Settings ----
-
-  function showSettingsStatus(text, ok) {
-    settingsStatus.hidden = false;
-    settingsStatus.textContent = text;
-    settingsStatus.className = "settings-status " + (ok ? "settings-status-ok" : "settings-status-error");
-  }
-
-  async function testProviderConnection(provider, key, model) {
-    if (provider === "anthropic") {
-      const client = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true });
-      await client.messages.create({
-        model,
-        max_tokens: 8,
-        thinking: { type: "disabled" },
-        messages: [{ role: "user", content: "Say OK." }],
-      });
-    } else if (provider === "gemini") {
-      const ai = new GoogleGenAI({ apiKey: key });
-      await ai.models.generateContent({ model, contents: "Say OK." });
-    }
-  }
-
-  function authErrorMessage(provider, err) {
-    const isAuthError =
-      (provider === "anthropic" && err instanceof Anthropic.AuthenticationError) ||
-      (provider === "gemini" && err instanceof GoogleGenAIApiError && (err.status === 400 || err.status === 401 || err.status === 403));
-    if (isAuthError) return "That key was rejected — double-check it and try again.";
-    return `Couldn't connect: ${err.message || "unknown error"}`;
-  }
-
-  providerSelect.addEventListener("change", () => {
-    populateSettingsForm(providerSelect.value);
-    settingsStatus.hidden = true;
-  });
-
-  settingsForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const provider = providerSelect.value;
-    const key = apiKeyInput.value.trim();
-    const model = modelSelect.value;
-    const submitBtn = settingsForm.querySelector('button[type="submit"]');
-
-    if (!key) {
-      SettingsStore.setProvider(provider);
-      SettingsStore.setApiKey(provider, "");
-      agent = createAgent();
-      updateConnStatus();
-      showSettingsStatus("No key set for this provider — using the mock agent.", true);
-      return;
-    }
-
-    submitBtn.disabled = true;
-    submitBtn.textContent = "Connecting…";
-    try {
-      await testProviderConnection(provider, key, model);
-      SettingsStore.setProvider(provider);
-      SettingsStore.setApiKey(provider, key);
-      SettingsStore.setModel(provider, model);
-      agent = createAgent();
-      updateConnStatus();
-      showSettingsStatus(`Connected — Reclaim is now talking to ${SettingsStore.PROVIDERS[provider].label}.`, true);
-    } catch (err) {
-      showSettingsStatus(authErrorMessage(provider, err), false);
-    } finally {
-      submitBtn.disabled = false;
-      submitBtn.textContent = "Save and connect";
-    }
-  });
-
-  clearKeyBtn.addEventListener("click", () => {
-    const provider = providerSelect.value;
-    SettingsStore.setApiKey(provider, "");
-    apiKeyInput.value = "";
-    if (provider === SettingsStore.getProvider()) {
-      agent = createAgent();
-      updateConnStatus();
-    }
-    showSettingsStatus("Key removed for this provider.", true);
-  });
-
   // ---- Welcome / crisis modals ----
+
+  // Bump when the notice's substance changes so people who already dismissed it see it again.
+  const WELCOME_VERSION = "2";
 
   function showWelcomeIfNeeded() {
     let seen = false;
     try {
-      seen = localStorage.getItem("reclaim_welcome_seen") === "1";
+      seen = localStorage.getItem("reclaim_welcome_seen") === WELCOME_VERSION;
     } catch (e) {
       /* private browsing / storage blocked — show every time */
     }
@@ -202,7 +104,7 @@
   welcomeContinue.addEventListener("click", () => {
     welcomeOverlay.classList.remove("visible");
     try {
-      localStorage.setItem("reclaim_welcome_seen", "1");
+      localStorage.setItem("reclaim_welcome_seen", WELCOME_VERSION);
     } catch (e) {}
   });
 
@@ -272,11 +174,11 @@
     return el;
   }
 
-  function addCrisisCard(container) {
+  function addCrisisCard(container, beforeEl) {
     const node = tplCrisisCard.content.firstElementChild.cloneNode(true);
     const list = node.querySelector(".crisis-card-list");
     CRISIS_LINES.forEach((line) => list.appendChild(buildCrisisLine(line)));
-    container.appendChild(node);
+    container.insertBefore(node, beforeEl);
     scrollToBottom();
   }
 
@@ -469,6 +371,17 @@
     return wrap;
   }
 
+  // Bubbles render plain text, and the model sometimes writes Markdown anyway.
+  function stripMarkdown(text) {
+    return text
+      .replace(/\[([^\]\n]+)\]\(([^)\s]*)\)/g, (m, label, url) => (/^https?:\/\//i.test(url) ? `${label} (${url})` : label))
+      .replace(/\*\*/g, "")
+      .replace(/^[ \t]*#{1,6}[ \t]+/gm, "")
+      .replace(/^[ \t]*>[ \t]?/gm, "")
+      .replace(/^([ \t]*)\*[ \t]+/gm, "$1- ")
+      .replace(/\*([^*\n]+)\*/g, "$1");
+  }
+
   async function handleSend(text) {
     hideEmptyState();
     addUserMessage(text);
@@ -480,6 +393,7 @@
     const agentMsg = addAgentMessage();
     const typing = addTypingIndicator(agentMsg.content);
     let typingRemoved = false;
+    let rawReply = "";
 
     const removeTyping = () => {
       if (!typingRemoved) {
@@ -492,7 +406,7 @@
       await agent.send(text, {
         onCrisis: () => {
           removeTyping();
-          addCrisisCard(agentMsg.content);
+          addCrisisCard(agentMsg.content, agentMsg.bubble);
         },
         onToolCallStart: ({ name, input }) => {
           removeTyping();
@@ -505,7 +419,8 @@
         },
         onTextDelta: (chunk) => {
           removeTyping();
-          agentMsg.bubble.textContent += chunk;
+          rawReply += chunk;
+          agentMsg.bubble.textContent = stripMarkdown(rawReply);
           scrollToBottom();
         },
         onDone: () => {
@@ -551,6 +466,7 @@
     if (busy) return;
     messageList.innerHTML = "";
     if (emptyState) emptyState.style.display = "";
+    agent = createAgent();
   });
 
   updateSendState();
