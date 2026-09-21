@@ -211,6 +211,8 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 14px 24px;
+  /* Android draws the page under the status bar; current WebViews report its height here (0 on desktop). */
+  padding-top: calc(14px + env(safe-area-inset-top, 0px));
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
