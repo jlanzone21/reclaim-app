@@ -185,6 +185,12 @@ bypasses Row Level Security and must never be in the app or this repo.
 The project is `https://hdymcreqtwcwgwftglox.supabase.co`, with anonymous
 sign-ins enabled (Authentication → Sign In / Providers).
 
+**Not applied yet:** the project already contains tables named
+`resources`, `bible_plan_days`, `checkins`, and `users` from earlier work,
+so the schema below fails with "relation already exists" (and changes
+nothing). Those tables are being kept as they are for now — don't drop
+them to make this run.
+
 1. **Schema:** in the Supabase dashboard's SQL Editor, run
    `supabase/migrations/20260921000000_initial_schema.sql` once. It creates
    `resources`, `bible_plan_days`, and `checkins`, with Row Level Security:
