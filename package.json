@@ -7,14 +7,16 @@
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder",
-    "vendor:webllm": "node scripts/vendor-webllm.mjs"
+    "vendor:webllm": "node scripts/vendor-webllm.mjs",
+    "gen:icons": "node scripts/make-icons.mjs"
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.1",
     "@capacitor/cli": "^8.5.1",
     "@capacitor/core": "^8.5.1",
     "electron": "^32.0.0",
-    "electron-builder": "^25.0.0"
+    "electron-builder": "^25.0.0",
+    "sharp": "^0.35.4"
   },
   "build": {
     "appId": "com.reclaim.app",

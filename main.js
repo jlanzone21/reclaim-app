@@ -8,6 +8,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     title: "Reclaim",
+    icon: path.join(__dirname, "web", "assets", "icon-512.png"),
     backgroundColor: "#1b1a17",
     autoHideMenuBar: true,
     webPreferences: {
