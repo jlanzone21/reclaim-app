@@ -52,8 +52,8 @@ Android builds ship.
   one-time ~1 GB download they opt into, personalized from their own
   check-ins. Devices that can't run it (or haven't downloaded it yet) get a
   scripted guide instead ("Basic mode"). Verified on the website in
-  desktop Chrome and in the Electron desktop app; **untested on Android** —
-  see "Testing the AI on Android" below. See "The AI agent".
+  desktop Chrome, in the Electron desktop app, and in the Android app on a
+  Pixel 8a — see "The AI agent".
 - Crisis detection (`CRISIS_PATTERNS`, shared by all agents) is a simple
   keyword/phrase matcher. It is a safety net, not a clinical tool — treat
   any gaps you notice as bugs to fix, and lean toward over-triggering
@@ -81,15 +81,16 @@ remains accurate until that migration lands.
   save/load-from-localStorage persistence layer. Schema: a `resources`
   table (type, title, subtitle, body, url, contact, area, duration_min,
   tags, is_sample) covering scripture, sermons, articles, devotionals,
-  bible plans, coping mechanisms, small groups, accountability programs,
-  and counseling centers (currently ~75 rows across those 9 categories); a
+  bible plans, coping mechanisms, accountability programs, and counseling
+  centers (currently ~70 rows across those 8 categories — **not** small
+  groups; see "Small groups: the first real, live resource" below); a
   `bible_plan_days` table for multi-day plans (4 plans, 5–14 days each); a
   `checkins` table for self-reported user data; and an `app_meta`
   key/value table used to track the seed content version.
 - `web/js/seedData.js` — the actual bundled content. **All of it is
-  placeholder data** — every church, counseling center, and accountability
-  program uses a fake (555) phone number, and sermons/articles/devotionals
-  use fabricated authors, all flagged `is_sample: 1`. Replace this with real,
+  placeholder data** — every counseling center and accountability program
+  uses a fake (555) phone number, and sermons/articles/devotionals use
+  fabricated authors, all flagged `is_sample: 1`. Replace this with real,
   rights-cleared content before anyone relies on this app. Real data you add
   later should use `is_sample: 0` (the UI shows a "Sample" tag on anything
   flagged `is_sample: 1`, so real entries won't be mislabeled).
@@ -136,18 +137,60 @@ becoming interactive — it's fast (WASM init + an in-memory query), but it is
 async, so don't assume the database is ready in code that runs before that
 resolves.
 
+### Small groups: the first real, live resource
+
+Unlike every other resource type, **small groups are not in `seedData.js`
+and never touch local SQLite.** `ResourceRepo.getSmallGroups(query, limit)`
+(`web/js/resourceRepo.js`) reads live from the `resources` table in Supabase
+via `web/js/supabaseClient.js` (a small `fetch`-based REST client — no SDK,
+same "plain `<script>` tags" rule as everywhere else in `web/`). This is the
+first slice of the "Planned: cloud data" migration below, done now, scoped
+to just this one resource type — accounts and check-ins are still local and
+still planned, not started.
+
+- **Real content:** 36 real pornography-recovery groups/ministries across 17
+  states, imported from a researched CSV via `scripts/import-small-groups.mjs`
+  (re-run it with a new CSV to add more — it only inserts rows whose `title`
+  + `url` aren't already present, so re-running with the same file is a
+  no-op). `is_sample = false` on every row: no "Sample" tag, because none of
+  it is placeholder.
+- **Schema:** beyond the shared columns every resource type uses, small
+  groups (and, later, counseling centers / accountability programs) also get
+  `city`, `state`, `latitude`, `longitude` as real columns — because
+  filtering by them is the whole point — plus a `details` jsonb column
+  holding everything else the CSV had (contact name/role/email/phone,
+  curriculum, eligibility, meeting schedule, verification status, etc.) that
+  doesn't need its own column across every resource type. `details` is
+  preserved but not rendered yet; today's card still shows the same
+  `title`/`subtitle`/`area`/`body`/`contact` fields as any other resource.
+- **"Sort through quickly, not overwhelm":** if the message mentions a US
+  state by name (not a 2-letter code — "PA" collides with too many ordinary
+  words like "in" or "me" to detect reliably), results are filtered to it;
+  otherwise it's a random sample. Either way it's capped at 5, same reasoning
+  as the 3-item coping toolkit above.
+- **No on-device fallback.** If Supabase can't be reached, `getSmallGroups`
+  resolves `null`; both agents catch that and speak a short "couldn't reach
+  the group directory right now" line instead of showing a card — never an
+  empty or broken one.
+- **Read-only, and that's enough:** the `resources` table's Row Level
+  Security only grants `select` to `anon`/`authenticated`, so the
+  publishable key baked into `supabaseClient.js` can only ever read this
+  shared, public directory — never write, and nothing user-specific is
+  anywhere near it.
+
 ### Planned: cloud data (Supabase)
 
-**Status: the database schema is written and tested (see "Setting up the
-database" below); the app doesn't use it yet.** Two separate things are
-moving to a Supabase project set up outside this repo:
+**Status: check-ins/accounts are still local-only and not started; the
+resource-library half above is now live for small groups (see previous
+section) and designed the same way for the remaining types below.** Two
+separate things are moving to a Supabase project set up outside this repo:
 
-1. **The resource library** (scripture, sermons, devotionals, articles,
-   bible plans, coping mechanisms, small groups, accountability programs,
-   counseling centers, and the website links surfaced to users). Supabase
-   becomes the primary source — deliberately no on-device fallback cache
-   for the library as a whole, so most of this content requires
-   connectivity.
+1. **The rest of the resource library** (scripture, sermons, devotionals,
+   articles, bible plans, coping mechanisms, accountability programs,
+   counseling centers, and the website links surfaced to users) follows the
+   same pattern small groups just did. Supabase becomes the primary source
+   — deliberately no on-device fallback cache for the library as a whole, so
+   most of this content requires connectivity.
 
    **Exception — a small "reach this no matter what" set stays on-device,**
    same reasoning as the crisis hotline numbers above: a user in the exact
@@ -182,30 +225,29 @@ bypasses Row Level Security and must never be in the app or this repo.
 
 ### Setting up the database
 
-The project is `https://hdymcreqtwcwgwftglox.supabase.co`, with anonymous
-sign-ins enabled (Authentication → Sign In / Providers).
+The project is `https://hdymcreqtwcwgwftglox.supabase.co`. **Applied:**
+`supabase/migrations/20260921000000_initial_schema.sql` (the resource
+library — `resources` + `bible_plan_days`, with Row Level Security so
+anyone can read but only the dashboard/service-role key can write) and
+`supabase/migrations/20260923134341_import_small_groups.sql` (the 36 real
+small groups). Both are idempotent — re-running either changes nothing if
+already applied. **Not applied:** `supabase/checkins_design.sql` — that's
+the accounts/check-ins half, still not started; it also needs anonymous
+sign-ins enabled first (Authentication → Sign In / Providers), which isn't
+on yet either.
 
-**Not applied yet:** the project already contains tables named
-`resources`, `bible_plan_days`, `checkins`, and `users` from earlier work,
-so the schema below fails with "relation already exists" (and changes
-nothing). Those tables are being kept as they are for now — don't drop
-them to make this run.
-
-1. **Schema:** in the Supabase dashboard's SQL Editor, run
-   `supabase/migrations/20260921000000_initial_schema.sql` once. It creates
-   `resources`, `bible_plan_days`, and `checkins`, with Row Level Security:
-   - anyone can read the resource library, but only the dashboard (or a
-     service-role key) can change it;
-   - each check-in belongs to one user (`user_id` defaults to
-     `auth.uid()`), and only that user can read, edit, or delete it;
-   - `client_id` (the id the device generated) is unique per user, so
-     re-sending a check-in can't duplicate it;
-   - deleting a user deletes their check-ins.
-2. **Content:** run `supabase/seed.sql`. It's generated from
-   `web/js/seedData.js` by `node scripts/export-seed-sql.mjs` — regenerate
-   it after editing that file. It's safe to re-run: it replaces sample rows
-   (`is_sample = true`) and never touches real content or check-ins. Real
-   resources added in the dashboard should have `is_sample` set to false.
+Two seed paths, for two different things:
+1. **Real small groups:** `node scripts/import-small-groups.mjs <csv>` —
+   generates a timestamped migration under `supabase/migrations/` from a CSV
+   shaped like the one already imported, and only inserts rows whose
+   `title` + `url` aren't already present.
+2. **Everything else (still placeholder):** `supabase/seed.sql`, generated
+   from `web/js/seedData.js` by `node scripts/export-seed-sql.mjs` —
+   regenerate it after editing that file. Safe to re-run: it replaces sample
+   rows (`is_sample = true`) and never touches real content. This hasn't
+   actually been run against the live project yet, since the app doesn't
+   read any of these other types from Supabase — only small groups do so
+   far (see "Small groups: the first real, live resource" above).
 
 Before being committed, both files were run on real Postgres (PGlite) with
 Supabase's roles and `auth.uid()` imitated, and the policies were attacked
@@ -335,32 +377,57 @@ await agent.send(userText, {
 - **`ReclaimAgent`** (`web/js/reclaimAgent.js`) — the agent the app uses.
   For each message:
   1. The crisis check runs first (below).
-  2. The model picks **at most one resource type** from a fixed list
-     (`AGENT_ROUTER_PROMPT`), as schema-constrained JSON, so it can only
-     answer with a valid option, `off_topic`, or `none`. A keyword check
-     (`RECLAIM_ON_TOPIC`) overrides `off_topic` for anything about feelings,
-     faith, temptation, or relationships — telling a struggling person "I
-     can't help with that" is the worst failure this app can have.
+  2. **A keyword match** (`agentPickResource`, using each tool's `pattern`
+     in `agentTools.js`) picks at most one resource card. A card appears only
+     when someone asks for one ("a verse about shame", "groups near me"),
+     says yes to one the last reply offered, or mentions an urge happening
+     now. Someone sharing a slip or a feeling gets a reply, not a card they
+     didn't ask for. The theme (shame, loneliness, hope…) comes from
+     keywords too (`AGENT_THEME_WORDS`).
   3. The app looks the resource up (`executeAgentTool` → `ResourceRepo`),
      shows it as a card, and writes the sentence introducing it itself (the
-     `intro` on each tool in `agentTools.js`).
-  4. The model writes 1–3 sentences of warmth (`AGENT_SYSTEM_PROMPT`). It's
-     told only the *category* of card shown — never titles, verses, or
-     contacts.
-  5. The reply is checked before it's shown (`cleanReply`): any sentence
-     containing a Bible reference, a quoted passage, a phone number, or a
-     link is removed, and it's capped at three sentences.
+     `intro` on each tool). The coping toolkit shows **three** ideas at
+     most — in the middle of an urge, a long list overwhelms more than it
+     helps.
+  4. The model writes 1–3 sentences (`AGENT_SYSTEM_PROMPT`). Its rules: don't
+     let the person dwell in shame; point them to God's grace and to
+     bringing shame to God in prayer; encourage real human contact and
+     confessing to a trusted friend; never quote, name, or list a resource
+     itself. It's told only the *category* of card shown.
+  5. The reply **streams one sentence at a time**, and each sentence is
+     checked before it's shown (`RECLAIM_UNSAFE_SENTENCE`): anything with a
+     Bible reference, a quoted passage, a phone number, or a link is
+     dropped, and so are tone failures — wishing a bad feeling on someone
+     (a real one: "I hope you are feeling deeply overwhelmed by that
+     shame"), agreeing they're worthless or disgusting, diagnosing,
+     downplaying porn or a slip, or offering the app in place of real people
+     ("reach me here"). After three good sentences, generation stops early.
 
-  Off-topic requests get a fixed reply without the model writing anything.
-  The agent keeps the last 6 turns; "clear conversation" starts a fresh
-  agent, so the model forgets the old conversation too.
+  Off-topic requests are handled by the model itself (the system prompt
+  tells it to say kindly that it's only here for life, faith, and recovery).
+  Sentences repeated from the last three replies are dropped too, since
+  small models copy their own earlier wording.
+
+  **Conversation memory and speed:** the agent sends the model its history
+  *exactly* as before — its own raw output, unfiltered, and the same system
+  prompt every turn (per-turn notes like the card intro go in the user
+  message instead). That's what lets WebLLM reuse its cache and read only
+  the new message, instead of the whole conversation, on every turn after
+  the first; on a phone that's the difference between ~6 s and ~16 s before
+  the first words. So never edit `modelHistory` between turns. It's cut back
+  to the last 4 messages only when it passes ~5,000 characters (a one-time
+  re-read). "Clear conversation" starts a fresh agent, so the model forgets
+  the old conversation too.
 
   **Why it's built this way:** WebLLM only offers real tool calling on
   7–8B models, far too big for phones. And in testing, 1.7–2B models given
   resource details misquoted scripture (attributing made-up words to real
   references), invented organizations, and said things like "you can reach
   me at 988." Keeping every specific in app code means the model can't get
-  one wrong.
+  one wrong. Card picking used to be a second, schema-constrained model call,
+  but on a Pixel 8a that call alone took ~16 s and still missed an explicit
+  "give me a verse about shame" mid-conversation; keywords are instant and
+  predictable.
 - **`ResourcesAgent`** (`web/js/resourcesAgent.js`) — **Basic mode**:
   scripted keyword matching, no model. `ReclaimAgent` hands a message to it
   whenever the AI isn't ready (not downloaded, still downloading, or the
@@ -415,6 +482,12 @@ Markdown the model slips in.
   page never froze during download or generation. Verified on the website in
   desktop Chrome and in the Electron desktop app loaded from `file://`,
   including that the downloaded model survives quitting and relaunching.
+- **Measured on a Pixel 8a** (Android System WebView 153, Arm Mali
+  "valhall" GPU with `shader-f16`): WebGPU works in the app's WebView, and
+  the model downloaded and loaded in about 2 minutes on Wi-Fi. It's much
+  slower than a computer: roughly 5 tokens/s generating and ~45 tokens/s
+  reading the prompt. Before keyword routing and sentence streaming, replies
+  took 20–55 s to appear in full.
 
 **Privacy:** conversations and check-in context never leave the device.
 The one-time download does contact Hugging Face and GitHub (which see the
@@ -425,15 +498,18 @@ true. Older versions stored users' own Claude/Gemini API keys in
 `localStorage`; `app.js` deletes those on startup.
 
 **Known limits:**
-- The router sometimes shows a card nobody asked for (a devotional for "I
-  can't sleep", coping ideas after "I just slipped"). Not harmful, since the
-  app exists to surface resources, but worth tuning with more examples.
+- Keyword routing only catches the words it knows. An ask phrased some other
+  way gets a reply with no card, and a keyword used in passing ("my
+  accountability partner found out") can show a card nobody asked for.
+- The tone filter is a list of patterns, not understanding. It catches the
+  failures seen so far and close variants; treat new bad sentences that slip
+  through as bugs to add a pattern for.
 - The model needs roughly 2 GB of GPU memory. Low-memory phones may fail to
   load it and fall back to Basic mode with a reason. If that's common,
   `Qwen3.5-0.8B` (about 430 MB) is the next option, likely just for phones.
 - Needs WebGPU: current Chrome and Edge on computers, recent Safari, and
-  Chrome on Android 12+. **Android's embedded WebView — what the Android app
-  runs in — is unconfirmed.**
+  Chrome on Android 12+. Android's embedded WebView supports it on the
+  Pixel 8a above; other phones (older Android, other GPUs) are untested.
 
 ### Testing the AI on Android
 

@@ -1,20 +1,10 @@
-// Reclaim's AI agent: the on-device model (LocalModel) picks at most one resource from a fixed list, the app looks it up here, and the model writes a short reply that is checked before it's shown.
-const RECLAIM_TOOL_NAMES = new Set(AGENT_TOOL_DEFS.map((t) => t.name));
-const RECLAIM_ROUTER_SCHEMA = {
-  type: "object",
-  properties: {
-    resource: { type: "string", enum: [...RECLAIM_TOOL_NAMES, "off_topic", "none"] },
-    theme: { type: "string", enum: [...AGENT_THEME_ENUM, "none"] },
-  },
-  required: ["resource", "theme"],
-};
-const RECLAIM_HISTORY_MESSAGES = 6;
-const RECLAIM_CLIP_CHARS = 600;
-// Telling a struggling person "I can't help with that" is the worst failure here, so these words veto an off_topic routing.
-const RECLAIM_ON_TOPIC =
-  /\b(lonel|alone|isolat|stress|anxi|worr|sad|depress|down\b|low\b|angry|anger|mad\b|upset|frustrat|ashamed|shame|guilt|tempt|urge|crav|slip|relaps|fail|porn|lust|sex|masturb|god|jesus|christ|pray|faith|church|bible|forgiv|sleep|bored|tired|exhaust|hurt|scared|afraid|hopeless|wife|husband|girlfriend|boyfriend|spouse|marri|family|feel|struggl|addict|recover)/i;
-const RECLAIM_OFF_TOPIC_REPLY =
-  "I'm only here to help with recovery, faith, and finding support, so I can't help with that one. Is anything weighing on you today?";
+// Reclaim's AI agent: a keyword match picks at most one resource card, the app introduces it, and the on-device model (LocalModel)
+// writes a short reply that is streamed one checked sentence at a time.
+const RECLAIM_HISTORY_CHARS = 5000; // ~1.3k tokens of the model's 4k context; past this the history is cut back to the last exchanges
+const RECLAIM_HISTORY_KEEP = 4;
+const RECLAIM_CLIP_CHARS = 400;
+const RECLAIM_FALLBACK_REPLY =
+  "I'm glad you reached out. You don't have to carry this alone. Is there someone you trust you could talk to today?";
 
 const clip = (text, n = RECLAIM_CLIP_CHARS) => (text.length > n ? `${text.slice(0, n)}…` : text);
 
@@ -30,18 +20,43 @@ const RECLAIM_UNSAFE_SENTENCE = [
   /["“][^"”]{12,}["”]/, // quoted passage
   /\(?\b\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b/, // phone number
   /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|org|net|io|app)\b/i, // link or site
+  // Tone failures, starting from a real one ("I hope you are feeling deeply overwhelmed by that shame"):
+  /\bhope\b(?![^.!?]*(?:n't\b|\b(?:not|no longer|less|let go|release|lift|free|ease|relief|past|beyond|instead|rather than|without)\b))[^.!?]*\b(?:overwhelm\w*|ashamed|shame|guilt\w*|disgust\w*|worse|hopeless|terrible|awful|dirty|worthless|alone|pain)\b/i,
+  /\byou(?: are|'re| must be| should be| deserve to be)\s+(?!not\b|never\b)(?:so |really |truly |just |completely |totally )?(?:disgusting|dirty|worthless|pathetic|a failure|hopeless|beyond help|unforgivable)\b/i,
+  /\b(?:shame on you|you deserve (?:this|it|to suffer|to feel))\b/i,
+  /\byou (?:have|might have|may have|probably have|are suffering from)\s+(?:a |an )?(?:\w+\s+)?(?:disorder|depression|ocd|adhd|ptsd|bipolar)\b/i, // diagnosis
+  /\b(?:not a big deal|no big deal|everyone does it|just this once)\b|\b(?:porn|watching it|looking at it) is (?:fine|okay|ok|normal|healthy|harmless)\b/i, // downplaying
+  /\b(?:reach|call|text|contact|message) me\b|\bi(?:'m| am) always (?:here|available)\b/i, // the app standing in for real people
+  /\bI (?:cannot|can't|can not|am unable to|am not able to) (?:share|provide|give(?! up)|offer|recommend|quote|find|show)\b/i, // refusing what the app just showed
+  /^I(?:'m| am) (?:just |only |not )?an? (?:[\w-]+ )?(?:friend|assistant|ai|bot|chatbot|app|program|model|companion|guide|counselor|therapist|pastor|christian|dictionary|bible|book|search engine)\b/i, // describing itself ("I am a Christian friend, not a Bible book")
 ];
 
-function cleanReply(text, cardShown) {
-  const sentences = text.trim().split(/(?<=[.!?])\s+/);
-  const kept = sentences.filter((s) => !RECLAIM_UNSAFE_SENTENCE.some((re) => re.test(s))).slice(0, 3);
-  if (kept.length) return kept.join(" ");
-  return cardShown ? "" : "I'm glad you reached out. I'm here with you.";
+const RECLAIM_SENTENCE_END = /^([\s\S]*?[.!?]+["'”’)]*)\s+/;
+
+function isSafeSentence(sentence) {
+  return !RECLAIM_UNSAFE_SENTENCE.some((re) => re.test(sentence));
+}
+
+// Reveals text word by word without holding up generation; `done()` resolves once everything queued has been shown.
+function createRevealer(onTextDelta) {
+  let chain = Promise.resolve();
+  let first = true;
+  return {
+    push(text) {
+      const piece = first ? text : ` ${text}`;
+      first = false;
+      chain = chain.then(() => agentStreamText(piece, onTextDelta));
+    },
+    done: () => chain,
+  };
 }
 
 class ReclaimAgent {
   constructor() {
-    this.history = [];
+    // Exactly what the model was sent and wrote, unfiltered. WebLLM only reuses its cache when a request repeats the
+    // previous conversation word for word, so this must never be edited or re-clipped between turns.
+    this.modelHistory = [];
+    this.recentShown = []; // last few replies as shown; small models copy their own earlier sentences word for word
     this.fallback = new ResourcesAgent();
     this._idCounter = 0;
   }
@@ -51,7 +66,7 @@ class ReclaimAgent {
     if (agentIsCrisis(userText)) {
       handlers.onCrisis({ lines: CRISIS_LINES });
       await agentStreamText(CRISIS_REPLY, handlers.onTextDelta);
-      this._remember(userText, CRISIS_REPLY);
+      this._remember(clip(userText), CRISIS_REPLY, CRISIS_REPLY);
       handlers.onDone();
       return;
     }
@@ -61,34 +76,65 @@ class ReclaimAgent {
       return;
     }
 
+    const revealer = createRevealer(handlers.onTextDelta);
+    const previous = this.recentShown[this.recentShown.length - 1] || "";
+    const kept = [];
     let shown = false;
     try {
-      const pick = await this._route(userText);
-      let reply;
-      if (pick && pick.offTopic) {
-        reply = RECLAIM_OFF_TOPIC_REPLY;
-      } else {
-        let intro = "";
-        if (pick) {
+      let intro = "";
+      const pick = agentPickResource(userText, previous);
+      if (pick) {
+        const input = pick.theme ? { theme: pick.theme } : { query: userText };
+        const output = await executeAgentTool(pick.resource, input);
+        if (output && output.groups === null) {
+          // Supabase unreachable (small_group_finder only) -- say so instead of showing an empty card.
+          revealer.push("I couldn't reach the group directory right now — try again once you're online.");
+        } else {
           const id = `tool_${++this._idCounter}`;
-          const input = pick.theme ? { theme: pick.theme } : {};
-          shown = true;
           handlers.onToolCallStart({ id, name: pick.resource, input });
-          handlers.onToolCallEnd({ id, output: executeAgentTool(pick.resource, input) });
+          handlers.onToolCallEnd({ id, output });
           intro = cardIntro(pick.resource, pick.theme);
+          revealer.push(intro);
         }
-        const messages = this._replyMessages(userText, intro);
-        let raw = await LocalModel.streamChat(messages, { onDelta: () => {} });
-        const previous = this.history.length ? this.history[this.history.length - 1].content : "";
-        if (raw.trim() && previous.includes(raw.trim())) raw = await LocalModel.streamChat(messages, { temperature: 0.8, onDelta: () => {} });
-        if (!raw.trim() && !intro) throw new Error("empty reply");
-        reply = [intro, cleanReply(raw, !!intro)].filter(Boolean).join(" ");
+        shown = true;
       }
+      const maxSentences = intro ? 2 : 3;
+
+      const accept = (sentence) => {
+        const s = sentence.trim();
+        if (!s || !isSafeSentence(s) || this.recentShown.some((r) => r.includes(s))) return;
+        kept.push(s);
+        revealer.push(s);
+        shown = true;
+      };
+
+      // Per-turn instructions go in the user message, not the system prompt, so the system prompt stays identical across turns.
+      const userContent = intro
+        ? `${clip(userText)}\n\n(The app has just shown them this and said "${intro}" Continue right after that line; don't repeat it.)`
+        : clip(userText);
+
+      let pending = "";
+      const { raw, finishReason } = await LocalModel.streamChat(this._replyMessages(userContent), {
+        onDelta: (delta) => {
+          pending += delta;
+          let m;
+          while (kept.length < maxSentences && (m = pending.match(RECLAIM_SENTENCE_END))) {
+            pending = pending.slice(m[0].length);
+            accept(m[1]);
+          }
+          return kept.length < maxSentences;
+        },
+      });
+      // A last sentence without trailing space is complete only if the model stopped on its own, not at the token limit.
+      if (finishReason === "stop" && kept.length < maxSentences) accept(pending);
+
+      if (!kept.length && !intro) revealer.push(RECLAIM_FALLBACK_REPLY);
       shown = true;
-      await agentStreamText(reply, handlers.onTextDelta);
-      this._remember(userText, reply);
+      await revealer.done();
+      this._remember(userContent, raw, [intro, ...kept].join(" ") || RECLAIM_FALLBACK_REPLY);
     } catch (err) {
       console.warn("On-device AI failed, using the built-in guide:", err);
+      await revealer.done();
       if (!shown) {
         await this.fallback.send(userText, handlers);
         return;
@@ -98,47 +144,27 @@ class ReclaimAgent {
     handlers.onDone();
   }
 
-  async _route(userText) {
-    const recent = this.history.slice(-2).map((m) => ({ role: m.role, content: clip(m.content) }));
-    let choice;
-    try {
-      choice = await LocalModel.chooseJson(
-        [{ role: "system", content: AGENT_ROUTER_PROMPT }, ...recent, { role: "user", content: clip(userText) }],
-        RECLAIM_ROUTER_SCHEMA
-      );
-    } catch (err) {
-      if (err instanceof SyntaxError) return null;
-      throw err;
-    }
-    if (!choice) return null;
-    if (choice.resource === "off_topic") return RECLAIM_ON_TOPIC.test(userText) ? null : { offTopic: true };
-    if (!RECLAIM_TOOL_NAMES.has(choice.resource)) return null;
-    const takesTheme = !!AGENT_TOOL_DEFS.find((t) => t.name === choice.resource).parameters.properties.theme;
-    return { resource: choice.resource, theme: takesTheme && choice.theme !== "none" ? choice.theme : null };
-  }
-
-  _replyMessages(userText, intro) {
+  _replyMessages(userContent) {
     let personal = "";
     try {
       personal = buildPersonalContext(CheckInStore.list());
     } catch (e) {}
-    const context = [
-      `Right now it is ${describeTimeOfDay(new Date())}.`,
-      personal && `About this person, from their own check-ins: ${personal}`,
-      intro && `The app has just said "${intro}" and shown it to them. Your reply comes right after that line, so continue naturally with one or two warm sentences and don't repeat it.`,
-    ]
+    const context = [`Right now it is ${describeTimeOfDay(new Date())}.`, personal && `About this person, from their own check-ins: ${personal}`]
       .filter(Boolean)
       .join("\n");
 
     return [
       { role: "system", content: `${AGENT_SYSTEM_PROMPT}\n\n${context}` },
-      ...this.history.slice(-RECLAIM_HISTORY_MESSAGES).map((m) => ({ role: m.role, content: clip(m.content) })),
-      { role: "user", content: clip(userText) },
+      ...this.modelHistory,
+      { role: "user", content: userContent },
     ];
   }
 
-  _remember(userText, reply) {
-    this.history.push({ role: "user", content: userText }, { role: "assistant", content: reply });
-    this.history = this.history.slice(-2 * RECLAIM_HISTORY_MESSAGES);
+  _remember(userContent, modelReply, shownReply) {
+    this.recentShown = [...this.recentShown, shownReply].slice(-3);
+    this.modelHistory.push({ role: "user", content: userContent }, { role: "assistant", content: modelReply });
+    // Trimming changes the conversation, so the next turn re-reads it once; that's why it's done rarely, not every turn.
+    const size = this.modelHistory.reduce((n, m) => n + m.content.length, 0);
+    if (size > RECLAIM_HISTORY_CHARS) this.modelHistory = this.modelHistory.slice(-RECLAIM_HISTORY_KEEP);
   }
 }

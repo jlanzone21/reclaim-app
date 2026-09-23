@@ -118,7 +118,10 @@ const LocalModel = (function () {
     return raw.replace(/^\s*<think>[\s\S]*?(<\/think>\s*|$)/, "");
   }
 
-  async function streamChat(messages, { maxTokens = 200, temperature = 0.3, onDelta }) {
+  // onDelta returning false stops generation early; the rest of the stream is drained so the engine is free for the next call.
+  // `raw` is exactly what WebLLM recorded as the reply (empty <think> block included). Sending it back unchanged as the
+  // assistant message next turn lets WebLLM reuse its cache instead of re-reading the whole conversation, which is slow on phones.
+  async function streamChat(messages, { maxTokens = 160, temperature = 0.3, onDelta }) {
     const stream = await engine.chat.completions.create({
       messages,
       stream: true,
@@ -129,29 +132,28 @@ const LocalModel = (function () {
     });
     let raw = "";
     let sent = "";
+    let stopped = false;
+    let finishReason = null;
     for await (const chunk of stream) {
-      const delta = chunk.choices[0] && chunk.choices[0].delta && chunk.choices[0].delta.content;
+      const choice = chunk.choices[0];
+      if (!choice) continue;
+      if (choice.finish_reason) finishReason = choice.finish_reason;
+      const delta = choice.delta && choice.delta.content;
       if (!delta) continue;
       raw += delta;
+      if (stopped) continue;
       const visible = visibleText(raw);
       if (visible.startsWith(sent) && visible.length > sent.length) {
-        onDelta(visible.slice(sent.length));
+        const more = onDelta(visible.slice(sent.length));
         sent = visible;
+        if (more === false) {
+          stopped = true;
+          engine.interruptGenerate();
+        }
       }
     }
-    return sent;
+    return { text: sent, raw, finishReason: stopped ? "stopped" : finishReason };
   }
 
-  async function chooseJson(messages, schema) {
-    const reply = await engine.chat.completions.create({
-      messages,
-      max_tokens: 80,
-      temperature: 0,
-      response_format: { type: "json_object", schema: JSON.stringify(schema) },
-      extra_body: { enable_thinking: false },
-    });
-    return JSON.parse(visibleText(reply.choices[0].message.content || ""));
-  }
-
-  return { init, start, onChange, isReady, streamChat, chooseJson, getStatus: () => status };
+  return { init, start, onChange, isReady, streamChat, getStatus: () => status };
 })();

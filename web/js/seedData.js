@@ -86,12 +86,8 @@ const SEED_RESOURCES = [
   { type: "coping_mechanism", title: "Anchor Verse", body: "Memorize one short verse ahead of time and say it out loud when an urge hits — 1 Corinthians 10:13 works well for this. Having it ready beats trying to think of something in the moment.", tags: ["in-the-moment", "temptation"], is_sample: 1 },
   { type: "coping_mechanism", title: "Write Down What Led Here", body: "Right when you notice the urge — before or after acting on it — jot down what happened in the hour before: mood, place, what you were avoiding. Patterns are much easier to see on paper than in memory.", tags: ["triggers", "growth"], is_sample: 1 },
 
-  // ---- small groups ----
-  { type: "small_group", title: "Men of Grace Recovery Group", subtitle: "New Hope Community Church", area: "Example — Grove City, PA", body: "Tuesdays, 7:00 PM · In-person", contact: "(555) 201-4488", is_sample: 1 },
-  { type: "small_group", title: "Fresh Start Men's Circle", subtitle: "Cornerstone Fellowship", area: "Example — Pittsburgh, PA", body: "Thursdays, 6:30 PM · In-person", contact: "(555) 774-2201", is_sample: 1 },
-  { type: "small_group", title: "Freedom Online Group", subtitle: "Multi-church partnership", area: "Example — Online / Nationwide", body: "Sundays, 8:00 PM (Zoom) · Online", contact: "(555) 990-1122", is_sample: 1 },
-  { type: "small_group", title: "New Life Men's Fellowship", subtitle: "Riverbend Community Church", area: "Example — Columbus, OH", body: "Wednesdays, 7:00 PM · In-person", contact: "(555) 328-1145", is_sample: 1 },
-  { type: "small_group", title: "Renewed Hearts Women's Group", subtitle: "Grace Chapel", area: "Example — Online / Nationwide", body: "Mondays, 7:30 PM (Zoom) · Online", contact: "(555) 552-9013", is_sample: 1 },
+  // No small_group rows here anymore: real groups now live in Supabase (see
+  // ResourceRepo.getSmallGroups and scripts/import-small-groups.mjs), read live, not seeded locally.
 
   // ---- accountability programs ----
   { type: "accountability_program", title: "Reclaim Accountability Partner Matching", body: "Pairs you with a trained, same-gender accountability partner for regular check-ins.", contact: "(555) 340-9981", is_sample: 1 },

@@ -30,7 +30,7 @@ class ResourcesAgent {
       return;
     }
 
-    const plan = this._planResponse(userText);
+    const plan = await this._planResponse(userText);
 
     for (const step of plan.toolCalls) {
       const id = `tool_${++this._idCounter}`;
@@ -56,7 +56,9 @@ class ResourcesAgent {
     return CRISIS_PATTERNS.some((pattern) => pattern.test(text));
   }
 
-  _planResponse(userText) {
+  // async: small_group_finder reads live from Supabase (ResourceRepo.getSmallGroups) -- every
+  // other branch still resolves synchronously.
+  async _planResponse(userText) {
     const lower = userText.toLowerCase();
     const theme = inferTheme(lower);
 
@@ -100,11 +102,14 @@ class ResourcesAgent {
       };
     }
 
-    if (/\b(small group|church group|group near|community|men'?s group)\b/.test(lower)) {
-      const groups = ResourceRepo.getSmallGroups();
+    if (/\bgroups?\b|\bcommunity\b/.test(lower)) {
+      const groups = await ResourceRepo.getSmallGroups(userText);
+      if (groups === null) {
+        return { toolCalls: [], reply: "I couldn't reach the group directory right now — try again once you're online." };
+      }
       return {
         toolCalls: [{ name: "small_group_finder", input: { query: userText }, output: { groups }, delay: 900 }],
-        reply: "Here are a few small groups (sample data below — swap in real local groups). Being physically or regularly present with other people is one of the biggest predictors of lasting recovery. Consider reaching out to one this week.",
+        reply: "Here are a few real recovery groups. Being physically or regularly present with other people is one of the biggest predictors of lasting recovery — consider reaching out to one this week.",
       };
     }
 

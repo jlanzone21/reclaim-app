@@ -1,119 +1,111 @@
 // Resource tools, prompts, and the crisis check shared by ReclaimAgent (on-device AI) and ResourcesAgent (Basic mode).
 // Tool names and output shapes match ResourcesAgent's, so app.js renders both agents' results the same way.
-const AGENT_THEME_ENUM = [
-  "shame", "temptation", "accountability", "identity", "freedom", "hope",
-  "relapse", "struggle", "loneliness", "community", "grace", "growth",
-  "perseverance", "triggers", "in-the-moment", "stress", "anxiety",
-];
 
+// `pattern` picks the card by keyword instead of asking the model, which cost ~16 s per message on a phone.
+// Checked in order, first match wins. Only an explicit ask or an urge happening now shows a card:
+// someone sharing a slip or a feeling gets a reply, not a resource they didn't ask for.
 const AGENT_TOOL_DEFS = [
   {
+    name: "bible_plan_finder",
+    intro: "I found some Bible reading plans you could start.",
+    pattern: /\b(bible|reading|devotional) plans?\b/,
+  },
+  {
     name: "scripture_search",
-    summary: "a Bible verse",
     intro: "I found a verse{about} for you.",
-    description: "Search the local scripture database for one Bible passage relevant to a theme the user is dealing with. Returns a single passage.",
-    parameters: {
-      type: "object",
-      properties: { theme: { type: "string", enum: AGENT_THEME_ENUM, description: "Theme to search for. Omit for a general passage." } },
-    },
+    pattern: /\b(verses?|scriptures?|passages?|psalms?)\b/,
+    themed: true,
   },
   {
     name: "devotional_finder",
-    summary: "a short devotional reflection",
     intro: "I found a short devotional{about} for you.",
-    description: "Find one short devotional reflection relevant to a theme.",
-    parameters: {
-      type: "object",
-      properties: { theme: { type: "string", enum: AGENT_THEME_ENUM } },
-    },
-  },
-  {
-    name: "bible_plan_finder",
-    summary: "multi-day Bible reading plans",
-    intro: "I found some Bible reading plans you could start.",
-    description: "List available multi-day Bible reading plans.",
-    parameters: { type: "object", properties: {} },
-  },
-  {
-    name: "article_finder",
-    summary: "articles about addiction, recovery, and relationships",
-    intro: "I found some articles that might help.",
-    description: "List educational articles about addiction recovery, relationships, and related topics.",
-    parameters: { type: "object", properties: {} },
-  },
-  {
-    name: "coping_toolkit",
-    summary: "practical ways to get through an urge or temptation right now",
-    intro: "I found a few ideas that can help in hard moments.",
-    description: "Find practical in-the-moment coping techniques for handling an urge or craving right now.",
-    parameters: {
-      type: "object",
-      properties: { theme: { type: "string", enum: AGENT_THEME_ENUM } },
-    },
-  },
-  {
-    name: "small_group_finder",
-    summary: "recovery small groups and community",
-    intro: "I found some recovery groups you could look into.",
-    description: "List local/online small groups for recovery community.",
-    parameters: { type: "object", properties: {} },
-  },
-  {
-    name: "accountability_match",
-    summary: "accountability partners, programs, and software",
-    intro: "I found some accountability options for you.",
-    description: "List accountability partner programs and accountability software options.",
-    parameters: { type: "object", properties: {} },
+    pattern: /\bdevotionals?\b/,
+    themed: true,
   },
   {
     name: "sermon_library",
-    summary: "sermons",
     intro: "I found some sermons you might find helpful.",
-    description: "List sermons relevant to shame, identity, temptation, and recovery.",
-    parameters: { type: "object", properties: {} },
+    pattern: /\b(sermons?|preach\w*)\b/,
+  },
+  {
+    name: "article_finder",
+    intro: "I found some articles that might help.",
+    pattern: /\b(articles?|something to read|read (more )?about)\b/,
   },
   {
     name: "counseling_directory",
-    summary: "professional counselors and therapists",
     intro: "I found some counselors you could reach out to.",
-    description: "List professional counseling centers, including faith-based and telehealth options.",
-    parameters: { type: "object", properties: {} },
+    pattern: /\b(counsel\w*|therap\w*|professional help)\b/,
+  },
+  {
+    name: "small_group_finder",
+    intro: "I found some recovery groups you could look into.",
+    pattern: /\bgroups?\b|\bcommunity\b/,
+  },
+  {
+    name: "accountability_match",
+    intro: "I found some accountability options for you.",
+    pattern: /\baccountab\w*/,
+  },
+  {
+    name: "coping_toolkit",
+    intro: "Here are a few things that can help right now.",
+    pattern: /\b(urges?|crav\w*|tempt\w*|coping|in the moment|about to (look|watch|give in|relapse|slip|act out)|want to (look|watch))\b/,
+    themed: true,
   },
 ];
 
-const AGENT_SYSTEM_PROMPT = `You are the Reclaim assistant, a warm, non-judgmental friend for someone working to overcome pornography addiction. You never replace a pastor, counselor, accountability partner, or small group, and you gently encourage those connections.
+// Keyword → theme, checked in order. Themes are the tags used in seedData.js.
+const AGENT_THEME_WORDS = [
+  ["shame", /\b(shame\w*|ashamed|guilt\w*|disgust\w*|dirty|worthless)\b/],
+  ["temptation", /\btempt\w*/],
+  ["loneliness", /\b(lonel\w*|alone|isolat\w*)\b/],
+  ["anxiety", /\b(anxi\w*|worr\w*|panic\w*|afraid|scared)\b/],
+  ["stress", /\b(stress\w*|overwhelm\w*|pressure)\b/],
+  ["hope", /\b(hope\w*|despair\w*)\b/],
+  ["relapse", /\b(relaps\w*|slip\w*|fail\w*)\b/],
+  ["grace", /\b(grace|forgiv\w*|mercy)\b/],
+  ["identity", /\b(identity|who i am)\b/],
+  ["freedom", /\bfree(dom)?\b/],
+  ["perseverance", /\b(persever\w*|keep going|give up|endur\w*)\b/],
+  ["accountability", /\baccountab\w*/],
+  ["community", /\b(community|church|friends?)\b/],
+  ["triggers", /\btrigger\w*/],
+  ["growth", /\bgrow\w*/],
+  ["struggle", /\bstruggl\w*/],
+];
 
-How to reply:
-- 1 to 3 short sentences of plain text. No lists, no Markdown, no links.
-- Talk about them and how they are feeling, like a caring friend. Ask at most one gentle question.
-- The app shows verses, devotionals, groups, counselors, and other resources itself. Never quote, name, list, or recommend any yourself, and never say you can't provide them.
-- Never give therapy, diagnosis, or medical advice.
-- If you are told something about this person from their check-ins, you may gently acknowledge it when it is relevant. Never recite details or make them feel watched.
-- If they sound hopeless, respond with extra warmth and remind them that the 988 Suicide and Crisis Lifeline is free and open by call or text anytime.`;
+const AGENT_AFFIRMATIVE = /^\s*(yes|yeah|yep|yup|sure|ok(ay)?|please|that would help|i'?d like that)\b/i;
 
-const AGENT_ROUTER_PROMPT = `You decide which resource the Reclaim app should show next, for someone working to overcome pornography addiction. Options:
-${AGENT_TOOL_DEFS.map((t) => `${t.name}: ${t.summary}`).join("\n")}
-off_topic: a request clearly unrelated to their life, feelings, faith, or recovery, like trivia, homework, or coding
-none: show nothing
+function agentInferTheme(lower) {
+  const hit = AGENT_THEME_WORDS.find(([, re]) => re.test(lower));
+  return hit ? hit[0] : null;
+}
 
-Choose a resource only when they ask for one, say yes to one that was just offered, or are facing an urge right now. Sharing a feeling or a slip, saying yes to talking, or greeting you is not a request: choose none. Feelings like loneliness, stress, sadness, anger, boredom, or shame are always on topic, never off_topic. For theme, pick the closest match, or "none".
+// A short "yes" answers whatever the last reply offered ("Would a verse on grace help?"), so it's matched against that reply instead.
+function agentPickResource(userText, lastReply = "") {
+  let lower = userText.toLowerCase();
+  if (AGENT_AFFIRMATIVE.test(userText) && userText.length < 40 && lastReply) lower = lastReply.toLowerCase();
+  const tool = AGENT_TOOL_DEFS.find((t) => t.pattern.test(lower));
+  if (!tool) return null;
+  const theme = tool.themed ? agentInferTheme(lower) || (tool.name === "coping_toolkit" ? "in-the-moment" : null) : null;
+  return { resource: tool.name, theme };
+}
 
-Examples:
-"Give me a verse about hope" -> scripture_search, hope
-"I'm about to look at porn right now, help" -> coping_toolkit, in-the-moment
-"Are there any groups near me?" -> small_group_finder, none
-"I slipped again last night" -> none, none
-"I just slipped again and feel awful" -> none, none
-"I feel really lonely tonight" -> none, none
-"Work has been so stressful" -> none, none
-"I feel so ashamed" -> none, none
-"Yes, I'd like to talk about it" -> none, none
-"Yes please" right after being offered a devotional -> devotional_finder, none
-"hi" -> none, none
-"What's the capital of Spain?" -> off_topic, none
-"Write me a poem about cats" -> off_topic, none`;
+const AGENT_SYSTEM_PROMPT = `You are Reclaim. You talk with someone fighting pornography addiction like a warm, caring friend, from a Christian perspective. You never replace real people like a pastor, counselor, accountability partner, or small group.
 
-function executeAgentTool(name, input) {
+Reply in 1 to 3 short plain sentences, like a caring friend, with at most one gentle question.
+- Never let them dwell in shame. Name it gently, then point to God's grace and forgiveness, and encourage them to bring their shame to God in prayer.
+- Encourage real human contact: confessing to a trusted friend, especially if they've kept it hidden, or reaching out to their accountability partner, pastor, or group today. Pick what fits the moment; don't lecture.
+- The app shows verses, groups, counselors, and other resources. You may offer one kind, like "a verse" or "coping ideas", but never quote, name, or list any, and never say you can't provide them.
+- No therapy, diagnosis, or medical advice.
+- You may gently use what you're told about their check-ins. Never recite details.
+- If they sound hopeless, mention the 988 Lifeline is free by call or text, anytime.
+- If a message has nothing to do with their life, faith, or recovery, don't answer it. Kindly say you're only here for those.`;
+
+// async because small_group_finder reads live from Supabase (see ResourceRepo.getSmallGroups) --
+// every other branch below still resolves synchronously, `await`ing a non-promise is a no-op.
+async function executeAgentTool(name, input) {
   const theme = input && input.theme ? input.theme : null;
   switch (name) {
     case "scripture_search":
@@ -127,7 +119,7 @@ function executeAgentTool(name, input) {
     case "coping_toolkit":
       return { mechanisms: ResourceRepo.getCopingMechanisms(theme) };
     case "small_group_finder":
-      return { groups: ResourceRepo.getSmallGroups() };
+      return { groups: await ResourceRepo.getSmallGroups(input && input.query) };
     case "accountability_match":
       return { programs: ResourceRepo.getAccountabilityPrograms() };
     case "sermon_library":
