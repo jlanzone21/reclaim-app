@@ -10,6 +10,9 @@ const InsightsView = (function () {
       chartTimeOfDay: document.getElementById("chartTimeOfDay"),
       exportBtn: document.getElementById("exportDataBtn"),
       clearBtn: document.getElementById("clearDataBtn"),
+      usageList: document.getElementById("activityUsageList"),
+      eventsList: document.getElementById("activityEventsList"),
+      matchesList: document.getElementById("activityMatchesList"),
     };
 
     els.exportBtn.addEventListener("click", exportData);
@@ -24,6 +27,10 @@ const InsightsView = (function () {
     renderDailyChart(entries);
     renderTriggerChart(entries);
     renderTimeOfDayChart(entries);
+    // Separate from the check-in charts above (which are instant, local, synchronous) -- this
+    // reads through the native LocalSignals bridge, so it renders in as soon as it resolves
+    // rather than blocking everything else on it.
+    renderRecentActivity();
   }
 
   function renderStats(entries) {
@@ -52,6 +59,23 @@ const InsightsView = (function () {
       "stayed strong / slipped (last 30 days)",
       "ratio"
     );
+
+    // mood_rating/urge_intensity/sleep_hours are optional on every check-in (see
+    // checkinStore.js) -- average only over entries where that specific field was filled in,
+    // not every check-in, so one person skipping "hours of sleep" doesn't skew everyone's average.
+    addAverageStatCard(recent, "mood_rating", "avg mood (last 30 days)", "mood", 1, "/5");
+    addAverageStatCard(recent, "urge_intensity", "avg urge intensity (last 30 days)", "urge", 1, "/5");
+    addAverageStatCard(recent, "sleep_hours", "avg sleep, hrs (last 30 days)", "sleep", 1, "h");
+  }
+
+  function addAverageStatCard(entries, field, label, kind, decimals, suffix) {
+    const values = entries.map((e) => e[field]).filter((v) => v != null);
+    if (!values.length) {
+      addStatCard(els.statRow, "—", `${label} — none logged yet`, kind);
+      return;
+    }
+    const avg = values.reduce((a, b) => a + b, 0) / values.length;
+    addStatCard(els.statRow, `${avg.toFixed(decimals)}${suffix}`, label, kind);
   }
 
   function addStatCard(container, value, label, kind) {
@@ -142,6 +166,101 @@ const InsightsView = (function () {
       height: 140,
       emptyText: "No slips logged — nothing to show here",
     });
+  }
+
+  // ---- on-device tracking data (see PURPOSE.md / LocalSignalsDb) ----
+  // Unlike the check-in charts above, this reads through the native bridge and won't exist at
+  // all until the Privacy tab's permissions are granted -- an empty list here is the honest,
+  // correct state until then, not a bug.
+
+  async function renderRecentActivity() {
+    if (!LocalSignals.available()) {
+      renderActivityList(els.usageList, [], "Not available on this platform");
+      renderActivityList(els.eventsList, [], "Not available on this platform");
+      renderActivityList(els.matchesList, [], "Not available on this platform");
+      return;
+    }
+
+    const [samples, events, matches, installedApps] = await Promise.all([
+      LocalSignals.getUsageSamples(8),
+      LocalSignals.getAppEvents(8),
+      LocalSignals.getKeywordMatches(8),
+      LocalSignals.getInstalledApps(),
+    ]);
+    const labelFor = appLabelResolver(installedApps);
+
+    renderActivityList(
+      els.usageList,
+      samples.map((s) => ({
+        when: s.sampled_at,
+        main: s.top_app_package ? labelFor(s.top_app_package) : "(no app permission)",
+        detail: [s.detected_domain, s.recent_notification_package && labelFor(s.recent_notification_package)]
+          .filter(Boolean)
+          .join(" · "),
+      })),
+      "No background samples yet — grant permissions and turn on background sampling in Privacy"
+    );
+
+    renderActivityList(
+      els.eventsList,
+      events.map((e) => ({ when: e.occurred_at, main: e.app_label || labelFor(e.package_name) })),
+      "No app-open events yet"
+    );
+
+    renderActivityList(
+      els.matchesList,
+      matches.map((m) => ({ when: m.occurred_at, main: labelFor(m.package_name), detail: m.matched_keyword })),
+      "No keyword matches yet"
+    );
+  }
+
+  function appLabelResolver(installedApps) {
+    const byPackage = new Map(installedApps.map((a) => [a.packageName, a.label]));
+    return (packageName) => byPackage.get(packageName) || packageName;
+  }
+
+  function renderActivityList(container, rows, emptyText) {
+    container.innerHTML = "";
+    if (!rows.length) {
+      const empty = document.createElement("div");
+      empty.className = "activity-empty";
+      empty.textContent = emptyText;
+      container.appendChild(empty);
+      return;
+    }
+    for (const row of rows) {
+      const item = document.createElement("div");
+      item.className = "activity-row";
+
+      const main = document.createElement("div");
+      main.className = "activity-row-main";
+      main.textContent = row.main;
+      item.appendChild(main);
+
+      if (row.detail) {
+        const detail = document.createElement("div");
+        detail.className = "activity-row-detail";
+        detail.textContent = row.detail;
+        item.appendChild(detail);
+      }
+
+      const when = document.createElement("div");
+      when.className = "activity-row-when";
+      when.textContent = formatRelativeTime(row.when);
+      item.appendChild(when);
+
+      container.appendChild(item);
+    }
+  }
+
+  function formatRelativeTime(iso) {
+    const diffMs = Date.now() - new Date(iso).getTime();
+    const mins = Math.round(diffMs / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.round(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.round(hours / 24)}d ago`;
   }
 
   function exportData() {

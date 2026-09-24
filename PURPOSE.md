@@ -69,11 +69,14 @@ reality:
       apps) and a background-sampling on/off toggle. Verified live on
       device: cards accurately reflect real permission state, add/remove
       correctly round-trips through `LocalSignalsDb`.
-- [ ] **Insights, for real** — currently renders only check-in data, and
-      silently ignores `mood_rating`/`urge_intensity`/`sleep_hours` even
-      though they're already collected. Fix that, and surface the new
-      tracked data (recent usage samples, app-open events, keyword
-      matches). This is also how we'll know collection is actually working.
+- [x] **Insights, for real** — mood/urge/sleep now shown as averages
+      (30-day window, skipping entries where that field was left blank).
+      Added three "recent activity" panels (background samples, app-open
+      events, keyword matches) reading live through `LocalSignals`, with
+      package names resolved to real app labels. Verified on device: real
+      background-sample rows render correctly with relative timestamps;
+      the still-unbuilt event/keyword panels correctly show an honest empty
+      state rather than breaking.
 - [ ] **Real-time app-open events** — system-wide (not browser-scoped)
       accessibility detection of which app is in the foreground, replacing
       reclaim-beta's ~15-minute polling approximation with the real thing.

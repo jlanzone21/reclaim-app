@@ -205,6 +205,23 @@
               <button type="button" class="secondary-btn" id="exportDataBtn">Export data (JSON)</button>
               <button type="button" class="danger-btn" id="clearDataBtn">Clear all check-in data</button>
             </div>
+
+            <p class="view-subtitle" style="margin-top: 26px;">On-device tracking (see the Privacy tab) — everything below is read straight from what's actually been collected on this device, so it doubles as confirmation that tracking is working.</p>
+
+            <div class="panel">
+              <div class="panel-title">Recent background samples</div>
+              <div id="activityUsageList" class="activity-list"></div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-title">Recent app opens</div>
+              <div id="activityEventsList" class="activity-list"></div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-title">Recent keyword matches</div>
+              <div id="activityMatchesList" class="activity-list"></div>
+            </div>
           </div>
         </div>
       </section>
