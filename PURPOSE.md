@@ -63,10 +63,12 @@ reality:
       Default allowlist (browsers + YouTube/Instagram/TikTok/Reddit/X/
       Snapchat/Facebook, whichever are actually installed) seeds itself
       once, automatically, the first time tracking is enabled.
-- [ ] **Consent + permissions screen** — new to reclaim-app (it has none
-      today). Same honest, skippable, per-permission design as
-      reclaim-beta's, written for a real long-term user instead of a
-      short-term anonymous tester.
+- [x] **Consent + permissions screen** — a new "Privacy" tab, same honest,
+      skippable, per-permission design as reclaim-beta's, plus the
+      allowlist manager (add/remove, searchable picker over real installed
+      apps) and a background-sampling on/off toggle. Verified live on
+      device: cards accurately reflect real permission state, add/remove
+      correctly round-trips through `LocalSignalsDb`.
 - [ ] **Insights, for real** — currently renders only check-in data, and
       silently ignores `mood_rating`/`urge_intensity`/`sleep_hours` even
       though they're already collected. Fix that, and surface the new

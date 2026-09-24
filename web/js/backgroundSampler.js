@@ -23,5 +23,11 @@ const BackgroundSampler = (function () {
     await plugin().enable();
   }
 
-  return { available, enable };
+  async function isScheduled() {
+    if (!available()) return false;
+    const { scheduled } = await plugin().isScheduled();
+    return !!scheduled;
+  }
+
+  return { available, enable, isScheduled };
 })();

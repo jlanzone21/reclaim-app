@@ -117,11 +117,19 @@
     });
     if (name === "checkin") CheckInView.renderRecentList();
     if (name === "insights") InsightsView.refresh();
+    if (name === "privacy") {
+      PermissionsView.refresh();
+      AllowlistView.refresh();
+      refreshTrackingToggle();
+    }
   }
 
   navItems.forEach((btn) => {
     btn.addEventListener("click", () => showView(btn.dataset.view));
   });
+
+  PermissionsView.init();
+  AllowlistView.init();
 
   input.placeholder = "Loading…";
   LocalModel.onChange(renderAiStatus);
@@ -520,6 +528,28 @@
     messageList.innerHTML = "";
     if (emptyState) emptyState.style.display = "";
     agent = createAgent();
+  });
+
+  // ---- Privacy view: background sampling toggle ----
+
+  const trackingToggleBtn = document.getElementById("trackingToggleBtn");
+
+  async function refreshTrackingToggle() {
+    if (!BackgroundSampler.available()) {
+      trackingToggleBtn.textContent = "Unavailable on this platform";
+      trackingToggleBtn.disabled = true;
+      return;
+    }
+    const scheduled = await BackgroundSampler.isScheduled();
+    trackingToggleBtn.textContent = scheduled ? "Background sampling is on" : "Turn on background sampling";
+    trackingToggleBtn.disabled = scheduled;
+  }
+
+  trackingToggleBtn.addEventListener("click", async () => {
+    trackingToggleBtn.disabled = true;
+    trackingToggleBtn.textContent = "Turning on…";
+    await BackgroundSampler.enable();
+    refreshTrackingToggle();
   });
 
   updateSendState();
