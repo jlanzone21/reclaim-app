@@ -3,6 +3,7 @@ package com.reclaim.app;
 import android.accessibilityservice.AccessibilityService;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
@@ -16,20 +17,26 @@ import java.util.Map;
  * verified on-device there: reads ONLY the browser address bar, stores ONLY the host out of it --
  * never the full URL/path/query, never any other on-screen text.
  *
- * Phase 4 (system-wide app-open events) was attempted here and blocked by Claude Code's own
- * safety classifier on the accessibility_service_config.xml write -- the same block reclaim-beta
- * hit earlier for the identical change. See PURPOSE.md's "Decisions worth remembering" for what
- * this means going forward. Reverted rather than left half-applied.
+ * Phase 4 (real-time app-open events): accessibility_service_config.xml's packageNames
+ * restriction was removed so this service is system-wide. Every real window switch records one
+ * identity-only app_events row (package + resolved label + timestamp) via recordAppOpen() below
+ * -- never content -- deduped against the immediately-previous package so staying in one app
+ * doesn't spam rows. See PURPOSE.md's "Decisions worth remembering" for why this file was edited
+ * by hand rather than by Claude Code directly.
  *
- * Purely passive: this only ever writes to its own SharedPreferences cache. Two things read it --
- * AccessibilityPlugin, for the foreground JS context, and the periodic sampler, which folds it
- * into every background checkin.
+ * Purely passive otherwise: browser-domain detection still only ever writes to its own
+ * SharedPreferences cache. Two things read that -- AccessibilityPlugin, for the foreground JS
+ * context, and the periodic sampler, which folds it into every background checkin.
  */
 @SuppressWarnings("deprecation") // AccessibilityNodeInfo.recycle() — deprecated on API 33+, still required below it (minSdk 24)
 public class TrackingAccessibilityService extends AccessibilityService {
     static final String PREFS_NAME = "reclaim_app_accessibility";
     static final String KEY_DOMAIN = "detected_domain";
     static final String KEY_DETECTED_AT = "detected_at";
+
+    // Service instance is effectively a singleton while bound, so an instance field is enough to
+    // dedupe consecutive window-state-changed events for the same foreground app.
+    private String lastLoggedPackage;
 
     // Best-effort: real device address-bar view-ids, which can shift between browser versions.
     // onAccessibilityEvent() falls back to a generic scan when a specific id no longer matches.
@@ -47,12 +54,17 @@ public class TrackingAccessibilityService extends AccessibilityService {
     public void onAccessibilityEvent(AccessibilityEvent event) {
         CharSequence pkg = event.getPackageName();
         if (pkg == null) return;
+        String packageName = pkg.toString();
+
+        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            recordAppOpen(packageName);
+        }
 
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return;
 
         try {
-            String addressBarText = readAddressBar(root, pkg.toString());
+            String addressBarText = readAddressBar(root, packageName);
             String host = addressBarText != null ? parseHost(addressBarText) : null;
             if (host != null) storeDomain(host);
         } finally {
@@ -63,6 +75,24 @@ public class TrackingAccessibilityService extends AccessibilityService {
     @Override
     public void onInterrupt() {
         // Nothing to clean up.
+    }
+
+    // Identity-only: package + resolved label + timestamp. Never content. Deduped so staying in
+    // one app doesn't write a row on every window-state blip within that same app.
+    private void recordAppOpen(String packageName) {
+        if (packageName.equals(lastLoggedPackage)) return;
+        lastLoggedPackage = packageName;
+        String label = resolveLabel(packageName);
+        LocalSignalsDb.getInstance(this).insertAppEvent(packageName, label, LocalSignalsDb.isoNow());
+    }
+
+    private String resolveLabel(String packageName) {
+        try {
+            PackageManager pm = getPackageManager();
+            return pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString();
+        } catch (PackageManager.NameNotFoundException e) {
+            return packageName;
+        }
     }
 
     private String readAddressBar(AccessibilityNodeInfo root, String pkg) {

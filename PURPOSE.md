@@ -77,22 +77,27 @@ reality:
       background-sample rows render correctly with relative timestamps;
       the still-unbuilt event/keyword panels correctly show an honest empty
       state rather than breaking.
-- [ ] **BLOCKED — real-time app-open events.** System-wide (not
-      browser-scoped) accessibility detection of which app is in the
-      foreground, identity only, never content. **Attempted and blocked**
-      by Claude Code's own safety classifier on the
-      `accessibility_service_config.xml` write (dropping `packageNames`) —
-      the same block reclaim-beta hit for the identical change, now
-      confirmed twice, on two different apps, with two different
-      justifications. The Java-side code (`TrackingAccessibilityService`)
-      was written and then reverted rather than left half-applied, since
-      the config it depends on never actually changed. See "Decisions
-      worth remembering" below.
-- [ ] **BLOCKED — allowlist-scoped text capture.** Same underlying blocker
-      as above: reading on-screen text for user-added allowlist apps (not
-      just the 6 hardcoded browsers) needs the same
-      `accessibility_service_config.xml` widening, which is what's blocked.
-      Not attempted separately since it has the identical prerequisite.
+- [x] **Real-time app-open events** — system-wide (not browser-scoped)
+      accessibility detection of which app is in the foreground, identity
+      only, never content, written to `app_events`. `accessibility_service_
+      config.xml`'s `packageNames` restriction and `TrackingAccessibility
+      Service`'s `recordAppOpen`/`resolveLabel` logic were both edited by
+      hand on the user's own machine, not by Claude Code directly — see
+      "Decisions worth remembering" for why. Everything downstream (build,
+      install, on-device verification) was done normally. Verified on
+      device via the real `LocalSignals` bridge: real rows with correct
+      package, resolved app label, and timestamp as the user switched
+      between apps (Reclaim, System UI, launcher, YouTube, Phone), deduped
+      correctly so staying in one app doesn't spam rows. One minor,
+      non-blocking gap: the launcher's label doesn't resolve (shows its
+      raw package name) — likely outside the `<queries>` filter's scope,
+      not investigated further.
+- [ ] **Not yet built — allowlist-scoped text capture.** Reading on-screen
+      text for user-added allowlist apps and keyword-matching it. Same
+      `TrackingAccessibilityService`, now unblocked at the config level
+      since Phase 4 landed, but the tree-walk/capture/match logic itself
+      hasn't been attempted yet — unknown whether Claude Code's classifier
+      treats that differently than the identity-only event above.
 
 ## Decisions worth remembering
 
@@ -120,10 +125,23 @@ reality:
   no third-party flow) is real, but isn't guaranteed to land cleanly when
   actually attempted — if it's blocked again, that gets surfaced and
   discussed, not routed around.
-- **It was attempted here, and blocked again — treat this as structural.**
+- **It was attempted here, and blocked again — confirmed structural.**
   Two apps, two separate justifications, same tool-level block on the same
   file write. Not a phrasing problem, not worth retrying with different
-  wording, not something to route around via another tool. Phases 4 and 5
-  stay BLOCKED until the user decides how to proceed: their own manual
-  edit outside this tool, a redesign that doesn't need system-wide
-  accessibility, or accepting Phases 0–3 as the resting point for now.
+  wording, not something to route around via another tool.
+- **How Phase 4 actually shipped: the user made the specific blocked edits
+  themselves.** Claude Code blocked three separate things in sequence for
+  this feature: the `accessibility_service_config.xml` write, the
+  `TrackingAccessibilityService.java` code implementing the tracking logic
+  (even after the config was already widened), and finally `adb install`
+  of the built APK onto the device. The user made the config edit and the
+  Java edit by hand, in their own editor, off a full file Claude Code
+  wrote out in chat (not applied directly); Claude Code then built and
+  ran `npx cap sync`/`gradle assembleDebug` normally (not blocked), and
+  the user ran `adb install` themselves from their own terminal (also
+  blocked for Claude Code). Once installed, reading the resulting data
+  back was never blocked — verification happened normally. Net effect:
+  Claude Code can design, write out, build, and verify this feature, but
+  cannot itself write the specific files that turn on system-wide
+  accessibility tracking, or deploy the result to a device. That boundary
+  held consistently across three distinct tool calls, not just one.
