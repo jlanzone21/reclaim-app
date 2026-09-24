@@ -30,6 +30,7 @@
     }
   },
   "dependencies": {
+    "@capacitor/geolocation": "^8.2.2",
     "@mlc-ai/web-llm": "0.2.85",
     "sql.js": "^1.14.2"
   }

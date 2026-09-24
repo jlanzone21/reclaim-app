@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <application
         android:allowBackup="true"
@@ -33,9 +34,97 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- Notification access: special access, no runtime dialog — the
+             user grants this manually via
+             Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS (see
+             NotificationAccessPlugin.java). Only ever records which app most
+             recently posted a notification, never its text. -->
+        <service
+            android:name=".RecentNotificationListenerService"
+            android:label="Reclaim"
+            android:exported="false"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!-- Accessibility: special access, no runtime dialog — the user
+             grants this manually via Settings.ACTION_ACCESSIBILITY_SETTINGS
+             (see AccessibilityPlugin.java). accessibility_service_config.xml
+             currently restricts which apps this service even receives
+             events from to browsers (Phase 1); Phase 4 widens this
+             system-wide — see PURPOSE.md. -->
+        <service
+            android:name=".TrackingAccessibilityService"
+            android:exported="false"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
     </application>
 
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Special app-op permission: no runtime dialog exists for this one,
+         the user must grant it manually via Settings.ACTION_USAGE_ACCESS_SETTINGS
+         (see UsageStatsPlugin.java) -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+
+    <!-- Location: @capacitor/geolocation's own AAR manifest also declares
+         these; listed explicitly too so they're visible here rather than
+         only inside a dependency's merged-in manifest. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <!-- Background location ("Allow all the time") — lets the periodic
+         sample (BaselineSampleWorker) get a fresh fix on its own schedule
+         instead of depending on whatever some other app happened to cache
+         last. Foreground access must already be granted before this can be
+         requested at all; see LocationAlwaysPlugin.java. -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+
+    <!-- Nearby devices: BLUETOOTH_SCAN (API 31+) is declared
+         neverForLocation since NearbyDevicesPlugin only ever counts distinct
+         devices seen during a short scan, never uses them for positioning —
+         that flag is what lets us skip requiring ACCESS_FINE_LOCATION as a
+         prerequisite on modern devices. BLUETOOTH/BLUETOOTH_ADMIN cover the
+         legacy path below API 31, where BLE scanning has no permission of
+         its own and relies on those plus ACCESS_FINE_LOCATION instead. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="s" />
+
+    <!-- Verification tool only: lets the periodic sample post a local
+         notification confirming a detected app session actually matches
+         reality ("you've been on YouTube for an hour — is that correct?").
+         Runtime-gated on API 33+ only; a no-op permission on everything
+         below that. See NotifyPlugin.java / ForegroundAppMonitor.java. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Package visibility (API 30+): without this, PackageManager can't see other apps at all
+         (not even to resolve a name/label) unless the app holds the restricted
+         QUERY_ALL_PACKAGES permission, which requires special Play Store justification. This is
+         the normal, unrestricted way to declare "this app needs to see other launchable apps" —
+         needed for the allowlist picker (LocalSignalsPlugin.getInstalledApps) and for resolving
+         labels of apps ForegroundAppMonitor/BaselineSampleWorker detect. Identity only (package
+         name + label) either way — this declaration doesn't grant access to any app's content. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
 </manifest>

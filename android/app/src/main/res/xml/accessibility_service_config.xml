@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Phase 1 (current): packageNames restricts which apps this service even receives events from,
+  at the platform level, to the browsers TrackingAccessibilityService knows an address-bar
+  view-id for, same scope as reclaim-beta's already-verified version. Add a browser here only
+  alongside a matching entry in that service's viewId map.
+
+  Phase 4 (planned, not yet done): packageNames is dropped here so the service goes system-wide,
+  for a real-time, identity-only "app opened" event. See PURPOSE.md for why that's acceptable
+  here specifically (on-device, main app, transparent consent) when the same change was declined
+  for reclaim-beta.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:canRetrieveWindowContent="true"
+    android:notificationTimeout="200"
+    android:packageNames="com.android.chrome,org.mozilla.firefox,com.sec.android.app.sbrowser,com.microsoft.emmx,com.opera.browser,com.brave.browser"
+    android:description="@string/accessibility_service_description" />

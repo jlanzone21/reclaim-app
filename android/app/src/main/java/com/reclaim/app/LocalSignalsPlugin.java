@@ -1,0 +1,101 @@
+package com.reclaim.app;
+
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
+
+import com.getcapacitor.JSObject;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+
+/**
+ * Read-only bridge from LocalSignalsDb (native SQLite, written directly by the background
+ * collectors) to the WebView, for InsightsView. Never writes from JS -- everything here is
+ * collected natively; the WebView only ever reads it back to display it. The one exception is the
+ * allowlist, which the user manages through the UI, so JS is the source of truth there.
+ */
+@CapacitorPlugin(name = "LocalSignals")
+public class LocalSignalsPlugin extends Plugin {
+
+    private LocalSignalsDb db() {
+        return LocalSignalsDb.getInstance(getContext());
+    }
+
+    @PluginMethod
+    public void getUsageSamples(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("samples", db().recentUsageSamples(call.getInt("limit", 20)));
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void getAppEvents(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("events", db().recentAppEvents(call.getInt("limit", 20)));
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void getKeywordMatches(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("matches", db().recentKeywordMatches(call.getInt("limit", 20)));
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void getAllowlist(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("apps", db().allAllowlistApps());
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void addAllowlistApp(PluginCall call) {
+        String packageName = call.getString("packageName");
+        if (packageName == null) {
+            call.reject("packageName is required");
+            return;
+        }
+        db().upsertAllowlistApp(packageName, resolveLabel(packageName), false);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void removeAllowlistApp(PluginCall call) {
+        String packageName = call.getString("packageName");
+        if (packageName == null) {
+            call.reject("packageName is required");
+            return;
+        }
+        db().removeAllowlistApp(packageName);
+        call.resolve();
+    }
+
+    // Lists apps with a launcher entry (i.e. things a person would recognize), for the "add to
+    // allowlist" picker -- excludes background-only components nobody would think to add.
+    @PluginMethod
+    public void getInstalledApps(PluginCall call) {
+        PackageManager pm = getContext().getPackageManager();
+        com.getcapacitor.JSArray apps = new com.getcapacitor.JSArray();
+        for (ApplicationInfo info : pm.getInstalledApplications(PackageManager.GET_META_DATA)) {
+            if (pm.getLaunchIntentForPackage(info.packageName) == null) continue;
+            JSObject app = new JSObject();
+            app.put("packageName", info.packageName);
+            app.put("label", pm.getApplicationLabel(info).toString());
+            apps.put(app);
+        }
+        JSObject result = new JSObject();
+        result.put("apps", apps);
+        call.resolve(result);
+    }
+
+    private String resolveLabel(String packageName) {
+        try {
+            PackageManager pm = getContext().getPackageManager();
+            return pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString();
+        } catch (PackageManager.NameNotFoundException e) {
+            return packageName;
+        }
+    }
+}

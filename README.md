@@ -2,6 +2,11 @@
 
 Repo: https://github.com/jlanzone21/reclaim-app (private)
 
+See [PURPOSE.md](PURPOSE.md) for the product vision, the privacy
+commitment behind the on-device tracking system, and the standing roadmap
+checklist. This file covers how the code works; that one covers why, and
+what's still planned.
+
 A desktop and Android chat app that helps people struggling with
 pornography addiction connect to real resources: scripture, local church
 small groups, accountability partners, sermons, encouragement, and
@@ -60,6 +65,13 @@ Android builds ship.
   rather than under-triggering.
 - **Not started:** accounts, and moving the resource library and check-in
   data to Supabase. The design is decided — see "Data storage" below.
+- **In progress:** on-device usage/location/app tracking, ported from
+  reclaim-beta's already-verified mechanisms (storing locally via a new
+  native `LocalSignalsDb` instead of Supabase — see PURPOSE.md). The native
+  collectors and the JS bridge to read them are verified on-device;
+  there's no consent/permissions UI to turn them on yet, and Insights
+  doesn't visualize this data yet. See PURPOSE.md's checklist for what's
+  left.
 
 ## Data storage
 
