@@ -77,17 +77,22 @@ reality:
       background-sample rows render correctly with relative timestamps;
       the still-unbuilt event/keyword panels correctly show an honest empty
       state rather than breaking.
-- [ ] **Real-time app-open events** — system-wide (not browser-scoped)
-      accessibility detection of which app is in the foreground, replacing
-      reclaim-beta's ~15-minute polling approximation with the real thing.
-      Identity only (package + label + timestamp), never content.
-- [ ] **Allowlist-scoped text capture** — for apps the user explicitly adds
-      to an editable allowlist (default: browsers + a few common apps),
-      read on-screen text and check it against a keyword list. Raw text is
-      kept on-device (the user's explicit choice, made with the tradeoff
-      explained) rather than discarded after matching. Apps not on the
-      allowlist only ever produce the identity-only open-event above —
-      never their content.
+- [ ] **BLOCKED — real-time app-open events.** System-wide (not
+      browser-scoped) accessibility detection of which app is in the
+      foreground, identity only, never content. **Attempted and blocked**
+      by Claude Code's own safety classifier on the
+      `accessibility_service_config.xml` write (dropping `packageNames`) —
+      the same block reclaim-beta hit for the identical change, now
+      confirmed twice, on two different apps, with two different
+      justifications. The Java-side code (`TrackingAccessibilityService`)
+      was written and then reverted rather than left half-applied, since
+      the config it depends on never actually changed. See "Decisions
+      worth remembering" below.
+- [ ] **BLOCKED — allowlist-scoped text capture.** Same underlying blocker
+      as above: reading on-screen text for user-added allowlist apps (not
+      just the 6 hardcoded browsers) needs the same
+      `accessibility_service_config.xml` widening, which is what's blocked.
+      Not attempted separately since it has the identical prerequisite.
 
 ## Decisions worth remembering
 
@@ -115,3 +120,10 @@ reality:
   no third-party flow) is real, but isn't guaranteed to land cleanly when
   actually attempted — if it's blocked again, that gets surfaced and
   discussed, not routed around.
+- **It was attempted here, and blocked again — treat this as structural.**
+  Two apps, two separate justifications, same tool-level block on the same
+  file write. Not a phrasing problem, not worth retrying with different
+  wording, not something to route around via another tool. Phases 4 and 5
+  stay BLOCKED until the user decides how to proceed: their own manual
+  edit outside this tool, a redesign that doesn't need system-wide
+  accessibility, or accepting Phases 0–3 as the resting point for now.

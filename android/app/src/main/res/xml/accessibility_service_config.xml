@@ -5,10 +5,11 @@
   view-id for, same scope as reclaim-beta's already-verified version. Add a browser here only
   alongside a matching entry in that service's viewId map.
 
-  Phase 4 (planned, not yet done): packageNames is dropped here so the service goes system-wide,
-  for a real-time, identity-only "app opened" event. See PURPOSE.md for why that's acceptable
-  here specifically (on-device, main app, transparent consent) when the same change was declined
-  for reclaim-beta.
+  Phase 4 (attempted, blocked): dropping packageNames here to go system-wide, for a real-time,
+  identity-only "app opened" event, was attempted and blocked by Claude Code's own safety
+  classifier on this exact write — the same block reclaim-beta hit for the identical change.
+  packageNames stays as-is (browser-only) until the user decides how to proceed. See PURPOSE.md's
+  "Decisions worth remembering" for the full history.
 -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"

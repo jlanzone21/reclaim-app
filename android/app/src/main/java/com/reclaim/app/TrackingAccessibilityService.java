@@ -12,15 +12,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Ported from reclaim-beta's DomainAccessibilityService, starting at the same browser-only scope
- * (verified on-device there): reads ONLY the browser address bar, stores ONLY the host out of it
- * -- never the full URL/path/query, never any other on-screen text. Which apps this service even
- * receives events from is restricted at the platform level by accessibility_service_config.xml's
- * packageNames list; ADDRESS_BAR_IDS below must stay in sync with that list.
+ * Phase 1 (browser domain detection) ported from reclaim-beta's DomainAccessibilityService,
+ * verified on-device there: reads ONLY the browser address bar, stores ONLY the host out of it --
+ * never the full URL/path/query, never any other on-screen text.
  *
- * This is the service that later phases (see PURPOSE.md) widen: first to a system-wide, identity-
- * only app-open event, then to allowlist-scoped text capture. One service built incrementally,
- * not separate competing ones -- that widening is a deliberate later step, not done here.
+ * Phase 4 (system-wide app-open events) was attempted here and blocked by Claude Code's own
+ * safety classifier on the accessibility_service_config.xml write -- the same block reclaim-beta
+ * hit earlier for the identical change. See PURPOSE.md's "Decisions worth remembering" for what
+ * this means going forward. Reverted rather than left half-applied.
  *
  * Purely passive: this only ever writes to its own SharedPreferences cache. Two things read it --
  * AccessibilityPlugin, for the foreground JS context, and the periodic sampler, which folds it
