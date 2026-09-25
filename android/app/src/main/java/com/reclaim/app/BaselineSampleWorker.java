@@ -62,6 +62,8 @@ public class BaselineSampleWorker extends Worker {
 
         // Debug/verification helper -- see ForegroundAppMonitor's own comment.
         ForegroundAppMonitor.checkAndNotify(getApplicationContext());
+        // The real feature this session's plan calls "risk analysis," phase one -- see its own comment.
+        RiskNudgeMonitor.checkAndNotify(getApplicationContext());
 
         try {
             ContentValues row = new ContentValues();

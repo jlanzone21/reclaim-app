@@ -85,8 +85,18 @@ const UserPreferencesStore = (function () {
       );
     }
     DB.scheduleSave();
+    syncAccountabilityContactToNative(next);
     return next;
   }
 
-  return { get, save };
+  // RiskNudgeMonitor (native, background) can't read db.js's sql.js DB, so the accountability
+  // contact gets mirrored into LocalSignalsDb's app_meta on every save. Fire-and-forget: a failure
+  // here just means the next notification won't have a call button, not a data-loss risk (db.js
+  // stays the real source of truth).
+  function syncAccountabilityContactToNative(prefs) {
+    if (typeof LocalSignals === "undefined" || !LocalSignals.available()) return;
+    LocalSignals.setAccountabilityContact(prefs.accountability_name, prefs.accountability_phone).catch(() => {});
+  }
+
+  return { get, save, syncAccountabilityContactToNative };
 })();

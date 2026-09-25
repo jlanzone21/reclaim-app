@@ -57,6 +57,16 @@ const LocalSignals = (function () {
     return apps || [];
   }
 
+  // The other exception to "read-only": the accountability partner's name/phone is entered in
+  // the WebView (db.js/UserPreferencesStore), but RiskNudgeMonitor needs to read it from a
+  // background Worker where the WebView isn't loaded — same reasoning as the allowlist being
+  // native-owned. This just mirrors a copy into LocalSignalsDb's app_meta; db.js stays the
+  // editable source of truth.
+  async function setAccountabilityContact(name, phone) {
+    if (!available()) return;
+    await plugin().setAccountabilityContact({ name: name || "", phone: phone || "" });
+  }
+
   return {
     available,
     getUsageSamples,
@@ -66,5 +76,6 @@ const LocalSignals = (function () {
     addAllowlistApp,
     removeAllowlistApp,
     getInstalledApps,
+    setAccountabilityContact,
   };
 })();

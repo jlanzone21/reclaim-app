@@ -118,8 +118,40 @@ reality:
       phone's own dialer, so this doesn't touch the on-device-only privacy
       commitment at all. Verified end-to-end in a plain browser (onboarding
       chain, save, reopen/edit pre-fill, reload persistence, crisis modal
-      tel: links, AI context sentence generation); installed on-device,
-      not yet walked through on the phone itself.
+      tel: links, AI context sentence generation); confirmed working
+      on-device too, including that the accountability partner's name/phone
+      the user actually entered reaches the AI's context correctly.
+- [x] **AI actually uses the setup answers** — the data was reaching the
+      system prompt correctly, but the on-device model wasn't visibly
+      acting on it (confirmed on the phone: real accountability-partner
+      data was in the prompt, but replies didn't reference it). The gap
+      was instructions, not wiring — `AGENT_SYSTEM_PROMPT` (agentTools.js)
+      now explicitly tells the model to encourage reaching out to the named
+      accountability partner/pastor by name when known, instead of the old
+      generic phrasing a small model tended to ignore.
+- [x] **Risk nudge notification, phase one** — `RiskNudgeMonitor.java`, the
+      first (deliberately simple) step toward the "risk analysis algorithm"
+      goal: right now the only signal is one app (never the launcher)
+      continuously foreground for 20 minutes. Fires one local notification
+      asking if they want to reach out to their accountability partner,
+      with a "Call [name]" action that opens the phone's own dialer
+      pre-filled — `Intent.ACTION_DIAL`, not `ACTION_CALL`, so it never
+      dials automatically and needs no extra permission, same on-device
+      choice as the crisis modal's `tel:` links. Needed a one-way mirror of
+      just the accountability name/phone from `user_preferences` (db.js)
+      into `LocalSignalsDb`'s `app_meta`, since this has to fire from a
+      background Worker where the WebView isn't loaded — same reasoning as
+      the rest of `LocalSignalsDb`. Verified on-device with a temporarily
+      shortened threshold: real notification posted with the correct text
+      and a "Call Joey" action correctly pulling the real saved name,
+      confirmed via a real screenshot and `dumpsys notification`; reverted
+      to the real 20-minute threshold before shipping. Along the way, found
+      and fixed a real bug shared with `ForegroundAppMonitor`'s pattern: the
+      per-session dedup marker was written before checking notification
+      permission, so a session crossing the threshold before permission was
+      granted would silently never notify even after granting it later —
+      fixed here; `ForegroundAppMonitor` still has the same latent bug,
+      not touched since it's a debug tool, not a shipped feature.
 
 ## Decisions worth remembering
 

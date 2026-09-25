@@ -95,6 +95,16 @@ public class LocalSignalsPlugin extends Plugin {
         call.resolve(result);
     }
 
+    // The other write path besides the allowlist: db.js/UserPreferencesStore is the real source
+    // of truth (user-entered in the WebView), this just mirrors name+phone into app_meta so
+    // RiskNudgeMonitor can read it from a background Worker where the WebView isn't loaded.
+    @PluginMethod
+    public void setAccountabilityContact(PluginCall call) {
+        db().setMeta("accountability_name", call.getString("name", ""));
+        db().setMeta("accountability_phone", call.getString("phone", ""));
+        call.resolve();
+    }
+
     private String resolveLabel(String packageName) {
         try {
             PackageManager pm = getContext().getPackageManager();

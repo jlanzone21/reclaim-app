@@ -236,6 +236,24 @@ final class LocalSignalsDb extends SQLiteOpenHelper {
         );
     }
 
+    // ---- app_meta (generic key/value, e.g. the mirrored accountability contact) ----
+
+    String getMeta(String key) {
+        Cursor c = getReadableDatabase().rawQuery("SELECT value FROM app_meta WHERE key = ?", new String[]{key});
+        try {
+            return c.moveToFirst() ? c.getString(0) : null;
+        } finally {
+            c.close();
+        }
+    }
+
+    void setMeta(String key, String value) {
+        ContentValues values = new ContentValues();
+        values.put("key", key);
+        values.put("value", value);
+        getWritableDatabase().insertWithOnConflict("app_meta", null, values, SQLiteDatabase.CONFLICT_REPLACE);
+    }
+
     // ---- shared helpers ----
 
     // A launcher package varies by device/manufacturer (Pixel Launcher, One UI Home, Nova, ...),
