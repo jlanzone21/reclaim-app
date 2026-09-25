@@ -58,7 +58,8 @@ const PermissionsView = (function () {
   function init() {
     els.list = document.getElementById("permList");
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden && !document.getElementById("viewPrivacy").hidden) render();
+      const privacyPanel = document.querySelector('[data-view-panel="privacy"]');
+      if (!document.hidden && privacyPanel && !privacyPanel.hidden) render();
     });
     render();
   }

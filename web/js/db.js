@@ -53,6 +53,24 @@ const DB = (function () {
       value TEXT
     );
 
+    -- Singleton row (id always 1) -- one person's own setup answers, not a log of events like
+    -- checkins. See PURPOSE.md: this is the structured source the AI's per-turn context is built
+    -- from (personalContext.js), not a separate flat file to keep in sync by hand.
+    CREATE TABLE IF NOT EXISTS user_preferences (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      accountability_name TEXT,
+      accountability_phone TEXT,
+      pastor_name TEXT,
+      pastor_phone TEXT,
+      tempting_times TEXT,
+      common_triggers TEXT,
+      tempting_locations TEXT,
+      notification_intensity TEXT NOT NULL DEFAULT 'medium',
+      other_notes TEXT,
+      onboarding_completed_at TEXT,
+      updated_at TEXT
+    );
+
     CREATE INDEX IF NOT EXISTS idx_resources_type ON resources(type);
     CREATE INDEX IF NOT EXISTS idx_checkins_timestamp ON checkins(timestamp);
   `;

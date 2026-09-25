@@ -256,6 +256,14 @@
               <p class="allowlist-empty" id="allowlistEmpty" hidden>No apps added yet.</p>
               <button type="button" class="secondary-btn" id="addAllowlistBtn" style="width:100%; margin-top: 10px;">Add an app</button>
             </div>
+
+            <div class="panel">
+              <div class="panel-title">Your preferences</div>
+              <p class="view-subtitle" style="margin-bottom:14px" id="preferencesSummary">
+                Not set up yet — accountability partner, tempting times, and how often you want to hear from Reclaim.
+              </p>
+              <button type="button" class="secondary-btn" id="editPreferencesBtn" style="width:100%;">Edit your preferences</button>
+            </div>
           </div>
         </div>
       </section>
@@ -275,6 +283,52 @@
       </ul>
       <p class="modal-crisis">If you are in crisis or thinking about suicide, call or text <strong>988</strong> right now, or call 911.</p>
       <button type="button" class="modal-continue" id="welcomeContinue">I understand — continue</button>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="preferencesOverlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="preferencesTitle">
+      <h2 id="preferencesTitle">Set up your preferences</h2>
+      <p>
+        This helps Reclaim know when and how to reach you — none of it is required, and everything
+        here can be changed later from Privacy.
+      </p>
+
+      <div class="field-label" style="margin-top:0;">Accountability partner</div>
+      <p style="margin:0 0 8px; font-size:12.5px; color:var(--text-muted);">Optional, but worth adding when you're ready — you'll always find this in Privacy.</p>
+      <input type="text" id="prefAccountabilityName" class="field-input" placeholder="Name" style="margin-bottom:8px;" />
+      <input type="tel" id="prefAccountabilityPhone" class="field-input" placeholder="Phone number" />
+
+      <div class="field-label">Pastor or mentor</div>
+      <input type="text" id="prefPastorName" class="field-input" placeholder="Name" style="margin-bottom:8px;" />
+      <input type="tel" id="prefPastorPhone" class="field-input" placeholder="Phone number" />
+
+      <div class="field-label">When are you usually tempted?</div>
+      <div class="tag-grid" id="prefTimeGrid"></div>
+
+      <div class="field-label">What tends to be going on?</div>
+      <div class="tag-grid" id="prefTriggerGrid"></div>
+
+      <div class="field-label">Where does it usually happen?</div>
+      <input type="text" id="prefLocations" class="field-input" placeholder="e.g. alone in my room, late at night at work" />
+
+      <div class="field-label">Apps that are a slipping point</div>
+      <p style="margin:0 0 8px; font-size:12.5px; color:var(--text-muted);" id="prefAllowlistSummary">Loading…</p>
+      <p style="margin:0; font-size:12.5px; color:var(--text-muted);">These are the same apps Reclaim reads for keywords (see Privacy) — we've already added the common ones below; add or remove any time from Privacy.</p>
+
+      <div class="field-label">How often should Reclaim reach out?</div>
+      <div class="scale-picker" id="prefIntensityScale">
+        <button type="button" class="scale-btn" data-value="low">Low</button>
+        <button type="button" class="scale-btn" data-value="medium">Medium</button>
+        <button type="button" class="scale-btn" data-value="high">High</button>
+      </div>
+
+      <div class="field-label">Anything else we should know?</div>
+      <textarea id="prefOtherNotes" class="field-input field-textarea" placeholder="Optional"></textarea>
+
+      <button type="button" class="modal-continue" id="preferencesSave" style="margin-top:18px;">Save</button>
+      <button type="button" class="secondary-btn" id="preferencesSkip" style="width:100%; margin-top:8px;">Skip for now</button>
+      <button type="button" class="secondary-btn" id="preferencesClose" style="width:100%; margin-top:8px;" hidden>Close</button>
     </div>
   </div>
 
@@ -344,7 +398,7 @@
   <template id="tpl-crisis-line">
     <div class="crisis-line">
       <div class="crisis-line-name"></div>
-      <div class="crisis-line-phone"></div>
+      <a class="crisis-line-phone" href="#"></a>
       <div class="crisis-line-detail"></div>
     </div>
   </template>
@@ -356,6 +410,7 @@
   <script src="js/supabaseClient.js"></script>
   <script src="js/resourceRepo.js"></script>
   <script src="js/checkinStore.js"></script>
+  <script src="js/userPreferencesStore.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/resourcesAgent.js"></script>
   <script src="js/agentTools.js"></script>
@@ -374,6 +429,7 @@
   <script src="js/backgroundSampler.js"></script>
   <script src="js/permissionsView.js"></script>
   <script src="js/allowlistView.js"></script>
+  <script src="js/preferencesView.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

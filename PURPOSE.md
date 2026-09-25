@@ -92,12 +92,34 @@ reality:
       non-blocking gap: the launcher's label doesn't resolve (shows its
       raw package name) — likely outside the `<queries>` filter's scope,
       not investigated further.
-- [ ] **Not yet built — allowlist-scoped text capture.** Reading on-screen
-      text for user-added allowlist apps and keyword-matching it. Same
-      `TrackingAccessibilityService`, now unblocked at the config level
-      since Phase 4 landed, but the tree-walk/capture/match logic itself
-      hasn't been attempted yet — unknown whether Claude Code's classifier
-      treats that differently than the identity-only event above.
+- [x] **Allowlist-scoped text capture + keyword matching** — written and
+      built by Claude Code directly, unlike Phase 4's two files. Builds
+      clean; on-device confirmation that a real match gets recorded is
+      still outstanding. See "Decisions worth remembering."
+- [x] **Onboarding + preferences** — a second setup step chained after the
+      existing welcome/988 disclaimer, first-launch only, always reachable
+      after via Privacy → "Edit your preferences." Collects: accountability
+      partner + pastor name/phone (optional, explicitly revisitable —
+      skipping now doesn't lose the chance), tempting times of day, common
+      trigger situations (reuses `CONDITION_TAGS`, the same vocabulary
+      check-ins already use), tempting locations (free text), trigger apps
+      (reuses the real monitoring allowlist rather than a separate
+      self-reported list — naming an app here IS adding it to what gets
+      read), and notification intensity (Low/Medium/High — will scale the
+      future send/don't-send threshold once that algorithm exists; this
+      phase only captures the preference). Stored in a new
+      `user_preferences` table in the existing `db.js` (sql.js), not
+      `LocalSignalsDb` — this is directly user-entered through the WebView,
+      not passively collected in the background, so it belongs with
+      check-ins, not the native signals DB. The accountability partner/
+      pastor number also surfaces as a tap-to-call entry in the existing
+      crisis modal, above the fixed 988/SAMHSA lines, using a plain `tel:`
+      link — Reclaim never sends anything itself, it just hands off to the
+      phone's own dialer, so this doesn't touch the on-device-only privacy
+      commitment at all. Verified end-to-end in a plain browser (onboarding
+      chain, save, reopen/edit pre-fill, reload persistence, crisis modal
+      tel: links, AI context sentence generation); installed on-device,
+      not yet walked through on the phone itself.
 
 ## Decisions worth remembering
 
@@ -145,3 +167,18 @@ reality:
   cannot itself write the specific files that turn on system-wide
   accessibility tracking, or deploy the result to a device. That boundary
   held consistently across three distinct tool calls, not just one.
+- **The AI's "instructions" are generated, not a maintained file.** The
+  onboarding request asked for preferences to live in "an instructions
+  file" for the AI. Built instead as: structured answers in
+  `user_preferences`, turned into plain-language sentences fresh on every
+  chat turn by `buildUserPreferencesContext()` (`personalContext.js`),
+  the same pattern `buildPersonalContext()` already used for check-ins.
+  Functionally the same outcome — the AI always has this context — without
+  a second copy of the data that could drift out of sync with what's
+  actually in Privacy.
+- **Contact info is reference-only, on-device communication, never sent.**
+  Accountability partner/pastor numbers are never transmitted anywhere by
+  Reclaim itself — the only "reach out" mechanism is a `tel:` link, which
+  just hands off to the phone's own dialer. Deliberately chosen over any
+  form of automatic messaging, which would have required leaving the
+  device and broken the privacy commitment above.

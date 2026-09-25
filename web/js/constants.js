@@ -19,6 +19,11 @@ const CRISIS_LINES = [
 const CRISIS_REPLY =
   "I'm really glad you told me. Please reach out to one of the numbers above right now, or call 911 if you're in immediate danger — a trained person can help in a way I can't. You don't have to go through this moment alone.";
 
+// Same four buckets insightsView.js's time-of-day chart already uses — kept in sync by hand since
+// there's no shared source yet, but the labels must match or "when slips happen" and "when you're
+// tempted" would silently mean different things to the same user.
+const TEMPTING_TIME_BUCKETS = ["Morning", "Afternoon", "Evening", "Night"];
+
 const CONDITION_TAGS = [
   "Stress",
   "Loneliness",

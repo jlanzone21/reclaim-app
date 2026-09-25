@@ -66,3 +66,32 @@ function buildPersonalContext(checkins, now = new Date()) {
   }
   return parts.join(" ");
 }
+
+// Turns their own onboarding/preferences answers (UserPreferencesStore) into a few plain
+// sentences too — same reasoning as buildPersonalContext above, and deliberately generated fresh
+// from the stored structured answers rather than a separately-maintained file, so it can never
+// drift out of sync with what they actually entered in Privacy.
+function buildUserPreferencesContext(prefs) {
+  if (!prefs) return "";
+  const parts = [];
+
+  if (prefs.accountability_name) {
+    parts.push(`Their accountability partner is ${prefs.accountability_name}${prefs.accountability_phone ? " — reachable directly from the app" : ""}.`);
+  }
+  if (prefs.pastor_name) {
+    parts.push(`Their pastor/mentor is ${prefs.pastor_name}.`);
+  }
+  if (prefs.tempting_times && prefs.tempting_times.length) {
+    parts.push(`They say they're most tempted in the ${prefs.tempting_times.join(", ").toLowerCase()}.`);
+  }
+  if (prefs.common_triggers && prefs.common_triggers.length) {
+    parts.push(`Situations they've flagged as hardest: ${prefs.common_triggers.map((t) => t.toLowerCase()).join(", ")}.`);
+  }
+  if (prefs.tempting_locations && prefs.tempting_locations.trim()) {
+    parts.push(`Where it tends to happen: ${prefs.tempting_locations.trim()}.`);
+  }
+  if (prefs.other_notes && prefs.other_notes.trim()) {
+    parts.push(`In their own words about what to know: "${prefs.other_notes.trim().replace(/\s+/g, " ").slice(0, 200)}"`);
+  }
+  return parts.join(" ");
+}

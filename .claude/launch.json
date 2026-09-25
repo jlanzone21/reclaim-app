@@ -4,7 +4,7 @@
     {
       "name": "agent-chat-ui",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "4173", "--directory", "web"],
+      "runtimeArgs": ["-m", "http.server", "4173", "--directory", "C:\\Users\\LANZONEJA25\\ReclaimApp\\Reclaim\\web"],
       "port": 4173
     }
   ]

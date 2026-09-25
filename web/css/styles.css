@@ -950,9 +950,15 @@ button.conn-status:hover {
 }
 
 .crisis-line-phone {
+  display: block;
   font-family: "SF Mono", ui-monospace, Consolas, monospace;
   font-size: 13px;
   color: var(--crisis);
+  text-decoration: none;
+}
+
+.crisis-line-phone:active {
+  text-decoration: underline;
 }
 
 .crisis-line-detail {

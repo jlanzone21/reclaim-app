@@ -138,6 +138,7 @@
     .then(() => {
       CheckInView.init();
       InsightsView.init();
+      PreferencesView.init();
       busy = false;
       input.placeholder = "Tell me what's going on…";
       updateSendState();
@@ -167,18 +168,52 @@
     try {
       localStorage.setItem("reclaim_welcome_seen", WELCOME_VERSION);
     } catch (e) {}
+    // DB.init() is idempotent (resolves immediately if already loaded) — this just guarantees
+    // PreferencesView.init() has run before we try to open it, even if DB was still loading.
+    DB.init().then(() => PreferencesView.open("onboarding"));
   });
 
   function openCrisisModal() {
     crisisModalList.innerHTML = "";
+    personalCrisisLines().forEach((line) => crisisModalList.appendChild(buildCrisisLine(line)));
     CRISIS_LINES.forEach((line) => crisisModalList.appendChild(buildCrisisLine(line)));
     crisisOverlay.classList.add("visible");
+  }
+
+  // Accountability partner / pastor, from UserPreferencesStore, shown above the fixed national
+  // lines — only when a phone number was actually entered. Wrapped in try/catch rather than a
+  // readiness check: this is only ever reached from a click (crisisBtn/bannerCrisisLink), well
+  // after boot, so DB should already be loaded, but a crisis-help button must never throw.
+  function personalCrisisLines() {
+    try {
+      const prefs = UserPreferencesStore.get();
+      const lines = [];
+      if (prefs.accountability_phone) {
+        lines.push({
+          name: prefs.accountability_name || "Your accountability partner",
+          phone: prefs.accountability_phone,
+          detail: "Reach out — that's exactly what this relationship is for.",
+        });
+      }
+      if (prefs.pastor_phone) {
+        lines.push({
+          name: prefs.pastor_name || "Your pastor",
+          phone: prefs.pastor_phone,
+          detail: "",
+        });
+      }
+      return lines;
+    } catch (e) {
+      return [];
+    }
   }
 
   function buildCrisisLine(line) {
     const node = tplCrisisLine.content.firstElementChild.cloneNode(true);
     node.querySelector(".crisis-line-name").textContent = line.name;
-    node.querySelector(".crisis-line-phone").textContent = line.phone;
+    const phoneEl = node.querySelector(".crisis-line-phone");
+    phoneEl.textContent = line.phone;
+    phoneEl.href = `tel:${line.phone.replace(/[^\d+]/g, "")}`;
     node.querySelector(".crisis-line-detail").textContent = line.detail;
     return node;
   }

@@ -149,7 +149,15 @@ class ReclaimAgent {
     try {
       personal = buildPersonalContext(CheckInStore.list());
     } catch (e) {}
-    const context = [`Right now it is ${describeTimeOfDay(new Date())}.`, personal && `About this person, from their own check-ins: ${personal}`]
+    let preferences = "";
+    try {
+      preferences = buildUserPreferencesContext(UserPreferencesStore.get());
+    } catch (e) {}
+    const context = [
+      `Right now it is ${describeTimeOfDay(new Date())}.`,
+      personal && `About this person, from their own check-ins: ${personal}`,
+      preferences && `What they told us when setting up the app: ${preferences}`,
+    ]
       .filter(Boolean)
       .join("\n");
 

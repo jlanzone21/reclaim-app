@@ -45,6 +45,11 @@ public class LocalSignalsPlugin extends Plugin {
 
     @PluginMethod
     public void getAllowlist(PluginCall call) {
+        // Seeding is normally triggered by turning on background sampling (BackgroundSamplerPlugin),
+        // but onboarding shows this list before that toggle exists -- seed here too so it's never
+        // empty-by-default just because of call order. seedDefaultAllowlistIfNeeded is itself
+        // idempotent (gated on app_meta), so calling it from two places is harmless.
+        db().seedDefaultAllowlistIfNeeded(getContext());
         JSObject result = new JSObject();
         result.put("apps", db().allAllowlistApps());
         call.resolve(result);
