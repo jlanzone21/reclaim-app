@@ -142,4 +142,40 @@ public class LocalSignalsPlugin extends Plugin {
             return packageName;
         }
     }
+
+    // ==========================================================================================
+    // TEMPORARY -- backs the Testing panel (Privacy tab, bottom, clearly marked in the UI).
+    // Exists only to make manually verifying background features fast during development, instead
+    // of waiting up to 15 minutes for the real periodic schedule or hand-triggering things over
+    // adb/CDP. Remove this whole block, the four methods it defines, and the UI that calls them
+    // before shipping this to a real user. See PURPOSE.md.
+    // ==========================================================================================
+
+    @PluginMethod
+    public void debugRunBackgroundCheck(PluginCall call) {
+        androidx.work.WorkManager.getInstance(getContext())
+                .enqueue(new androidx.work.OneTimeWorkRequest.Builder(BaselineSampleWorker.class).build());
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void debugSendRiskNudge(PluginCall call) {
+        RiskNudgeMonitor.debugForceNotify(getContext());
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void debugClearRiskNudgeCooldown(PluginCall call) {
+        RiskNudgeMonitor.debugClearCooldown(getContext());
+        call.resolve();
+    }
+
+    // Peeks pending_risk_alert without consuming it (unlike getPendingRiskAlert), so testing this
+    // doesn't also eat the alert RiskAlertView would otherwise show on next boot.
+    @PluginMethod
+    public void debugPeekPendingRiskAlert(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("raw", db().getMeta("pending_risk_alert"));
+        call.resolve(result);
+    }
 }

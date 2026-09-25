@@ -272,8 +272,28 @@ reality:
       Adjusting these settings from the app itself (which factors matter,
       how intrusive to be) was explicitly named as future work, not built
       this pass.
+- [x] **Testing panel — TEMPORARY, not a real feature.** A dashed-amber
+      "⚠ Testing tools" panel at the bottom of Privacy, only visible
+      on-device (`LocalSignals.available()`), with four buttons: run the
+      background check now, send a check-in (risk nudge) notification
+      now, clear the notification cooldown, and peek the pending alert
+      without consuming it. Exists because this session kept needing to
+      hand-trigger these exact things over adb/CDP to verify anything —
+      forcing WorkManager jobs, deleting SharedPreferences files
+      underneath a live process (which doesn't actually work, learned the
+      hard way), waiting up to 15 real minutes for the periodic schedule.
+      This makes all of that a button tap instead, for both of us.
 
-## Decisions worth remembering
+      Marked as temporary everywhere it can be: a `TEMPORARY` block
+      comment in each of the four files it touches
+      (`LocalSignalsPlugin.java`, `RiskNudgeMonitor.java`, `localSignals.js`,
+      `debugTestPanel.js`) naming exactly what to delete together, plus
+      the loud dashed/striped styling in the UI itself so it reads as
+      "not a real feature" without reading any code. Should come out
+      before this ever reaches a real user — nothing here is dangerous
+      (it can only trigger things the app already does on its own
+      schedule), but a "send yourself a notification" button has no
+      business existing in a shipped recovery app.
 
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging

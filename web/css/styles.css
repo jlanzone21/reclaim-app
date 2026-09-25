@@ -1367,6 +1367,41 @@ a.resource-contact:active {
   background: var(--crisis-bg);
 }
 
+/* ---- TEMPORARY: Testing panel (debugTestPanel.js) -- deliberately loud/different from the rest
+   of the app's styling so it reads as "not a real feature" at a glance. Remove this whole block
+   along with debugTestPanel.js and its markup in index.html before shipping to a real user. ---- */
+.debug-panel {
+  border: 2px dashed #b8860b;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(184, 134, 11, 0.06),
+    rgba(184, 134, 11, 0.06) 10px,
+    rgba(184, 134, 11, 0.12) 10px,
+    rgba(184, 134, 11, 0.12) 20px
+  );
+}
+
+.debug-panel .panel-title {
+  color: #b8860b;
+}
+
+.debug-btn {
+  border-color: #b8860b !important;
+  color: #b8860b !important;
+}
+
+.debug-output {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  font-family: "SF Mono", ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-muted);
+}
+
 /* ---- Privacy view: permission cards (matches reclaim-beta's proven pattern) ---- */
 
 .perm-list {

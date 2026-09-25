@@ -84,6 +84,25 @@ final class RiskNudgeMonitor {
         postNotification(ctx, session.packageName, result);
     }
 
+    // TEMPORARY test hook -- called from the Testing panel (Privacy tab, see PURPOSE.md), not
+    // part of the real detection path. Runs the real scorer against whatever's actually
+    // foreground right now, but skips the score threshold and the dedup check so a real
+    // notification can be seen on demand instead of waiting for real conditions to align.
+    static void debugForceNotify(Context ctx) {
+        Session session = currentSession(ctx);
+        String packageName = session != null ? session.packageName : ctx.getPackageName();
+        long sessionMinutes = session != null ? (System.currentTimeMillis() - session.startedAt) / 60000 : 0;
+        RiskScorer.Result result = RiskScorer.score(ctx, packageName, sessionMinutes);
+        Log.d(TAG, "[debug] score=" + result.score + " threshold=" + result.threshold + " [" + result.reason + "]");
+        postNotification(ctx, packageName, result);
+    }
+
+    // TEMPORARY test hook -- clears the per-session dedup marker so a repeat test isn't silently
+    // swallowed by "already notified for this session" while iterating.
+    static void debugClearCooldown(Context ctx) {
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().clear().apply();
+    }
+
     private static boolean hasNotificationPermission(Context ctx) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true;
         return ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;

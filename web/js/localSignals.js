@@ -76,6 +76,32 @@ const LocalSignals = (function () {
     return alert || null;
   }
 
+  // ============================================================================================
+  // TEMPORARY -- backs the Testing panel (debugTestPanel.js). See LocalSignalsPlugin.java's own
+  // matching comment block; remove both together before shipping this to a real user.
+  // ============================================================================================
+
+  async function debugRunBackgroundCheck() {
+    if (!available()) return;
+    await plugin().debugRunBackgroundCheck();
+  }
+
+  async function debugSendRiskNudge() {
+    if (!available()) return;
+    await plugin().debugSendRiskNudge();
+  }
+
+  async function debugClearRiskNudgeCooldown() {
+    if (!available()) return;
+    await plugin().debugClearRiskNudgeCooldown();
+  }
+
+  async function debugPeekPendingRiskAlert() {
+    if (!available()) return null;
+    const { raw } = await plugin().debugPeekPendingRiskAlert();
+    return raw || null;
+  }
+
   return {
     available,
     getUsageSamples,
@@ -87,5 +113,9 @@ const LocalSignals = (function () {
     getInstalledApps,
     syncRiskContext,
     getPendingRiskAlert,
+    debugRunBackgroundCheck,
+    debugSendRiskNudge,
+    debugClearRiskNudgeCooldown,
+    debugPeekPendingRiskAlert,
   };
 })();

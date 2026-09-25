@@ -141,6 +141,7 @@
       PreferencesView.init();
       RiskAlertView.init();
       RiskAlertView.checkPending();
+      DebugTestPanel.init(); // TEMPORARY -- see debugTestPanel.js
       // Covers data that predates RiskNudgeMonitor's native mirror, or check-ins logged before
       // this boot -- ordinary saves/check-ins push this themselves (see userPreferencesStore.js,
       // checkinStore.js), this just catches anyone already past that.

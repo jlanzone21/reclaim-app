@@ -264,6 +264,22 @@
               </p>
               <button type="button" class="secondary-btn" id="editPreferencesBtn" style="width:100%;">Edit your preferences</button>
             </div>
+
+            <!-- TEMPORARY: for verifying background features while building this. Not something a
+                 real user should ever see — remove this whole panel, debugTestPanel.js, its CSS
+                 (.debug-panel etc. in styles.css), and the native TEMPORARY block it calls into
+                 before shipping. See PURPOSE.md. -->
+            <div class="panel debug-panel" id="debugTestPanel">
+              <div class="panel-title">⚠ Testing tools — temporary, remove before release</div>
+              <p class="view-subtitle" style="margin-bottom:14px">
+                For checking that background features actually work while we're building them, without waiting on real conditions or the ~15-minute schedule.
+              </p>
+              <button type="button" class="secondary-btn debug-btn" id="debugRunBackgroundCheckBtn" style="width:100%; margin-bottom:8px;">Run background check now</button>
+              <button type="button" class="secondary-btn debug-btn" id="debugSendRiskNudgeBtn" style="width:100%; margin-bottom:8px;">Send check-in notification now</button>
+              <button type="button" class="secondary-btn debug-btn" id="debugClearCooldownBtn" style="width:100%; margin-bottom:8px;">Clear notification cooldown</button>
+              <button type="button" class="secondary-btn debug-btn" id="debugPeekAlertBtn" style="width:100%;">Show pending alert (debug)</button>
+              <div class="debug-output" id="debugOutput" hidden></div>
+            </div>
           </div>
         </div>
       </section>
@@ -448,6 +464,7 @@
   <script src="js/allowlistView.js"></script>
   <script src="js/preferencesView.js"></script>
   <script src="js/riskAlertView.js"></script>
+  <script src="js/debugTestPanel.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
