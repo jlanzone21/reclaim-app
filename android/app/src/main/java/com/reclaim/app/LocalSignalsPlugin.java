@@ -116,6 +116,24 @@ public class LocalSignalsPlugin extends Plugin {
         return arr != null ? arr.toString() : "[]";
     }
 
+    // RiskNudgeMonitor writes here when it posts a notification (see its own doc comment for why
+    // the detail lives here instead of in the notification itself). Consumed once -- cleared on
+    // read so re-opening the app later doesn't keep re-showing an old alert.
+    @PluginMethod
+    public void getPendingRiskAlert(PluginCall call) {
+        String json = db().getMeta("pending_risk_alert");
+        if (json != null) db().setMeta("pending_risk_alert", "");
+        JSObject result = new JSObject();
+        if (json != null && !json.isEmpty()) {
+            try {
+                result.put("alert", new JSObject(json));
+            } catch (org.json.JSONException e) {
+                // Malformed -- treat as no alert rather than failing the call.
+            }
+        }
+        call.resolve(result);
+    }
+
     private String resolveLabel(String packageName) {
         try {
             PackageManager pm = getContext().getPackageManager();

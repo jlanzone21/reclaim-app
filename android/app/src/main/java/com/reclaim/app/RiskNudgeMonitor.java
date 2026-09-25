@@ -26,10 +26,22 @@ import androidx.core.content.ContextCompat;
  *
  * Runs from BaselineSampleWorker at the same ~15-minute cadence as ForegroundAppMonitor, which
  * this reuses the session-detection shape of, but is a real feature, not that class's
- * verification tool: it asks whether they want to reach out to their accountability partner, with
- * a notification action that opens the phone's own dialer pre-filled with that number -- same
- * tel:-only, on-device, user-confirms-the-call choice as the crisis modal (never auto-dials,
- * never sends anything itself). See PURPOSE.md.
+ * verification tool. Two things happen when it fires: a notification with a "Call [name]" action
+ * that opens the phone's own dialer pre-filled -- same tel:-only, on-device, user-confirms-the-
+ * call choice as the crisis modal (never auto-dials, never sends anything itself) -- and an
+ * attempt to actually interrupt, via setFullScreenIntent(), the same mechanism calls/alarms use.
+ *
+ * Honest limit on that second part, not worked around: Android deliberately blocks a background
+ * app from stealing focus from whatever's actively in use, so a full-screen intent only reliably
+ * takes over when the screen is off/locked (opens the app instead of the lock screen) -- it does
+ * NOT yank focus away from another app you're actively using. That's Android's own anti-abuse
+ * design, not a bug here.
+ *
+ * The notification/lock-screen text is deliberately generic (GENERIC_TEXT below) -- never names
+ * the app or pattern that triggered it, since anyone glancing at a locked phone could see that
+ * text. The specific "here's what we noticed" detail (RiskScorer's userReasons) is written to
+ * LocalSignalsDb's app_meta instead, read back and shown by app.js only once the app is actually
+ * open -- which requires deliberately unlocking the phone first. See PURPOSE.md.
  */
 @SuppressWarnings("deprecation") // UsageEvents.Event.MOVE_TO_FOREGROUND/BACKGROUND, see ForegroundAppMonitor
 final class RiskNudgeMonitor {
@@ -69,7 +81,7 @@ final class RiskNudgeMonitor {
                 .putLong(KEY_LAST_SESSION_START, session.startedAt)
                 .apply();
 
-        postNotification(ctx);
+        postNotification(ctx, session.packageName, result);
     }
 
     private static boolean hasNotificationPermission(Context ctx) {
@@ -126,15 +138,27 @@ final class RiskNudgeMonitor {
         return mode == android.app.AppOpsManager.MODE_ALLOWED;
     }
 
-    private static void postNotification(Context ctx) {
+    // Deliberately generic everywhere it could be seen before the phone is unlocked (the
+    // notification banner, and the lock screen if a full-screen intent actually takes over) --
+    // never names the app or the specific pattern. The real "here's what we noticed" detail only
+    // shows once the app is actually open, which requires deliberately unlocking first. See
+    // PURPOSE.md's "Decisions worth remembering".
+    private static final String GENERIC_TEXT = "Reclaim wants to check in with you.";
+
+    private static void postNotification(Context ctx, String packageName, RiskScorer.Result result) {
         NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            nm.createNotificationChannel(new NotificationChannel(CHANNEL_ID, "Reclaim", NotificationManager.IMPORTANCE_DEFAULT));
+            // HIGH, not DEFAULT: a full-screen intent needs a high-importance channel to actually
+            // heads-up/take over -- see the class doc comment on what this can and can't do.
+            nm.createNotificationChannel(new NotificationChannel(CHANNEL_ID, "Reclaim", NotificationManager.IMPORTANCE_HIGH));
         }
 
-        // Tapping the notification body (not the call action) just opens the app -- Chat is the
-        // default view, so that's "talk to the AI instead" without any extra routing needed.
+        LocalSignalsDb db = LocalSignalsDb.getInstance(ctx);
+        db.setMeta("pending_risk_alert", buildPendingAlertJson(ctx, packageName, result));
+
+        // Tapping the notification body (not the call action) opens the app -- app.js checks for
+        // the pending alert above on boot and shows the detail screen instead of landing on Chat.
         Intent openApp = new Intent(ctx, MainActivity.class);
         openApp.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent openAppIntent = PendingIntent.getActivity(
@@ -143,12 +167,16 @@ final class RiskNudgeMonitor {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(ctx, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle("Reclaim")
-                .setContentText("This can be a hard moment. Want to reach out to your accountability partner?")
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setContentText(GENERIC_TEXT)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
                 .setContentIntent(openAppIntent)
+                // Real, honest limit -- see the class doc comment: only reliably takes over when
+                // the screen is off/locked. Android won't let a background app steal focus from
+                // one actively in use, by design, and this doesn't try to work around that.
+                .setFullScreenIntent(openAppIntent, true)
                 .setAutoCancel(true);
 
-        LocalSignalsDb db = LocalSignalsDb.getInstance(ctx);
         String phone = db.getMeta("accountability_phone");
         if (phone != null && !phone.trim().isEmpty()) {
             // ACTION_DIAL, not ACTION_CALL: opens the phone's own dialer pre-filled, doesn't place
@@ -164,5 +192,31 @@ final class RiskNudgeMonitor {
 
         nm.notify(NOTIFICATION_ID, builder.build());
         Log.d(TAG, "posted risk nudge notification");
+    }
+
+    // The specific, plain-language detail (which app, which reasons) never appears in the
+    // notification itself -- only here, read back by app.js once the app is actually open. See
+    // GENERIC_TEXT above.
+    private static String buildPendingAlertJson(Context ctx, String packageName, RiskScorer.Result result) {
+        try {
+            org.json.JSONObject alert = new org.json.JSONObject();
+            alert.put("appLabel", appLabel(ctx, packageName));
+            alert.put("reasons", result.userReasons);
+            alert.put("occurredAt", LocalSignalsDb.isoNow());
+            return alert.toString();
+        } catch (org.json.JSONException e) {
+            return null;
+        }
+    }
+
+    // Falls back to the raw package name if the app was uninstalled between detecting the
+    // session and posting the notification, or its label can't be resolved for any reason.
+    private static String appLabel(Context ctx, String packageName) {
+        try {
+            PackageManager pm = ctx.getPackageManager();
+            return pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString();
+        } catch (PackageManager.NameNotFoundException e) {
+            return packageName;
+        }
     }
 }

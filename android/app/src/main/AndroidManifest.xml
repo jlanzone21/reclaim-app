@@ -105,12 +105,19 @@
         android:usesPermissionFlags="neverForLocation"
         tools:targetApi="s" />
 
-    <!-- Verification tool only: lets the periodic sample post a local
-         notification confirming a detected app session actually matches
-         reality ("you've been on YouTube for an hour — is that correct?").
-         Runtime-gated on API 33+ only; a no-op permission on everything
-         below that. See NotifyPlugin.java / ForegroundAppMonitor.java. -->
+    <!-- Runtime-gated on API 33+ only, a no-op permission below that. Lets the periodic sample
+         post local notifications: ForegroundAppMonitor's verification tool
+         ("you've been on YouTube for an hour — is that correct?") and RiskNudgeMonitor's real
+         risk-nudge notification. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Normal permission (no runtime dialog), but Android 14+ requires it be individually
+         enabled via device Settings for anything other than calls/alarms, and may revoke it if
+         a full-screen intent is posted too often without being used. Lets RiskNudgeMonitor's
+         notification attempt to open the app immediately when the screen is off/locked, the same
+         mechanism calls/alarms use — see that class's own doc comment for the honest limits on
+         what this can and can't do. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
     <!-- Package visibility (API 30+): without this, PackageManager can't see other apps at all
          (not even to resolve a name/label) unless the app holds the restricted

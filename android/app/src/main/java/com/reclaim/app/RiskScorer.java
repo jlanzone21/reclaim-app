@@ -45,11 +45,13 @@ final class RiskScorer {
         final int score;
         final int threshold;
         final String reason; // internal, logcat-only -- not shown to the user
+        final JSONArray userReasons; // plain-language, shown in-app once opened -- see PendingRiskAlert
 
-        Result(int score, int threshold, String reason) {
+        Result(int score, int threshold, String reason, JSONArray userReasons) {
             this.score = score;
             this.threshold = threshold;
             this.reason = reason;
+            this.userReasons = userReasons;
         }
 
         boolean triggers() {
@@ -61,10 +63,12 @@ final class RiskScorer {
         LocalSignalsDb db = LocalSignalsDb.getInstance(ctx);
         int points = 0;
         StringBuilder reason = new StringBuilder();
+        JSONArray userReasons = new JSONArray();
 
         if (db.isAllowlisted(currentPackage)) {
             points += 30;
             reason.append("trigger-app(+30) ");
+            userReasons.put("You're on an app you flagged as a trigger.");
         }
 
         // Gradual, not a cliff: +2/minute, capped at +30 (15 minutes) so a long session doesn't
@@ -73,6 +77,7 @@ final class RiskScorer {
         if (durationPoints > 0) {
             points += durationPoints;
             reason.append("duration=").append(sessionMinutes).append("m(+").append(durationPoints).append(") ");
+            userReasons.put("You've been there for " + sessionMinutes + " minutes.");
         }
 
         String currentBucket = timeBucket(Calendar.getInstance().get(Calendar.HOUR_OF_DAY));
@@ -80,12 +85,14 @@ final class RiskScorer {
         if (temptingTimes.contains(currentBucket)) {
             points += 20;
             reason.append("self-reported-time(+20) ");
+            userReasons.put("It's a time of day you told us is hard for you.");
         }
 
         Set<String> riskyBuckets = parseJsonArray(db.getMeta("risky_time_buckets"));
         if (riskyBuckets.contains(currentBucket)) {
             points += 15;
             reason.append("historical-time(+15) ");
+            userReasons.put("This time of day has been difficult for you before, based on your check-ins.");
         }
 
         Set<String> commonTriggers = parseJsonArray(db.getMeta("common_triggers"));
@@ -94,10 +101,11 @@ final class RiskScorer {
         if (socialMediaFlagged && SOCIAL_MEDIA_PACKAGES.contains(currentPackage)) {
             points += 10;
             reason.append("social-media(+10) ");
+            userReasons.put("It's a social media app, which you've flagged as a trigger.");
         }
 
         int threshold = thresholdForIntensity(db.getMeta("notification_intensity"));
-        return new Result(points, threshold, reason.toString().trim());
+        return new Result(points, threshold, reason.toString().trim(), userReasons);
     }
 
     // Same four buckets as TEMPTING_TIME_BUCKETS (constants.js) / RiskProfile (riskProfile.js) --

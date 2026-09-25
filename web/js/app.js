@@ -139,6 +139,8 @@
       CheckInView.init();
       InsightsView.init();
       PreferencesView.init();
+      RiskAlertView.init();
+      RiskAlertView.checkPending();
       // Covers data that predates RiskNudgeMonitor's native mirror, or check-ins logged before
       // this boot -- ordinary saves/check-ins push this themselves (see userPreferencesStore.js,
       // checkinStore.js), this just catches anyone already past that.

@@ -231,6 +231,47 @@ reality:
       candidates despite being an obvious name for this topic — search
       turned up real coverage of a child-sexual-abuse cover-up
       controversy there.
+- [x] **Risk nudge tries to actually interrupt, not just notify.** User
+      asked for the notification to disrupt a moment of temptation, not
+      just sit passively in the shade. Real mechanism: `setFullScreenIntent()`
+      on a `IMPORTANCE_HIGH` channel — the same one calls/alarms use, added
+      via the `USE_FULL_SCREEN_INTENT` manifest permission. Honest limit,
+      not worked around: Android only lets this actually take over when
+      the screen is off/locked (opens the app instead of the lock screen);
+      it will not yank focus from another app you're actively using — that
+      class of behavior is deliberately blocked platform-wide since
+      Android 10, for exactly the reason it'd otherwise be abused.
+
+      Privacy-driven design choice, confirmed with the user before
+      building: the notification/lock-screen text is permanently generic
+      (`"Reclaim wants to check in with you."`) — never names the app or
+      the pattern, since anyone glancing at a locked phone could see it.
+      The specific "here's what we noticed" detail (which app, and
+      plain-language reasons built straight from `RiskScorer`'s factors —
+      "you're on a flagged app," "it's a time that's hard for you," etc.)
+      is written to `LocalSignalsDb.app_meta` instead
+      (`pending_risk_alert`) and only surfaces once the app is actually
+      open — `RiskAlertView` (new) checks for it once at boot, native
+      clears it on read so it only ever shows once per alert. Shows a
+      "Call [name]" action (same `tel:` pattern as everywhere else) and a
+      "Talk about it" shortcut into Chat.
+
+      Verified in two parts rather than one unbroken on-device run, after
+      an OS-level Safety Center prompt interrupted the foreground session
+      mid-test: the native pipeline (score → notification posts with the
+      generic text and `IMPORTANCE_HIGH` → `pending_risk_alert` written
+      with correct structured reasons → cleared on read) was confirmed
+      on-device via logcat and direct plugin calls; `RiskAlertView`'s
+      rendering (title, reasons list, personalized call button, hides
+      when no contact is set, dismiss works) was confirmed by feeding it
+      the same shape of data the native side had already been shown to
+      produce, in a plain browser. Together they cover the same ground an
+      unbroken run would have; not the same as one live end-to-end
+      confirmation, worth a real walkthrough on the phone when convenient.
+
+      Adjusting these settings from the app itself (which factors matter,
+      how intrusive to be) was explicitly named as future work, not built
+      this pass.
 
 ## Decisions worth remembering
 

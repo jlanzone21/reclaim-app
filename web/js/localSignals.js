@@ -67,6 +67,15 @@ const LocalSignals = (function () {
     await plugin().syncRiskContext(payload);
   }
 
+  // RiskNudgeMonitor writes the specific "here's what we noticed" detail here when it posts a
+  // notification -- never in the notification itself, see that class's own comment for why.
+  // Consumed once (native clears it on read), so call this only when actually about to show it.
+  async function getPendingRiskAlert() {
+    if (!available()) return null;
+    const { alert } = await plugin().getPendingRiskAlert();
+    return alert || null;
+  }
+
   return {
     available,
     getUsageSamples,
@@ -77,5 +86,6 @@ const LocalSignals = (function () {
     removeAllowlistApp,
     getInstalledApps,
     syncRiskContext,
+    getPendingRiskAlert,
   };
 })();
