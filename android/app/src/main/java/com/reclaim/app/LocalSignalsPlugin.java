@@ -95,14 +95,25 @@ public class LocalSignalsPlugin extends Plugin {
         call.resolve(result);
     }
 
-    // The other write path besides the allowlist: db.js/UserPreferencesStore is the real source
-    // of truth (user-entered in the WebView), this just mirrors name+phone into app_meta so
-    // RiskNudgeMonitor can read it from a background Worker where the WebView isn't loaded.
+    // The other write path besides the allowlist: db.js/UserPreferencesStore and CheckInStore are
+    // the real source of truth (user-entered/derived in the WebView), this just mirrors what
+    // RiskNudgeMonitor's scoring needs into app_meta so it can read it from a background Worker
+    // where the WebView isn't loaded. See RiskProfile.syncToNative (riskProfile.js) for the caller.
     @PluginMethod
-    public void setAccountabilityContact(PluginCall call) {
-        db().setMeta("accountability_name", call.getString("name", ""));
-        db().setMeta("accountability_phone", call.getString("phone", ""));
+    public void syncRiskContext(PluginCall call) {
+        db().setMeta("accountability_name", call.getString("accountabilityName", ""));
+        db().setMeta("accountability_phone", call.getString("accountabilityPhone", ""));
+        db().setMeta("tempting_times", jsonArrayOrEmpty(call, "temptingTimes"));
+        db().setMeta("common_triggers", jsonArrayOrEmpty(call, "commonTriggers"));
+        db().setMeta("notification_intensity", call.getString("intensity", "medium"));
+        db().setMeta("top_slip_tags", jsonArrayOrEmpty(call, "topSlipTags"));
+        db().setMeta("risky_time_buckets", jsonArrayOrEmpty(call, "riskyTimeBuckets"));
         call.resolve();
+    }
+
+    private String jsonArrayOrEmpty(PluginCall call, String key) {
+        com.getcapacitor.JSArray arr = call.getArray(key);
+        return arr != null ? arr.toString() : "[]";
     }
 
     private String resolveLabel(String packageName) {

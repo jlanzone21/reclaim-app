@@ -56,17 +56,27 @@ const CheckInStore = (function () {
       ]
     );
     DB.scheduleSave();
+    syncRiskProfile();
     return record;
   }
 
   function remove(id) {
     DB.run("DELETE FROM checkins WHERE id = ?", [id]);
     DB.scheduleSave();
+    syncRiskProfile();
   }
 
   function clear() {
     DB.run("DELETE FROM checkins");
     DB.scheduleSave();
+    syncRiskProfile();
+  }
+
+  // A slip/resisted count or its tags/timing changing shifts RiskProfile's pattern (which
+  // conditions/times have actually preceded past slips), so RiskNudgeMonitor's native mirror of
+  // it needs to stay current after every check-in change, not just preference edits.
+  function syncRiskProfile() {
+    if (typeof RiskProfile !== "undefined") RiskProfile.syncToNative();
   }
 
   function exportJson() {

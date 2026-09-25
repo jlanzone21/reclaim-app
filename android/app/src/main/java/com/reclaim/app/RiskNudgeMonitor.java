@@ -18,21 +18,22 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 
 /**
- * The first, deliberately simple version of what the plan calls a "risk analysis algorithm" --
- * right now the only signal is "has one app, never the launcher, been continuously foreground for
- * 20+ minutes." No real scoring yet; that's future work once there's a real signal to weigh
- * (usage patterns, tempting-time-of-day overlap, keyword matches, ...). Runs from
- * BaselineSampleWorker at the same ~15-minute cadence as ForegroundAppMonitor, which this reuses
- * the session-detection shape of, but is a real feature, not that class's verification tool: it
- * asks whether they want to reach out to their accountability partner, with a notification action
- * that opens the phone's own dialer pre-filled with that number -- same tel:-only, on-device,
- * user-confirms-the-call choice as the crisis modal (never auto-dials, never sends anything
- * itself). See PURPOSE.md.
+ * The plan's "risk analysis algorithm," phase one: real multi-factor scoring (RiskScorer), not a
+ * single duration threshold. Goal per the plan is prediction, not reaction -- notice a lead-up
+ * pattern (a flagged trigger app, during a time that's historically or self-reportedly hard for
+ * this person) and intercept before a slip, rather than wait for direct evidence one is already
+ * happening. See RiskScorer for the actual weights and reasoning.
+ *
+ * Runs from BaselineSampleWorker at the same ~15-minute cadence as ForegroundAppMonitor, which
+ * this reuses the session-detection shape of, but is a real feature, not that class's
+ * verification tool: it asks whether they want to reach out to their accountability partner, with
+ * a notification action that opens the phone's own dialer pre-filled with that number -- same
+ * tel:-only, on-device, user-confirms-the-call choice as the crisis modal (never auto-dials,
+ * never sends anything itself). See PURPOSE.md.
  */
 @SuppressWarnings("deprecation") // UsageEvents.Event.MOVE_TO_FOREGROUND/BACKGROUND, see ForegroundAppMonitor
 final class RiskNudgeMonitor {
     private static final String TAG = "RiskNudgeMonitor";
-    private static final long SESSION_THRESHOLD_MS = 20 * 60 * 1000;
     private static final long QUERY_WINDOW_MS = 2 * 60 * 60 * 1000;
     private static final String PREFS_NAME = "reclaim_app_risk_nudge";
     private static final String KEY_LAST_PACKAGE = "last_notified_package";
@@ -48,8 +49,10 @@ final class RiskNudgeMonitor {
         Session session = currentSession(ctx);
         if (session == null) return;
 
-        long elapsed = System.currentTimeMillis() - session.startedAt;
-        if (elapsed < SESSION_THRESHOLD_MS) return;
+        long sessionMinutes = (System.currentTimeMillis() - session.startedAt) / 60000;
+        RiskScorer.Result result = RiskScorer.score(ctx, session.packageName, sessionMinutes);
+        Log.d(TAG, "score=" + result.score + " threshold=" + result.threshold + " [" + result.reason + "]");
+        if (!result.triggers()) return;
 
         SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         // Only once per continuous session, keyed by its exact start time -- otherwise every
@@ -140,7 +143,7 @@ final class RiskNudgeMonitor {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(ctx, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle("Reclaim")
-                .setContentText("You've been on your phone a while. Want to reach out to your accountability partner?")
+                .setContentText("This can be a hard moment. Want to reach out to your accountability partner?")
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                 .setContentIntent(openAppIntent)
                 .setAutoCancel(true);

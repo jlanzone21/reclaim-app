@@ -129,29 +129,66 @@ reality:
       now explicitly tells the model to encourage reaching out to the named
       accountability partner/pastor by name when known, instead of the old
       generic phrasing a small model tended to ignore.
-- [x] **Risk nudge notification, phase one** — `RiskNudgeMonitor.java`, the
-      first (deliberately simple) step toward the "risk analysis algorithm"
-      goal: right now the only signal is one app (never the launcher)
-      continuously foreground for 20 minutes. Fires one local notification
-      asking if they want to reach out to their accountability partner,
-      with a "Call [name]" action that opens the phone's own dialer
-      pre-filled — `Intent.ACTION_DIAL`, not `ACTION_CALL`, so it never
-      dials automatically and needs no extra permission, same on-device
-      choice as the crisis modal's `tel:` links. Needed a one-way mirror of
-      just the accountability name/phone from `user_preferences` (db.js)
-      into `LocalSignalsDb`'s `app_meta`, since this has to fire from a
-      background Worker where the WebView isn't loaded — same reasoning as
-      the rest of `LocalSignalsDb`. Verified on-device with a temporarily
-      shortened threshold: real notification posted with the correct text
-      and a "Call Joey" action correctly pulling the real saved name,
-      confirmed via a real screenshot and `dumpsys notification`; reverted
-      to the real 20-minute threshold before shipping. Along the way, found
-      and fixed a real bug shared with `ForegroundAppMonitor`'s pattern: the
-      per-session dedup marker was written before checking notification
-      permission, so a session crossing the threshold before permission was
-      granted would silently never notify even after granting it later —
-      fixed here; `ForegroundAppMonitor` still has the same latent bug,
-      not touched since it's a debug tool, not a shipped feature.
+- [x] **Risk nudge notification, phase one** — `RiskNudgeMonitor.java` +
+      `RiskScorer.java`. First version fired on a single flat threshold
+      (any app, 20 minutes); reworked mid-session once the actual goal was
+      clarified: intercept a lead-up pattern *before* a slip, not react to
+      evidence one already happened. Explicitly **not** ML — a single
+      person's on-device check-in history is a handful of entries, nowhere
+      near enough to train anything real, and there's no server or
+      training pipeline in this architecture anyway. `RiskScorer` is
+      transparent, weighted, debuggable arithmetic instead: current app on
+      the trigger-app allowlist (+30), session duration (+2/min, capped
+      +30), current time-of-day matching a self-reported tempting time
+      (+20) or a time that's actually preceded this person's own past
+      slips (+15, from `RiskProfile`), and a flagged "Social media" trigger
+      matching a known social app (+10) — summed and compared against a
+      threshold set by `notification_intensity` (low=90, medium=60,
+      high=35). Fires the same "Call [name]" `tel:`-dialer notification as
+      before once the score crosses that bar. `nearby_device_bucket`
+      (a possible "are they alone" proxy) exists in the schema but is never
+      actually populated by the periodic sampler, so a solitude signal was
+      left out of this pass rather than built on a column that's always
+      null.
+
+      `RiskProfile` (riskProfile.js) turns check-in history into which
+      tags and time-of-day buckets have actually preceded past slips —
+      same tag-frequency reasoning `personalContext.js` already used for
+      chat, applied to structured scoring instead of prose. That, plus the
+      relevant `UserPreferencesStore` fields, gets mirrored one-way into
+      `LocalSignalsDb`'s `app_meta` (`LocalSignals.syncRiskContext`,
+      replacing the earlier accountability-only mirror) on every
+      preference save, every check-in add/remove/clear, and once at boot.
+
+      Verified fully on-device: confirmed the score computation itself
+      (`score=20 threshold=35 [self-reported-time(+20)]`), then confirmed
+      duration accumulation crossing the threshold for real
+      (`score=38 threshold=35 [duration=9m(+18) self-reported-time(+20)]`
+      → notification posted), using a real ~9-minute continuous session,
+      not a shortened one. Testing surfaced a real Android constraint: the
+      WebView's devtools bridge (used all session for on-device
+      verification) gets throttled once the app backgrounds behind another
+      app, which also ruled out `adb shell cmd jobscheduler run -f` as a
+      reliable trigger (its internal job ID changes across app restarts).
+      Worked around by testing with Reclaim itself as the foregrounded
+      session (never excluded from scoring, unlike the launcher) so the
+      WebView stayed responsive throughout.
+
+      Found and fixed a real bug shared with `ForegroundAppMonitor`'s
+      pattern along the way: the per-session dedup marker was written
+      before checking notification permission, so a session crossing the
+      threshold before permission was granted would silently never notify
+      even after granting it later — fixed here; `ForegroundAppMonitor`
+      still has the same latent bug, not touched since it's a debug tool,
+      not a shipped feature.
+
+      **Planned v2, not built yet:** a small deterministic feedback loop
+      that nudges these weights based on whether a check-in shortly after
+      a notification was "resisted" or "slipped" — genuinely adaptive
+      without needing real ML or the on-device LLM anywhere near numeric
+      tuning. Needs real usage data to mean anything, so it's next once
+      this version has actually run against real behavior for a while, not
+      before.
 - [x] **Fixed a real architectural bug: two divergent tool implementations.**
       `ResourcesAgent` (Basic mode, used when the on-device AI isn't
       downloaded) had its own hand-duplicated copy of every resource
@@ -256,3 +293,15 @@ reality:
   just hands off to the phone's own dialer. Deliberately chosen over any
   form of automatic messaging, which would have required leaving the
   device and broken the privacy commitment above.
+- **Risk scoring is rule-based, not ML — and the on-device LLM never
+  touches the weights.** The user explicitly floated "possibly ML." Ruled
+  out for a concrete reason, not caution: a single person's check-in
+  history is dozens of entries at most, far too little to train anything,
+  and there's no server-side training pipeline in an on-device-only app
+  anyway. Using the on-device chat model to "reason about" weight
+  adjustments was considered and also rejected — nudging a number is a
+  math problem, not a language problem, and an LLM-driven adjustment
+  process would be unreliable and hard to debug or trust. The planned v2
+  adaptive layer (see the risk-nudge checklist item above) is a small
+  deterministic feedback rule instead, in the same spirit as everything
+  else in this system: explainable code, not vibes.

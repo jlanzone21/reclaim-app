@@ -57,14 +57,14 @@ const LocalSignals = (function () {
     return apps || [];
   }
 
-  // The other exception to "read-only": the accountability partner's name/phone is entered in
-  // the WebView (db.js/UserPreferencesStore), but RiskNudgeMonitor needs to read it from a
-  // background Worker where the WebView isn't loaded — same reasoning as the allowlist being
-  // native-owned. This just mirrors a copy into LocalSignalsDb's app_meta; db.js stays the
-  // editable source of truth.
-  async function setAccountabilityContact(name, phone) {
+  // The other exception to "read-only": this data is entered/derived in the WebView
+  // (db.js/UserPreferencesStore, CheckInStore), but RiskNudgeMonitor's scoring needs to read it
+  // from a background Worker where the WebView isn't loaded — same reasoning as the allowlist
+  // being native-owned. This just mirrors a copy into LocalSignalsDb's app_meta; db.js stays the
+  // editable source of truth. See RiskProfile.syncToNative (riskProfile.js) for the caller.
+  async function syncRiskContext(payload) {
     if (!available()) return;
-    await plugin().setAccountabilityContact({ name: name || "", phone: phone || "" });
+    await plugin().syncRiskContext(payload);
   }
 
   return {
@@ -76,6 +76,6 @@ const LocalSignals = (function () {
     addAllowlistApp,
     removeAllowlistApp,
     getInstalledApps,
-    setAccountabilityContact,
+    syncRiskContext,
   };
 })();

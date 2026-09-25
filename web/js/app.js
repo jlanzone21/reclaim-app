@@ -139,9 +139,10 @@
       CheckInView.init();
       InsightsView.init();
       PreferencesView.init();
-      // Covers data saved before RiskNudgeMonitor's native mirror existed -- ordinary saves push
-      // this themselves (see userPreferencesStore.js), this just catches anyone already past that.
-      UserPreferencesStore.syncAccountabilityContactToNative(UserPreferencesStore.get());
+      // Covers data that predates RiskNudgeMonitor's native mirror, or check-ins logged before
+      // this boot -- ordinary saves/check-ins push this themselves (see userPreferencesStore.js,
+      // checkinStore.js), this just catches anyone already past that.
+      RiskProfile.syncToNative();
       busy = false;
       input.placeholder = "Tell me what's going on…";
       updateSendState();

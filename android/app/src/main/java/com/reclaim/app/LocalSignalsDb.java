@@ -126,6 +126,21 @@ final class LocalSignalsDb extends SQLiteOpenHelper {
         );
     }
 
+    // RiskScorer's solitude proxy: the most recent periodic sample's nearby-device count bucket,
+    // however old -- there's no fresher signal to fall back to, and a somewhat-stale read is
+    // better than treating "alone" as unknown every time.
+    String mostRecentNearbyDeviceBucket() {
+        Cursor c = getReadableDatabase().rawQuery(
+            "SELECT nearby_device_bucket FROM usage_samples WHERE nearby_device_bucket IS NOT NULL ORDER BY sampled_at DESC LIMIT 1",
+            null
+        );
+        try {
+            return c.moveToFirst() ? c.getString(0) : null;
+        } finally {
+            c.close();
+        }
+    }
+
     // ---- app_events ----
 
     long insertAppEvent(String packageName, String appLabel, String occurredAt) {
