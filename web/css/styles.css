@@ -1001,6 +1001,16 @@ button.conn-status:hover {
   margin-top: 2px;
 }
 
+a.resource-contact {
+  display: inline-block;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a.resource-contact:active {
+  text-decoration: underline;
+}
+
 .sample-tag {
   display: inline-block;
   font-size: 9.5px;

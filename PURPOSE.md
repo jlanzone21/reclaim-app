@@ -152,6 +152,24 @@ reality:
       granted would silently never notify even after granting it later —
       fixed here; `ForegroundAppMonitor` still has the same latent bug,
       not touched since it's a debug tool, not a shipped feature.
+- [x] **Fixed a real architectural bug: two divergent tool implementations.**
+      `ResourcesAgent` (Basic mode, used when the on-device AI isn't
+      downloaded) had its own hand-duplicated copy of every resource
+      lookup, instead of calling the shared `executeAgentTool`
+      (agentTools.js) that `ReclaimAgent` uses. This is exactly how the
+      accountability-partner fix silently failed to reach the user the
+      first time — fixed in `agentTools.js` alone, `ResourcesAgent` kept
+      running its own old copy. `ResourcesAgent._planResponse` now calls
+      `executeAgentTool` for every branch's data, keeping only its own
+      (deliberately broader) regex intent-matching and scripted reply
+      text — one source of truth for what a tool actually returns,
+      regardless of which mode is answering. `accountability_match`
+      itself now checks `UserPreferencesStore` directly (the real
+      accountability partner, or a prompt to add one) instead of
+      returning sample `accountability_program` resources — deterministic,
+      not dependent on the model choosing to use it. Confirmed real small
+      groups already pull from Supabase correctly (36 real entries, 0
+      flagged as sample) — nothing to fix there.
 
 ## Decisions worth remembering
 

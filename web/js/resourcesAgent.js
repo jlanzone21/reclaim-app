@@ -56,14 +56,19 @@ class ResourcesAgent {
     return CRISIS_PATTERNS.some((pattern) => pattern.test(text));
   }
 
-  // async: small_group_finder reads live from Supabase (ResourceRepo.getSmallGroups) -- every
-  // other branch still resolves synchronously.
+  // Basic mode's own regex-based intent matching (deliberately broader than agentTools.js's
+  // AGENT_TOOL_DEFS patterns, tuned for a scripted fallback with no model to lean on) decides
+  // WHICH tool to call, but every tool's actual data now comes from the single shared
+  // executeAgentTool (agentTools.js) -- the same function ReclaimAgent uses. This used to be a
+  // hand-duplicated copy of each ResourceRepo call, which is exactly how the two modes drifted:
+  // a fix to one (e.g. accountability_match becoming personal-contact-aware) never reached the
+  // other. One source of truth for what a tool actually returns, from here on.
   async _planResponse(userText) {
     const lower = userText.toLowerCase();
     const theme = inferTheme(lower);
 
     if (/\b(verse|scripture|bible verse|passage|word of god)\b/.test(lower)) {
-      const match = ResourceRepo.getScripture(theme);
+      const match = await executeAgentTool("scripture_search", { theme });
       return {
         toolCalls: [{ name: "scripture_search", input: { theme }, output: match, delay: 700 }],
         reply: `${match.title} — "${match.body}" This isn't a quick fix, but it's worth sitting with. Would a sermon on this, a devotional, or a small group to process it with be helpful?`,
@@ -71,15 +76,15 @@ class ResourcesAgent {
     }
 
     if (/\b(bible plan|reading plan|devotional plan)\b/.test(lower)) {
-      const plans = ResourceRepo.getBiblePlans();
+      const output = await executeAgentTool("bible_plan_finder", {});
       return {
-        toolCalls: [{ name: "bible_plan_finder", input: { query: userText }, output: { plans }, delay: 850 }],
+        toolCalls: [{ name: "bible_plan_finder", input: { query: userText }, output, delay: 850 }],
         reply: "Here are a couple of short reading plans. A few minutes a day, over a week or two, tends to land differently than a single passage read once.",
       };
     }
 
     if (/\b(devotional|daily reading|reflection)\b/.test(lower)) {
-      const match = ResourceRepo.getDevotional(theme);
+      const match = await executeAgentTool("devotional_finder", { theme });
       return {
         toolCalls: [{ name: "devotional_finder", input: { theme }, output: match, delay: 700 }],
         reply: `"${match.title}" — ${match.body}`,
@@ -87,52 +92,55 @@ class ResourcesAgent {
     }
 
     if (/\b(article|read about|learn about|explain)\b/.test(lower)) {
-      const articles = ResourceRepo.getArticles();
+      const output = await executeAgentTool("article_finder", {});
       return {
-        toolCalls: [{ name: "article_finder", input: { query: userText }, output: { articles }, delay: 800 }],
+        toolCalls: [{ name: "article_finder", input: { query: userText }, output, delay: 800 }],
         reply: "Here are a few articles that dig into this in more depth (sample content below).",
       };
     }
 
     if (/\b(coping|urges?|cravings?|tempt\w*|about to|technique|what do i do right now|in the moment)\b/.test(lower)) {
-      const mechanisms = ResourceRepo.getCopingMechanisms(theme);
+      const output = await executeAgentTool("coping_toolkit", { theme });
       return {
-        toolCalls: [{ name: "coping_toolkit", input: { theme }, output: { mechanisms }, delay: 650 }],
+        toolCalls: [{ name: "coping_toolkit", input: { theme }, output, delay: 650 }],
         reply: "Here are a few things that can help in the moment, while you also reach out to a real person. None of these replace an accountability partner or counselor — they're just for right now.",
       };
     }
 
     if (/\bgroups?\b|\bcommunity\b/.test(lower)) {
-      const groups = await ResourceRepo.getSmallGroups(userText);
-      if (groups === null) {
+      const output = await executeAgentTool("small_group_finder", { query: userText });
+      if (output.groups === null) {
         return { toolCalls: [], reply: "I couldn't reach the group directory right now — try again once you're online." };
       }
       return {
-        toolCalls: [{ name: "small_group_finder", input: { query: userText }, output: { groups }, delay: 900 }],
+        toolCalls: [{ name: "small_group_finder", input: { query: userText }, output, delay: 900 }],
         reply: "Here are a few real recovery groups. Being physically or regularly present with other people is one of the biggest predictors of lasting recovery — consider reaching out to one this week.",
       };
     }
 
     if (/\b(accountability|partner|someone to check|check on me)\b/.test(lower)) {
-      const programs = ResourceRepo.getAccountabilityPrograms();
+      const output = await executeAgentTool("accountability_match", {});
+      const reply = output.hasContact
+        ? `Have you talked to ${output.name} about this? That's exactly what they're there for.`
+        : "Having someone who knows and regularly checks in with you changes the odds a lot. Add your accountability partner in Privacy so Reclaim can bring up their contact right when you need it.";
       return {
-        toolCalls: [{ name: "accountability_match", input: { query: userText }, output: { programs }, delay: 850 }],
-        reply: "Having someone who knows and regularly checks in with you changes the odds a lot. Here are a couple of ways to set that up — a real accountability partner isn't optional in recovery, it's one of the most protective things you can have.",
+        toolCalls: [{ name: "accountability_match", input: { query: userText }, output, delay: 850 }],
+        reply,
       };
     }
 
     if (/\b(sermon|message|talk|preach)\b/.test(lower)) {
-      const sermons = ResourceRepo.getSermons();
+      const output = await executeAgentTool("sermon_library", {});
       return {
-        toolCalls: [{ name: "sermon_library", input: { query: userText }, output: { sermons }, delay: 800 }],
+        toolCalls: [{ name: "sermon_library", input: { query: userText }, output, delay: 800 }],
         reply: "A few sermons that speak directly to this (sample links below). Listening with someone else, or talking about it afterward with your small group, tends to land a lot deeper than listening alone.",
       };
     }
 
     if (/\b(counsel|counselor|counseling|therapist|therapy|professional help)\b/.test(lower)) {
-      const centers = ResourceRepo.getCounselingCenters();
+      const output = await executeAgentTool("counseling_directory", {});
       return {
-        toolCalls: [{ name: "counseling_directory", input: { query: userText }, output: { centers }, delay: 900 }],
+        toolCalls: [{ name: "counseling_directory", input: { query: userText }, output, delay: 900 }],
         reply: "That's a really good instinct. A licensed counselor can help in ways I'm not able to — here are a few starting points (sample data, swap in real local or telehealth providers). It's worth calling even just to ask questions.",
       };
     }

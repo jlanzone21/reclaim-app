@@ -418,16 +418,25 @@
     }
 
     if (name === "accountability_match") {
-      output.programs.forEach((p) => {
-        const card = el("div", "resource-item");
-        const head = el("div", "resource-title");
-        head.appendChild(document.createTextNode(p.title + " "));
-        sampleTagIf(p).forEach((n) => head.appendChild(n));
-        card.appendChild(head);
-        card.appendChild(el("div", "resource-line", p.body));
-        card.appendChild(el("div", "resource-contact", p.contact));
-        wrap.appendChild(card);
-      });
+      const card = el("div", "resource-item");
+      if (output.hasContact) {
+        card.appendChild(el("div", "resource-title", output.name));
+        const call = document.createElement("a");
+        call.className = "resource-contact";
+        call.href = `tel:${output.phone.replace(/[^\d+]/g, "")}`;
+        call.textContent = `Call ${output.name}`;
+        card.appendChild(call);
+      } else {
+        card.appendChild(el("div", "resource-line", "You haven't added an accountability partner yet."));
+        const addBtn = document.createElement("button");
+        addBtn.type = "button";
+        addBtn.className = "secondary-btn";
+        addBtn.style.marginTop = "8px";
+        addBtn.textContent = "Add one now";
+        addBtn.addEventListener("click", () => PreferencesView.open("edit"));
+        card.appendChild(addBtn);
+      }
+      wrap.appendChild(card);
       return wrap;
     }
 

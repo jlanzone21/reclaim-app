@@ -44,7 +44,7 @@ const AGENT_TOOL_DEFS = [
   },
   {
     name: "accountability_match",
-    intro: "I found some accountability options for you.",
+    intro: "Let's look at your accountability partner.",
     pattern: /\baccountab\w*/,
   },
   {
@@ -120,8 +120,14 @@ async function executeAgentTool(name, input) {
       return { mechanisms: ResourceRepo.getCopingMechanisms(theme) };
     case "small_group_finder":
       return { groups: await ResourceRepo.getSmallGroups(input && input.query) };
-    case "accountability_match":
-      return { programs: ResourceRepo.getAccountabilityPrograms() };
+    case "accountability_match": {
+      // Deterministic, not model-dependent: this is real personal data (or the deliberate
+      // absence of it), never a generic sample list -- see PURPOSE.md.
+      const prefs = UserPreferencesStore.get();
+      return prefs.accountability_name && prefs.accountability_phone
+        ? { hasContact: true, name: prefs.accountability_name, phone: prefs.accountability_phone }
+        : { hasContact: false };
+    }
     case "sermon_library":
       return { sermons: ResourceRepo.getSermons() };
     case "counseling_directory":
