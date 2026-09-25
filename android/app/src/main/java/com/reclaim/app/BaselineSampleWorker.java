@@ -120,9 +120,15 @@ public class BaselineSampleWorker extends Worker {
         long start = end - 60L * 60 * 1000;
         List<UsageStats> stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, end);
         if (stats == null || stats.isEmpty()) return null;
+        // Excluded: being in Reclaim itself isn't a distraction signal, and it otherwise tends to
+        // win this "most foreground time in the last hour" comparison during normal use of the app.
+        // The launcher is excluded too -- going home isn't "using an app".
+        String ownPackage = getApplicationContext().getPackageName();
         UsageStats top = null;
         for (UsageStats s : stats) {
             if (s.getTotalTimeInForeground() <= 0) continue;
+            if (s.getPackageName().equals(ownPackage)) continue;
+            if (LocalSignalsDb.isLauncherPackage(getApplicationContext(), s.getPackageName())) continue;
             if (top == null || s.getTotalTimeInForeground() > top.getTotalTimeInForeground()) top = s;
         }
         return top != null ? top.getPackageName() : null;

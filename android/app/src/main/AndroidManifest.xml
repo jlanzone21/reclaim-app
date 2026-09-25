@@ -52,10 +52,8 @@
 
         <!-- Accessibility: special access, no runtime dialog — the user
              grants this manually via Settings.ACTION_ACCESSIBILITY_SETTINGS
-             (see AccessibilityPlugin.java). accessibility_service_config.xml
-             currently restricts which apps this service even receives
-             events from to browsers (Phase 1); Phase 4 widens this
-             system-wide — see PURPOSE.md. -->
+             (see AccessibilityPlugin.java). System-wide as of Phase 4 —
+             see accessibility_service_config.xml and PURPOSE.md. -->
         <service
             android:name=".TrackingAccessibilityService"
             android:exported="false"
@@ -125,6 +123,13 @@
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <!-- Separate from LAUNCHER above — queries visibility is granted per exact intent
+             signature, not per action, so LocalSignalsDb.isLauncherPackage's HOME-intent
+             resolution needs its own entry or it silently sees nothing and always returns false. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
         </intent>
     </queries>
 </manifest>

@@ -10,6 +10,7 @@ import android.view.accessibility.AccessibilityNodeInfo;
 
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -21,12 +22,18 @@ import java.util.Map;
  * restriction was removed so this service is system-wide. Every real window switch records one
  * identity-only app_events row (package + resolved label + timestamp) via recordAppOpen() below
  * -- never content -- deduped against the immediately-previous package so staying in one app
- * doesn't spam rows. See PURPOSE.md's "Decisions worth remembering" for why this file was edited
- * by hand rather than by Claude Code directly.
+ * doesn't spam rows.
  *
- * Purely passive otherwise: browser-domain detection still only ever writes to its own
- * SharedPreferences cache. Two things read that -- AccessibilityPlugin, for the foreground JS
- * context, and the periodic sampler, which folds it into every background checkin.
+ * Phase 5 (allowlist text capture + keyword matching): for apps on the user-editable allowlist
+ * only (LocalSignalsDb.isAllowlisted), maybeCaptureText() walks the same AccessibilityNodeInfo
+ * tree screen readers use, joins the visible text, and stores it verbatim in page_captures --
+ * raw text is kept on-device by explicit user choice (see PURPOSE.md), not discarded after
+ * matching. Every match against KEYWORDS gets one keyword_matches row pointing back at that
+ * capture. Non-allowlisted apps never reach this path -- they still get the identity-only
+ * app-open event above, nothing else.
+ *
+ * This file was edited by hand rather than by Claude Code directly for both Phase 4 and Phase 5 --
+ * see PURPOSE.md's "Decisions worth remembering" for why.
  */
 @SuppressWarnings("deprecation") // AccessibilityNodeInfo.recycle() — deprecated on API 33+, still required below it (minSdk 24)
 public class TrackingAccessibilityService extends AccessibilityService {
@@ -34,9 +41,10 @@ public class TrackingAccessibilityService extends AccessibilityService {
     static final String KEY_DOMAIN = "detected_domain";
     static final String KEY_DETECTED_AT = "detected_at";
 
-    // Service instance is effectively a singleton while bound, so an instance field is enough to
-    // dedupe consecutive window-state-changed events for the same foreground app.
+    // Service instance is effectively a singleton while bound, so instance fields are enough to
+    // dedupe consecutive events for the same foreground app / same visible text.
     private String lastLoggedPackage;
+    private String lastCapturedText;
 
     // Best-effort: real device address-bar view-ids, which can shift between browser versions.
     // onAccessibilityEvent() falls back to a generic scan when a specific id no longer matches.
@@ -50,6 +58,33 @@ public class TrackingAccessibilityService extends AccessibilityService {
         ADDRESS_BAR_IDS.put("com.brave.browser", "com.brave.browser:id/url_bar");
     }
 
+    // Starter keyword list (plan says: hardcoded for now, editable list is a fast follow, not a
+    // blocker to shipping the pipeline). Matched as a lowercase substring against captured text.
+    // Category is stored alongside each match so Insights/future UI can group by kind later.
+    private static final Map<String, String> KEYWORDS = new HashMap<>();
+    static {
+        KEYWORDS.put("porn", "explicit_content");
+        KEYWORDS.put("pornography", "explicit_content");
+        KEYWORDS.put("xxx", "explicit_content");
+        KEYWORDS.put("nsfw", "explicit_content");
+        KEYWORDS.put("nude", "explicit_content");
+        KEYWORDS.put("nudes", "explicit_content");
+        KEYWORDS.put("hentai", "explicit_content");
+        KEYWORDS.put("erotic", "explicit_content");
+        KEYWORDS.put("erotica", "explicit_content");
+        KEYWORDS.put("fetish", "explicit_content");
+        KEYWORDS.put("adult video", "explicit_content");
+        KEYWORDS.put("adult film", "explicit_content");
+        KEYWORDS.put("sexting", "explicit_content");
+        KEYWORDS.put("onlyfans", "adult_site");
+        KEYWORDS.put("pornhub", "adult_site");
+        KEYWORDS.put("xvideos", "adult_site");
+        KEYWORDS.put("xhamster", "adult_site");
+        KEYWORDS.put("chaturbate", "adult_site");
+        KEYWORDS.put("escort", "adult_site");
+        KEYWORDS.put("strip club", "adult_site");
+    }
+
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         CharSequence pkg = event.getPackageName();
@@ -58,6 +93,9 @@ public class TrackingAccessibilityService extends AccessibilityService {
 
         if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             recordAppOpen(packageName);
+        }
+        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            maybeCaptureText(packageName);
         }
 
         AccessibilityNodeInfo root = getRootInActiveWindow();
@@ -78,8 +116,12 @@ public class TrackingAccessibilityService extends AccessibilityService {
     }
 
     // Identity-only: package + resolved label + timestamp. Never content. Deduped so staying in
-    // one app doesn't write a row on every window-state blip within that same app.
+    // one app doesn't write a row on every window-state blip within that same app. Excludes
+    // Reclaim itself (not a distraction signal) and the device's launcher (going home isn't
+    // "opening an app").
     private void recordAppOpen(String packageName) {
+        if (packageName.equals(getPackageName())) return;
+        if (LocalSignalsDb.isLauncherPackage(this, packageName)) return;
         if (packageName.equals(lastLoggedPackage)) return;
         lastLoggedPackage = packageName;
         String label = resolveLabel(packageName);
@@ -92,6 +134,57 @@ public class TrackingAccessibilityService extends AccessibilityService {
             return pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString();
         } catch (PackageManager.NameNotFoundException e) {
             return packageName;
+        }
+    }
+
+    // Allowlist-gated: returns immediately for any app the user hasn't explicitly added. Walks
+    // the node tree for visible text, skips if it's identical to the last capture (avoids writing
+    // duplicate rows when a content-changed event fires without anything actually changing),
+    // stores the raw text, then checks it against KEYWORDS.
+    private void maybeCaptureText(String packageName) {
+        if (!LocalSignalsDb.getInstance(this).isAllowlisted(packageName)) return;
+
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return;
+
+        String text;
+        try {
+            StringBuilder sb = new StringBuilder();
+            collectText(root, sb, 0);
+            text = sb.toString().trim();
+        } finally {
+            root.recycle();
+        }
+
+        if (text.isEmpty() || text.equals(lastCapturedText)) return;
+        lastCapturedText = text;
+
+        String capturedAt = LocalSignalsDb.isoNow();
+        long captureId = LocalSignalsDb.getInstance(this).insertPageCapture(packageName, text, capturedAt);
+        checkKeywords(packageName, text, captureId, capturedAt);
+    }
+
+    private void collectText(AccessibilityNodeInfo node, StringBuilder sb, int depth) {
+        if (node == null || depth > 40) return;
+        if (node.getText() != null) sb.append(node.getText()).append(' ');
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child == null) continue;
+            try {
+                collectText(child, sb, depth + 1);
+            } finally {
+                child.recycle();
+            }
+        }
+    }
+
+    private void checkKeywords(String packageName, String text, long captureId, String occurredAt) {
+        String lower = text.toLowerCase(Locale.US);
+        LocalSignalsDb db = LocalSignalsDb.getInstance(this);
+        for (Map.Entry<String, String> entry : KEYWORDS.entrySet()) {
+            if (lower.contains(entry.getKey())) {
+                db.insertKeywordMatch(packageName, entry.getKey(), entry.getValue(), captureId, occurredAt);
+            }
         }
     }
 

@@ -2,7 +2,9 @@ package com.reclaim.app;
 
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
@@ -235,6 +237,18 @@ final class LocalSignalsDb extends SQLiteOpenHelper {
     }
 
     // ---- shared helpers ----
+
+    // A launcher package varies by device/manufacturer (Pixel Launcher, One UI Home, Nova, ...),
+    // so this resolves it dynamically via the HOME intent rather than hardcoding one -- the home
+    // screen showing up as "foreground app" isn't a useful signal on any device, not just this one.
+    static boolean isLauncherPackage(Context ctx, String packageName) {
+        PackageManager pm = ctx.getPackageManager();
+        Intent homeIntent = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);
+        for (ResolveInfo info : pm.queryIntentActivities(homeIntent, PackageManager.MATCH_ALL)) {
+            if (info.activityInfo.packageName.equals(packageName)) return true;
+        }
+        return false;
+    }
 
     // yyyy-MM-dd'T'HH:mm:ss.SSS'Z' by hand rather than java.time.Instant: that needs API 26+
     // (or desugaring, not enabled here), and minSdk is 24 -- same reasoning as reclaim-beta's

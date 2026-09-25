@@ -191,13 +191,17 @@ const InsightsView = (function () {
 
     renderActivityList(
       els.usageList,
-      samples.map((s) => ({
-        when: s.sampled_at,
-        main: s.top_app_package ? labelFor(s.top_app_package) : "(no app permission)",
-        detail: [s.detected_domain, s.recent_notification_package && labelFor(s.recent_notification_package)]
-          .filter(Boolean)
-          .join(" · "),
-      })),
+      samples.map((s) => {
+        // The domain is more specific and more useful than the app label -- when we know it
+        // (browser was open and detected), lead with it and demote the app label to detail.
+        const appLabel = s.top_app_package ? labelFor(s.top_app_package) : null;
+        const notifLabel = s.recent_notification_package ? labelFor(s.recent_notification_package) : null;
+        return {
+          when: s.sampled_at,
+          main: s.detected_domain || appLabel || "(no app permission)",
+          detail: [s.detected_domain && appLabel, notifLabel].filter(Boolean).join(" · "),
+        };
+      }),
       "No background samples yet — grant permissions and turn on background sampling in Privacy"
     );
 
