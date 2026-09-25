@@ -116,10 +116,6 @@ const ResourceRepo = (function () {
     }
   }
 
-  function getAccountabilityPrograms() {
-    return byType("accountability_program");
-  }
-
   function getCounselingCenters() {
     return byType("counseling_center");
   }
@@ -132,7 +128,6 @@ const ResourceRepo = (function () {
     getCopingMechanisms,
     getBiblePlans,
     getSmallGroups,
-    getAccountabilityPrograms,
     getCounselingCenters,
   };
 })();

@@ -78,7 +78,7 @@ const DB = (function () {
   // Bump whenever SEED_RESOURCES/SEED_BIBLE_PLANS content changes materially.
   // ensureSeeded() re-syncs placeholder (is_sample=1) content up to this
   // version without ever touching checkins or user-added (is_sample=0) rows.
-  const CURRENT_SEED_VERSION = 4;
+  const CURRENT_SEED_VERSION = 5;
 
   let sqlJs = null;
   let db = null;

@@ -89,11 +89,9 @@ const SEED_RESOURCES = [
   // No small_group rows here anymore: real groups now live in Supabase (see
   // ResourceRepo.getSmallGroups and scripts/import-small-groups.mjs), read live, not seeded locally.
 
-  // ---- accountability programs ----
-  { type: "accountability_program", title: "Reclaim Accountability Partner Matching", body: "Pairs you with a trained, same-gender accountability partner for regular check-ins.", contact: "(555) 340-9981", is_sample: 1 },
-  { type: "accountability_program", title: "Covenant Eyes-style Accountability Software", body: "Screen accountability software that sends activity reports to a partner you choose.", contact: "example-accountability.test", is_sample: 1 },
-  { type: "accountability_program", title: "Trusted Friend Check-In Network", body: "A simple, low-tech option: a rotating list of volunteers willing to receive a text or call check-in from someone they don't know personally, no software required.", contact: "(555) 276-4420", is_sample: 1 },
-  { type: "accountability_program", title: "Ministry Mentor Program", body: "Pairs you with an older, more experienced mentor (not just a peer) for longer-term accountability and guidance, typically meeting every other week.", contact: "(555) 918-3367", is_sample: 1 },
+  // No accountability_program rows here anymore: the "Accountability partner" tool now checks
+  // UserPreferencesStore directly (the person's real partner, or a prompt to add one) instead of
+  // a generic sample program list -- see PURPOSE.md.
 
   // ---- counseling centers ----
   { type: "counseling_center", title: "Grace & Truth Counseling Center", subtitle: "Faith-based licensed counseling", area: "Example — Grove City, PA", contact: "(555) 412-8890", is_sample: 1 },
