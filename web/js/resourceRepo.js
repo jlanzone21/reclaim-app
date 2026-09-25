@@ -1,9 +1,11 @@
 /**
- * Query layer over the resources table (see db.js). Everything here is
- * synchronous — sql.js runs entirely in-memory/WASM, so once DB.init() has
- * resolved these calls don't touch disk or the network. The one exception is
- * getSmallGroups(), which reads live from Supabase instead — see its own
- * comment for why.
+ * Query layer over the resources table (see db.js). Scripture, devotionals, coping techniques,
+ * and Bible plans are the app's own written content, so those stay synchronous against the local
+ * sql.js copy. Small groups, sermons, articles, and counseling centers are all shared, publicly-
+ * sourced directory content instead — real orgs/people with real contacts that go stale the
+ * moment a link or number changes — so those four all read live from Supabase, never a local
+ * copy. See getSmallGroups' own comment for the fuller reasoning; the other three follow it
+ * exactly via fromSupabase() below.
  */
 const US_STATES = {
   alabama: "AL", alaska: "AK", arizona: "AZ", arkansas: "AR", california: "CA", colorado: "CO",
@@ -55,12 +57,12 @@ const ResourceRepo = (function () {
     return randomByTheme("scripture", theme);
   }
 
-  function getSermons() {
-    return byType("sermon");
+  async function getSermons() {
+    return fromSupabase("sermon");
   }
 
-  function getArticles() {
-    return byType("article");
+  async function getArticles() {
+    return fromSupabase("article");
   }
 
   function getDevotional(theme) {
@@ -94,30 +96,34 @@ const ResourceRepo = (function () {
     });
   }
 
-  // Reads live from Supabase, not local SQLite: real small groups are shared, publicly-sourced
-  // content (not personal data), and this repo's local copy would go stale the moment a group's
-  // schedule or contact changes. Deliberately no on-device fallback -- see README's "Data storage".
-  //
-  // Capped at 5 (matches the coping-toolkit precedent: a long list in the middle of a hard moment
-  // overwhelms more than it helps) and filtered to a mentioned state when there is one, so "sort
-  // through quickly" actually happens instead of returning all 36+ nationwide entries.
-  //
-  // Returns null on failure (network down, Supabase unreachable) so the caller can show a short
-  // "couldn't reach the group directory" line instead of an empty or broken card.
+  // Filtered to a mentioned state when there is one, so "sort through quickly" actually happens
+  // instead of returning all 36+ nationwide entries. See getSmallGroups' comment for why this
+  // reads live rather than from a local copy.
   async function getSmallGroups(query, limit = 5) {
     const state = detectState(query);
-    try {
-      const rows = await SupabaseClient.queryResources("small_group", state ? { state } : {});
-      if (state && !rows.length) return getSmallGroups(null, limit); // no match in that state -- fall back to a nationwide sample
-      return shuffle(rows).slice(0, limit);
-    } catch (e) {
-      console.warn("Couldn't reach Supabase for small groups:", e);
-      return null;
-    }
+    const rows = await fromSupabase("small_group", { state, limit });
+    if (rows === null) return null;
+    if (state && !rows.length) return getSmallGroups(null, limit); // no match in that state -- fall back to a nationwide sample
+    return rows;
   }
 
-  function getCounselingCenters() {
-    return byType("counseling_center");
+  async function getCounselingCenters() {
+    return fromSupabase("counseling_center");
+  }
+
+  // Shared by getSermons/getArticles/getCounselingCenters/getSmallGroups: capped at 5 and shuffled
+  // (matches the coping-toolkit precedent -- a long list in the middle of a hard moment overwhelms
+  // more than it helps) and returns null on failure (network down, Supabase unreachable) so the
+  // caller can show a short "couldn't reach" line instead of an empty or broken card. Deliberately
+  // no on-device fallback for any of these -- see README's "Data storage".
+  async function fromSupabase(type, { state, limit = 5 } = {}) {
+    try {
+      const rows = await SupabaseClient.queryResources(type, state ? { state } : {});
+      return shuffle(rows).slice(0, limit);
+    } catch (e) {
+      console.warn(`Couldn't reach Supabase for ${type}:`, e);
+      return null;
+    }
   }
 
   return {

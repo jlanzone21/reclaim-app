@@ -170,6 +170,30 @@ reality:
       not dependent on the model choosing to use it. Confirmed real small
       groups already pull from Supabase correctly (36 real entries, 0
       flagged as sample) — nothing to fix there.
+- [x] **Sermons, articles, and counseling centers moved to Supabase, real
+      data.** Same reasoning as small_group from the start: shared,
+      publicly-sourced content goes stale the moment a link or number
+      changes, so a local seeded copy was always the wrong shape for it —
+      it just took this long to actually replace the placeholder rows.
+      Researched real candidates via live web search (not recalled from
+      memory), user reviewed and approved the list, inserted into the
+      same Supabase `resources` table small_group already uses, same
+      `verification_status: "public_source_only"` convention on `details`
+      that small_group's real rows already use. `ResourceRepo.getSermons/
+      getArticles/getCounselingCenters` now all read live through a shared
+      `fromSupabase()` helper (capped at 5, shuffled, returns `null` on
+      failure) — the exact same shape `getSmallGroups` already had.
+      Along the way: fixed a real bug where `null` on a Supabase failure
+      would throw inside `renderToolResult`'s `.forEach` instead of
+      showing a "couldn't reach" message — this gap existed for
+      `small_group_finder` too, on `ReclaimAgent`'s path specifically
+      (only `ResourcesAgent`'s Basic-mode path had ever handled it). Local
+      sample rows for these three types removed from `seedData.js`,
+      `CURRENT_SEED_VERSION` bumped so existing installs clear them.
+      Deliberately excluded Matt Chandler / The Village Church from the
+      candidates despite being an obvious name for this topic — search
+      turned up real coverage of a child-sexual-abuse cover-up
+      controversy there.
 
 ## Decisions worth remembering
 

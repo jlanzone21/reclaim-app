@@ -103,8 +103,9 @@ Reply in 1 to 3 short plain sentences, like a caring friend, with at most one ge
 - If they sound hopeless, mention the 988 Lifeline is free by call or text, anytime.
 - If a message has nothing to do with their life, faith, or recovery, don't answer it. Kindly say you're only here for those.`;
 
-// async because small_group_finder reads live from Supabase (see ResourceRepo.getSmallGroups) --
-// every other branch below still resolves synchronously, `await`ing a non-promise is a no-op.
+// async because small_group_finder/sermon_library/article_finder/counseling_directory all read
+// live from Supabase now (see ResourceRepo) -- every other branch below still resolves
+// synchronously, `await`ing a non-promise is a no-op.
 async function executeAgentTool(name, input) {
   const theme = input && input.theme ? input.theme : null;
   switch (name) {
@@ -115,7 +116,7 @@ async function executeAgentTool(name, input) {
     case "bible_plan_finder":
       return { plans: ResourceRepo.getBiblePlans() };
     case "article_finder":
-      return { articles: ResourceRepo.getArticles() };
+      return { articles: await ResourceRepo.getArticles() };
     case "coping_toolkit":
       return { mechanisms: ResourceRepo.getCopingMechanisms(theme) };
     case "small_group_finder":
@@ -129,9 +130,9 @@ async function executeAgentTool(name, input) {
         : { hasContact: false };
     }
     case "sermon_library":
-      return { sermons: ResourceRepo.getSermons() };
+      return { sermons: await ResourceRepo.getSermons() };
     case "counseling_directory":
-      return { centers: ResourceRepo.getCounselingCenters() };
+      return { centers: await ResourceRepo.getCounselingCenters() };
     default:
       return { error: `Unknown tool: ${name}` };
   }

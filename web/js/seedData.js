@@ -36,29 +36,11 @@ const SEED_RESOURCES = [
   { type: "scripture", title: "Hebrews 4:15-16", body: "For we do not have a high priest who is unable to empathize with our weaknesses, but we have one who has been tempted in every way, just as we are — yet he did not sin. Let us then approach God's throne of grace with confidence, so that we may receive mercy and find grace to help us in our time of need.", tags: ["grace", "struggle", "temptation"] },
   { type: "scripture", title: "Psalm 51:10", body: "Create in me a pure heart, O God, and renew a steadfast spirit within me.", tags: ["renewal", "confession", "growth"] },
 
-  // ---- sermons ----
-  { type: "sermon", title: "Freedom from Shame", subtitle: "Example Pastor A. Reyes · Restored", url: "#", duration_min: 34, tags: ["shame", "freedom"], is_sample: 1 },
-  { type: "sermon", title: "Walking in the Light", subtitle: "Example Pastor J. Whitfield · Honest Faith", url: "#", duration_min: 28, tags: ["honesty", "accountability"], is_sample: 1 },
-  { type: "sermon", title: "You Are Not Your Worst Day", subtitle: "Example Pastor M. Osei · Identity in Christ", url: "#", duration_min: 41, tags: ["identity", "shame"], is_sample: 1 },
-  { type: "sermon", title: "When Willpower Isn't Enough", subtitle: "Example Pastor R. Diaz · Grace Over Grit", url: "#", duration_min: 37, tags: ["struggle", "grace", "relapse"], is_sample: 1 },
-  { type: "sermon", title: "The Power of Being Known", subtitle: "Example Pastor L. Kim · Community", url: "#", duration_min: 31, tags: ["community", "accountability", "loneliness"], is_sample: 1 },
-  { type: "sermon", title: "Fighting for Purity", subtitle: "Example Pastor T. Brooks · Battle Ready", url: "#", duration_min: 39, tags: ["triggers", "temptation"], is_sample: 1 },
-  { type: "sermon", title: "The Loneliness Trap", subtitle: "Example Pastor S. Nguyen · Better Together", url: "#", duration_min: 33, tags: ["loneliness", "community"], is_sample: 1 },
-  { type: "sermon", title: "From Shame to Sonship", subtitle: "Example Pastor D. Coleman · Identity in Christ", url: "#", duration_min: 36, tags: ["shame", "identity"], is_sample: 1 },
-  { type: "sermon", title: "Small Steps, Real Freedom", subtitle: "Example Pastor A. Reyes · Restored", url: "#", duration_min: 30, tags: ["perseverance", "growth"], is_sample: 1 },
-  { type: "sermon", title: "What Grace Actually Means", subtitle: "Example Pastor J. Whitfield · Honest Faith", url: "#", duration_min: 27, tags: ["grace", "relapse"], is_sample: 1 },
+  // No sermon rows here anymore: real sermons now live in Supabase, read live, not seeded
+  // locally -- same reasoning as small_group. See ResourceRepo.getSermons / PURPOSE.md.
 
-  // ---- articles ----
-  { type: "article", title: "Understanding the Brain Science of Pornography Addiction", subtitle: "Example author: Dr. S. Patton", body: "A plain-language look at how compulsive pornography use affects the brain's reward pathways, and why willpower alone often isn't enough to break the cycle.", url: "#", tags: ["struggle", "education"], is_sample: 1 },
-  { type: "article", title: "How to Talk to Your Spouse About This Struggle", subtitle: "Example author: C. Bennett, LMFT", body: "Practical guidance for having an honest, non-defensive conversation with a spouse or partner about pornography use — timing, wording, and what to expect.", url: "#", tags: ["community", "honesty", "relationships"], is_sample: 1 },
-  { type: "article", title: "Why Accountability Partners Work", subtitle: "Example author: Reclaim Editorial", body: "The research and reasoning behind why regular check-ins with another person measurably improve recovery outcomes.", url: "#", tags: ["accountability", "community"], is_sample: 1 },
-  { type: "article", title: "Recognizing Your Triggers", subtitle: "Example author: Reclaim Editorial", body: "A guide to identifying the emotional states, times of day, and situations that most often precede a slip — the first step toward interrupting the pattern.", url: "#", tags: ["struggle", "triggers", "relapse"], is_sample: 1 },
-  { type: "article", title: "The Role of Community in Recovery", subtitle: "Example author: Reclaim Editorial", body: "Why isolation is one of the strongest predictors of relapse, and what meaningfully re-engaging with community can look like in practice.", url: "#", tags: ["community", "loneliness"], is_sample: 1 },
-  { type: "article", title: "What the Research Says About Recovery Rates", subtitle: "Example author: Dr. S. Patton", body: "An honest look at what studies actually show about relapse and long-term recovery — and why consistent support structures change the odds more than any single tactic.", url: "#", tags: ["struggle", "education", "hope"], is_sample: 1 },
-  { type: "article", title: "Setting Up Accountability Software the Right Way", subtitle: "Example author: Reclaim Editorial", body: "A practical walkthrough of configuring screen accountability tools so they actually get used — who should receive reports, how often, and how to talk about it upfront.", url: "#", tags: ["accountability", "triggers"], is_sample: 1 },
-  { type: "article", title: "Talking to Your Kids About This (When They're Old Enough)", subtitle: "Example author: C. Bennett, LMFT", body: "Age-appropriate guidance for parents who want to have an honest, non-shaming conversation with older kids or teens about pornography.", url: "#", tags: ["community", "honesty"], is_sample: 1 },
-  { type: "article", title: "When Your Spouse Found Out: A Guide for the First 48 Hours", subtitle: "Example author: C. Bennett, LMFT", body: "What to do and not do in the immediate aftermath of disclosure — for both partners — while bigger conversations and counseling get scheduled.", url: "#", tags: ["community", "honesty", "relationships"], is_sample: 1 },
-  { type: "article", title: "Boredom, Stress, and the Brain's Reward Loop", subtitle: "Example author: Dr. S. Patton", body: "Why boredom and stress are two of the most common relapse triggers, and what's actually happening neurologically when they show up.", url: "#", tags: ["triggers", "stress", "education"], is_sample: 1 },
+  // No article rows here anymore: same reasoning, real articles now live in Supabase. See
+  // ResourceRepo.getArticles / PURPOSE.md.
 
   // ---- devotionals ----
   { type: "devotional", title: "Today's Battle Isn't Yours Alone", body: "A short reflection on 1 Corinthians 10:13 — that every temptation comes with a way out, even when it doesn't feel like it in the moment.", tags: ["temptation", "hope"], is_sample: 1 },
@@ -93,11 +75,8 @@ const SEED_RESOURCES = [
   // UserPreferencesStore directly (the person's real partner, or a prompt to add one) instead of
   // a generic sample program list -- see PURPOSE.md.
 
-  // ---- counseling centers ----
-  { type: "counseling_center", title: "Grace & Truth Counseling Center", subtitle: "Faith-based licensed counseling", area: "Example — Grove City, PA", contact: "(555) 412-8890", is_sample: 1 },
-  { type: "counseling_center", title: "Pure Freedom Telehealth Counseling", subtitle: "Licensed counseling, addiction-informed, telehealth", area: "Example — Nationwide (telehealth)", contact: "(555) 665-3320", is_sample: 1 },
-  { type: "counseling_center", title: "Renewal Family Counseling", subtitle: "Licensed counseling, individual and couples", area: "Example — Columbus, OH", contact: "(555) 704-2298", is_sample: 1 },
-  { type: "counseling_center", title: "Overcomers Telehealth Group Therapy", subtitle: "Licensed group therapy, addiction-focused, telehealth", area: "Example — Nationwide (telehealth)", contact: "(555) 833-5561", is_sample: 1 },
+  // No counseling_center rows here anymore: same reasoning, real counseling directories now live
+  // in Supabase. See ResourceRepo.getCounselingCenters / PURPOSE.md.
 ];
 
 const SEED_BIBLE_PLANS = [

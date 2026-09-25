@@ -93,9 +93,12 @@ class ResourcesAgent {
 
     if (/\b(article|read about|learn about|explain)\b/.test(lower)) {
       const output = await executeAgentTool("article_finder", {});
+      if (output.articles === null) {
+        return { toolCalls: [], reply: "I couldn't reach the article library right now — try again once you're online." };
+      }
       return {
         toolCalls: [{ name: "article_finder", input: { query: userText }, output, delay: 800 }],
-        reply: "Here are a few articles that dig into this in more depth (sample content below).",
+        reply: "Here are a few articles that dig into this in more depth.",
       };
     }
 
@@ -131,17 +134,23 @@ class ResourcesAgent {
 
     if (/\b(sermon|message|talk|preach)\b/.test(lower)) {
       const output = await executeAgentTool("sermon_library", {});
+      if (output.sermons === null) {
+        return { toolCalls: [], reply: "I couldn't reach the sermon library right now — try again once you're online." };
+      }
       return {
         toolCalls: [{ name: "sermon_library", input: { query: userText }, output, delay: 800 }],
-        reply: "A few sermons that speak directly to this (sample links below). Listening with someone else, or talking about it afterward with your small group, tends to land a lot deeper than listening alone.",
+        reply: "A few sermons that speak directly to this. Listening with someone else, or talking about it afterward with your small group, tends to land a lot deeper than listening alone.",
       };
     }
 
     if (/\b(counsel|counselor|counseling|therapist|therapy|professional help)\b/.test(lower)) {
       const output = await executeAgentTool("counseling_directory", {});
+      if (output.centers === null) {
+        return { toolCalls: [], reply: "I couldn't reach the counseling directory right now — try again once you're online." };
+      }
       return {
         toolCalls: [{ name: "counseling_directory", input: { query: userText }, output, delay: 900 }],
-        reply: "That's a really good instinct. A licensed counselor can help in ways I'm not able to — here are a few starting points (sample data, swap in real local or telehealth providers). It's worth calling even just to ask questions.",
+        reply: "That's a really good instinct. A licensed counselor can help in ways I'm not able to — here are a few starting points. It's worth calling even just to ask questions.",
       };
     }
 

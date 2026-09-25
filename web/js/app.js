@@ -342,6 +342,25 @@
     return row.is_sample ? [document.createTextNode(" "), sampleTag()] : [];
   }
 
+  // Shared by every Supabase-backed resource list (small groups, sermons, articles, counseling
+  // centers) for the network-down/Supabase-unreachable case -- ReclaimAgent's path had no handling
+  // for this at all before (only ResourcesAgent's Basic-mode path did, and only for small groups).
+  function unreachableCard(label) {
+    const wrap = document.createElement("div");
+    wrap.appendChild(el("div", "resource-item", `Couldn't reach the ${label} right now — try again once you're online.`));
+    return wrap;
+  }
+
+  function resourceLink(url) {
+    const a = document.createElement("a");
+    a.className = "resource-contact";
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.textContent = url.replace(/^https?:\/\//, "");
+    return a;
+  }
+
   function renderToolResult(name, output) {
     const wrap = document.createElement("div");
 
@@ -379,6 +398,7 @@
     }
 
     if (name === "article_finder") {
+      if (output.articles === null) return unreachableCard("article library");
       output.articles.forEach((a) => {
         const card = el("div", "resource-item");
         const head = el("div", "resource-title");
@@ -387,6 +407,7 @@
         card.appendChild(head);
         if (a.subtitle) card.appendChild(el("div", "resource-line", a.subtitle));
         card.appendChild(el("div", "resource-line", a.body));
+        if (a.url) card.appendChild(resourceLink(a.url));
         wrap.appendChild(card);
       });
       return wrap;
@@ -403,6 +424,7 @@
     }
 
     if (name === "small_group_finder") {
+      if (output.groups === null) return unreachableCard("group directory");
       output.groups.forEach((g) => {
         const card = el("div", "resource-item");
         const head = el("div", "resource-title");
@@ -441,28 +463,32 @@
     }
 
     if (name === "sermon_library") {
+      if (output.sermons === null) return unreachableCard("sermon library");
       output.sermons.forEach((s) => {
         const card = el("div", "resource-item");
         const head = el("div", "resource-title");
         head.appendChild(document.createTextNode(s.title + " "));
         sampleTagIf(s).forEach((n) => head.appendChild(n));
         card.appendChild(head);
-        card.appendChild(el("div", "resource-line", s.subtitle));
-        card.appendChild(el("div", "resource-line", `${s.duration_min} min`));
+        if (s.subtitle) card.appendChild(el("div", "resource-line", s.subtitle));
+        if (s.duration_min) card.appendChild(el("div", "resource-line", `${s.duration_min} min`));
+        if (s.url) card.appendChild(resourceLink(s.url));
         wrap.appendChild(card);
       });
       return wrap;
     }
 
     if (name === "counseling_directory") {
+      if (output.centers === null) return unreachableCard("counseling directory");
       output.centers.forEach((c) => {
         const card = el("div", "resource-item");
         const head = el("div", "resource-title");
         head.appendChild(document.createTextNode(c.title + " "));
         sampleTagIf(c).forEach((n) => head.appendChild(n));
         card.appendChild(head);
-        card.appendChild(el("div", "resource-line", `${c.subtitle} · ${c.area}`));
-        card.appendChild(el("div", "resource-contact", c.contact));
+        card.appendChild(el("div", "resource-line", [c.subtitle, c.area].filter(Boolean).join(" · ")));
+        if (c.contact) card.appendChild(el("div", "resource-contact", c.contact));
+        else if (c.url) card.appendChild(resourceLink(c.url));
         wrap.appendChild(card);
       });
       return wrap;
