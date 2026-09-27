@@ -357,6 +357,38 @@ reality:
       relative to actual completion time, not a fixed daily anchor, so the
       9:30pm target can drift under Doze/battery optimization over many
       days. Fine for a "roughly evening" reminder.
+- [x] **RiskScorer convergence bonus.** User's own framing: being on
+      Instagram, or it being late, doesn't on its own mean someone is
+      struggling — but several weak signals true at once is a meaningfully
+      stronger signal than the same points scattered would suggest.
+      `RiskScorer.score()` now also counts how many of its five factors
+      (trigger-app, duration, self-reported-time, historical-time,
+      social-media) fired at all, independent of their individual point
+      values, and adds a tiered bonus on top: +15 at 3 factors converging,
+      +30 at 4+ — deliberately a jump, not a linear per-factor add-on, so
+      convergence itself reads as disproportionately significant rather
+      than "one more addend." Counts which distinct factors fired, not
+      magnitude (a 1-minute session counts the same as 15 for this
+      purpose) — this is about how many different kinds of signal are
+      lining up, not how strong any one is.
+
+      Verified on-device with real computed data, not synthetic: session
+      duration was let run for real (roughly 1-2 real minutes) rather than
+      faked, and a 4th factor (historical-time) was added via a real
+      `syncRiskContext` call rather than hand-editing the database file
+      directly. Confirmed both tiers via logcat's score breakdown — 3
+      factors: `score=67 [trigger-app(+30) duration=1m(+2) self-reported-
+      time(+20) convergence=3factors(+15)]`; 4 factors: `score=99
+      [trigger-app(+30) duration=2m(+4) self-reported-time(+20)
+      historical-time(+15) convergence=4factors(+30)]` — both totals
+      matching the addition exactly. Reclaim's own package was temporarily
+      added to the trigger-app allowlist to produce a real 3+-factor
+      scenario without switching away from the app (which would have
+      broken the CDP/WebView connection this session's testing depends
+      on, a constraint already documented above); removed again
+      afterward, and `RiskProfile.syncToNative()` re-run to restore
+      `risky_time_buckets` to its real (empty) derived value rather than
+      leaving the test value in place.
 
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging

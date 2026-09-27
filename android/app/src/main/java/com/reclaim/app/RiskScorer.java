@@ -62,11 +62,13 @@ final class RiskScorer {
     static Result score(Context ctx, String currentPackage, long sessionMinutes) {
         LocalSignalsDb db = LocalSignalsDb.getInstance(ctx);
         int points = 0;
+        int factorCount = 0;
         StringBuilder reason = new StringBuilder();
         JSONArray userReasons = new JSONArray();
 
         if (db.isAllowlisted(currentPackage)) {
             points += 30;
+            factorCount++;
             reason.append("trigger-app(+30) ");
             userReasons.put("You're on an app you flagged as a trigger.");
         }
@@ -76,6 +78,7 @@ final class RiskScorer {
         int durationPoints = (int) Math.min(30, sessionMinutes * 2);
         if (durationPoints > 0) {
             points += durationPoints;
+            factorCount++;
             reason.append("duration=").append(sessionMinutes).append("m(+").append(durationPoints).append(") ");
             userReasons.put("You've been there for " + sessionMinutes + " minutes.");
         }
@@ -84,6 +87,7 @@ final class RiskScorer {
         Set<String> temptingTimes = parseJsonArray(db.getMeta("tempting_times"));
         if (temptingTimes.contains(currentBucket)) {
             points += 20;
+            factorCount++;
             reason.append("self-reported-time(+20) ");
             userReasons.put("It's a time of day you told us is hard for you.");
         }
@@ -91,6 +95,7 @@ final class RiskScorer {
         Set<String> riskyBuckets = parseJsonArray(db.getMeta("risky_time_buckets"));
         if (riskyBuckets.contains(currentBucket)) {
             points += 15;
+            factorCount++;
             reason.append("historical-time(+15) ");
             userReasons.put("This time of day has been difficult for you before, based on your check-ins.");
         }
@@ -100,8 +105,23 @@ final class RiskScorer {
         boolean socialMediaFlagged = commonTriggers.contains("Social media") || topSlipTags.contains("Social media");
         if (socialMediaFlagged && SOCIAL_MEDIA_PACKAGES.contains(currentPackage)) {
             points += 10;
+            factorCount++;
             reason.append("social-media(+10) ");
             userReasons.put("It's a social media app, which you've flagged as a trigger.");
+        }
+
+        // Convergence bonus: any single factor above is weak evidence on its own (being on social
+        // media, or it being late, doesn't mean someone is struggling) -- but several of them true
+        // at once is a materially different, stronger signal than the same points spread thin would
+        // suggest. Tiered rather than linear so 3+ factors landing together is disproportionately
+        // significant, not just "one more addend." Counts which distinct factors fired, not their
+        // magnitude -- a 1-minute session counts the same as a 15-minute one for this purpose, since
+        // this is about how many different kinds of signal are converging, not how strong any one is.
+        int convergenceBonus = factorCount >= 4 ? 30 : factorCount >= 3 ? 15 : 0;
+        if (convergenceBonus > 0) {
+            points += convergenceBonus;
+            reason.append("convergence=").append(factorCount).append("factors(+").append(convergenceBonus).append(") ");
+            userReasons.put("Several small things are lining up right now, which together matter more than any one alone.");
         }
 
         int threshold = thresholdForIntensity(db.getMeta("notification_intensity"));
