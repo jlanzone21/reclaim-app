@@ -169,8 +169,9 @@ final class RiskNudgeMonitor {
         if (nm == null) return;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             // HIGH, not DEFAULT: a full-screen intent needs a high-importance channel to actually
-            // heads-up/take over -- see the class doc comment on what this can and can't do.
-            nm.createNotificationChannel(new NotificationChannel(CHANNEL_ID, "Reclaim", NotificationManager.IMPORTANCE_HIGH));
+            // heads-up/take over -- see the class doc comment on what this can and can't do. Name
+            // (unlike importance) can be changed on an existing channel ID -- no new ID needed here.
+            nm.createNotificationChannel(new NotificationChannel(CHANNEL_ID, "Risk check-in", NotificationManager.IMPORTANCE_HIGH));
         }
 
         LocalSignalsDb db = LocalSignalsDb.getInstance(ctx);

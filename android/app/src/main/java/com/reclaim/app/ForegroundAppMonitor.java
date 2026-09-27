@@ -34,7 +34,10 @@ final class ForegroundAppMonitor {
     private static final String PREFS_NAME = "reclaim_app_session_notify";
     private static final String KEY_LAST_PACKAGE = "last_notified_package";
     private static final String KEY_LAST_SESSION_START = "last_notified_session_start";
-    private static final String CHANNEL_ID = "reclaim_app_debug";
+    // _v2: importance is locked in per channel ID the first time Android sees it -- see
+    // NightlyCheckinWorker's matching comment for why this needed a new ID, not just a new value.
+    private static final String CHANNEL_ID = "reclaim_app_debug_v2";
+    private static final String OLD_CHANNEL_ID = "reclaim_app_debug";
     private static final int NOTIFICATION_ID = 1;
 
     private ForegroundAppMonitor() {}
@@ -116,14 +119,15 @@ final class ForegroundAppMonitor {
         NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            nm.createNotificationChannel(new NotificationChannel(CHANNEL_ID, "Reclaim", NotificationManager.IMPORTANCE_DEFAULT));
+            nm.deleteNotificationChannel(OLD_CHANNEL_ID);
+            nm.createNotificationChannel(new NotificationChannel(CHANNEL_ID, "Usage verification", NotificationManager.IMPORTANCE_HIGH));
         }
         String appLabel = appLabel(ctx, packageName);
         NotificationCompat.Builder builder = new NotificationCompat.Builder(ctx, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle("Reclaim")
                 .setContentText("It looks like you've been on " + appLabel + " for an hour. Is that correct?")
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true);
         nm.notify(NOTIFICATION_ID, builder.build());
         Log.d(TAG, "posted 1-hour session notification for " + appLabel);

@@ -479,6 +479,41 @@ reality:
       the real directory rather than trusting the configured one; the
       configured preview may still misbehave for future browser-based
       testing until that's actually diagnosed.
+- [x] **All three local notification types now pop up on-screen (heads-up),
+      not just land quietly in the shade.** User noticed the nightly
+      check-in didn't behave like a text message popping up, and asked
+      for it (and everything else) to. Root cause: Android only shows a
+      heads-up banner for `IMPORTANCE_HIGH` notification channels — SMS
+      apps use HIGH, but `NightlyCheckinWorker` and `ForegroundAppMonitor`
+      (the "you've been on X for an hour" verification tool) were both
+      created at `IMPORTANCE_DEFAULT`, which posts silently. `RiskNudge
+      Monitor` was already HIGH.
+
+      The fix isn't just flipping the constant: **channel importance is
+      permanently locked in per channel ID** the first time Android sees
+      it on a device — recreating the same ID with a different importance
+      is silently ignored. Both changed channels got new IDs (`_v2`
+      suffix), with the old ID explicitly deleted via
+      `deleteNotificationChannel` so it doesn't linger as orphaned
+      clutter in system settings. Also gave each channel a distinct
+      display name (all three were generically "Reclaim" before, making
+      them indistinguishable in Settings → Apps → Reclaim → Notifications
+      if someone wanted to manage them individually) — channel *name* is
+      mutable in place, unlike importance, so `RiskNudgeMonitor`'s didn't
+      need a new ID for that part.
+
+      Verified on-device, not just via the code/dumpsys: confirmed
+      `reclaim_app_nightly_checkin_v2` reports `mImportance=HIGH` in
+      `dumpsys notification`, then caught the actual heads-up banner
+      on-screen over the home screen after backgrounding the app (a
+      naive same-second screenshot missed it twice before landing the
+      timing right — WorkManager's post is near-instant, ~300ms, but the
+      CDP bridge used to trigger it throttles once the WebView backgrounds,
+      a constraint already documented above, so the trigger itself needed
+      the app foregrounded first). `ForegroundAppMonitor`'s equivalent
+      change was not separately live-tested (its 60-minute real-session
+      threshold isn't practical to force), but is the identical, symmetric
+      change verified by code review.
 
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging

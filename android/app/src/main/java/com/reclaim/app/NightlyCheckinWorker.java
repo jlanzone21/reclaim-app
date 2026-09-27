@@ -53,7 +53,11 @@ import androidx.work.WorkerParameters;
  * "roughly evening" reminder; not something this pretends to guarantee to the minute.
  */
 public class NightlyCheckinWorker extends Worker {
-    static final String CHANNEL_ID = "reclaim_app_nightly_checkin";
+    // _v2: importance is locked in per channel ID the first time Android sees it -- bumping to
+    // HIGH on an existing "reclaim_app_nightly_checkin" install would silently do nothing. New ID
+    // forces a fresh channel; the old one is deleted below rather than left as orphaned clutter.
+    static final String CHANNEL_ID = "reclaim_app_nightly_checkin_v2";
+    private static final String OLD_CHANNEL_ID = "reclaim_app_nightly_checkin";
     static final int NOTIFICATION_ID = 3; // distinct from ForegroundAppMonitor's and RiskNudgeMonitor's
 
     // Read by MainActivity.onCreate()/onNewIntent() -- see class doc comment for why the "open
@@ -77,7 +81,11 @@ public class NightlyCheckinWorker extends Worker {
         NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return Result.success();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            nm.createNotificationChannel(new NotificationChannel(CHANNEL_ID, "Reclaim", NotificationManager.IMPORTANCE_DEFAULT));
+            nm.deleteNotificationChannel(OLD_CHANNEL_ID);
+            // HIGH, not DEFAULT: this is meant to actually be seen and acted on in the moment
+            // (the timing is deliberately chosen relative to RiskScorer's Night bucket -- see class
+            // doc comment), not just logged quietly in the shade the way DEFAULT would.
+            nm.createNotificationChannel(new NotificationChannel(CHANNEL_ID, "Nightly check-in", NotificationManager.IMPORTANCE_HIGH));
         }
 
         PendingIntent openCheckIn = openCheckInIntent(ctx);
@@ -87,7 +95,7 @@ public class NightlyCheckinWorker extends Worker {
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle("How was today?")
                 .setContentText("Any struggles worth noting, or did it go well?")
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setContentIntent(openCheckIn)
                 .addAction(0, "Went well", wentWell)
                 .addAction(0, "Tell me more", openCheckIn)
