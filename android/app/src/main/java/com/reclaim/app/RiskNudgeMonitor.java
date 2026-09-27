@@ -50,7 +50,14 @@ final class RiskNudgeMonitor {
     private static final String PREFS_NAME = "reclaim_app_risk_nudge";
     private static final String KEY_LAST_PACKAGE = "last_notified_package";
     private static final String KEY_LAST_SESSION_START = "last_notified_session_start";
-    private static final String CHANNEL_ID = "reclaim_app_nudge";
+    // _v2: this channel actually requested IMPORTANCE_DEFAULT the first time it was ever created,
+    // before the "make it actually interrupt" pass below upgraded the code to ask for HIGH --
+    // importance is locked in permanently per channel ID the first time Android sees it, so that
+    // later change was silently no-op'ing on every device that had already run the old code
+    // (confirmed via dumpsys: mImportance=3/DEFAULT despite the code saying HIGH). Same fix as
+    // NightlyCheckinWorker/ForegroundAppMonitor: new ID, old one deleted below.
+    private static final String CHANNEL_ID = "reclaim_app_nudge_v2";
+    private static final String OLD_CHANNEL_ID = "reclaim_app_nudge";
     private static final int NOTIFICATION_ID = 2; // distinct from ForegroundAppMonitor's
 
     private RiskNudgeMonitor() {}
@@ -169,8 +176,8 @@ final class RiskNudgeMonitor {
         if (nm == null) return;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             // HIGH, not DEFAULT: a full-screen intent needs a high-importance channel to actually
-            // heads-up/take over -- see the class doc comment on what this can and can't do. Name
-            // (unlike importance) can be changed on an existing channel ID -- no new ID needed here.
+            // heads-up/take over -- see the class doc comment on what this can and can't do.
+            nm.deleteNotificationChannel(OLD_CHANNEL_ID);
             nm.createNotificationChannel(new NotificationChannel(CHANNEL_ID, "Risk check-in", NotificationManager.IMPORTANCE_HIGH));
         }
 

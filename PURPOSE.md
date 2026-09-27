@@ -479,41 +479,58 @@ reality:
       the real directory rather than trusting the configured one; the
       configured preview may still misbehave for future browser-based
       testing until that's actually diagnosed.
-- [x] **All three local notification types now pop up on-screen (heads-up),
-      not just land quietly in the shade.** User noticed the nightly
-      check-in didn't behave like a text message popping up, and asked
-      for it (and everything else) to. Root cause: Android only shows a
-      heads-up banner for `IMPORTANCE_HIGH` notification channels — SMS
-      apps use HIGH, but `NightlyCheckinWorker` and `ForegroundAppMonitor`
-      (the "you've been on X for an hour" verification tool) were both
-      created at `IMPORTANCE_DEFAULT`, which posts silently. `RiskNudge
-      Monitor` was already HIGH.
+- [x] **All three local notification types now actually pop up on-screen
+      (heads-up), not just land quietly in the shade.** User noticed the
+      nightly check-in didn't behave like a text message popping up, and
+      asked for it (and everything else) to. Root cause: Android only
+      shows a heads-up banner for `IMPORTANCE_HIGH` notification channels
+      — SMS apps use HIGH. `NightlyCheckinWorker` and `ForegroundApp
+      Monitor` (the "you've been on X for an hour" verification tool)
+      were both coded at `IMPORTANCE_DEFAULT`, which posts silently.
 
       The fix isn't just flipping the constant: **channel importance is
       permanently locked in per channel ID** the first time Android sees
       it on a device — recreating the same ID with a different importance
-      is silently ignored. Both changed channels got new IDs (`_v2`
+      is silently ignored. All changed channels got new IDs (`_v2`
       suffix), with the old ID explicitly deleted via
       `deleteNotificationChannel` so it doesn't linger as orphaned
       clutter in system settings. Also gave each channel a distinct
       display name (all three were generically "Reclaim" before, making
       them indistinguishable in Settings → Apps → Reclaim → Notifications
-      if someone wanted to manage them individually) — channel *name* is
-      mutable in place, unlike importance, so `RiskNudgeMonitor`'s didn't
-      need a new ID for that part.
+      if someone wanted to manage them individually).
 
-      Verified on-device, not just via the code/dumpsys: confirmed
-      `reclaim_app_nightly_checkin_v2` reports `mImportance=HIGH` in
-      `dumpsys notification`, then caught the actual heads-up banner
-      on-screen over the home screen after backgrounding the app (a
-      naive same-second screenshot missed it twice before landing the
-      timing right — WorkManager's post is near-instant, ~300ms, but the
-      CDP bridge used to trigger it throttles once the WebView backgrounds,
-      a constraint already documented above, so the trigger itself needed
-      the app foregrounded first). `ForegroundAppMonitor`'s equivalent
-      change was not separately live-tested (its 60-minute real-session
-      threshold isn't practical to force), but is the identical, symmetric
-      change verified by code review.
+      First pass wrongly assumed `RiskNudgeMonitor` needed no change,
+      since its *current* code already said `IMPORTANCE_HIGH` — verified
+      the other two on-device but not this one, on the logic that it was
+      already correct. User reported the risk-nudge notification (the one
+      that literally says "Reclaim wants to check in with you") still
+      wasn't popping up, which was the tell. Checking `dumpsys` this time
+      showed the deployed channel at `mImportance=3` (DEFAULT) despite
+      the code — its channel ID had been created back when an earlier
+      version of this feature (before the "make it actually interrupt"
+      pass, earlier in this doc) requested DEFAULT, and every later
+      change to HIGH had been silently no-op'ing on any device that had
+      already run that old code, this test phone included. Same fix:
+      new channel ID (`reclaim_app_nudge_v2`), old one deleted. Lesson
+      applied going forward: what the code currently says a channel's
+      importance is doesn't mean that's what's actually deployed —
+      `dumpsys notification`'s `mImportance` is the only source of truth
+      for a channel that existed before the code being read.
+
+      All three verified on-device, not just via the code: confirmed
+      each `_v2` channel reports `mImportance=4` (HIGH) via `dumpsys
+      notification`, then caught the actual heads-up banner on-screen
+      over the home screen for both the nightly check-in and the risk
+      check-in after backgrounding the app (a naive same-second
+      screenshot missed the first one twice before landing the timing
+      right — WorkManager's post is near-instant, ~300ms, but the CDP
+      bridge used to trigger these throttles once the WebView backgrounds,
+      a constraint already documented above, so each trigger needed the
+      app foregrounded first, then backgrounded immediately after).
+      `ForegroundAppMonitor`'s equivalent change was not separately
+      live-tested (its 60-minute real-session threshold isn't practical
+      to force) — worth a real on-device confirmation once genuinely
+      idle for an hour on a flagged app, not assumed correct from here.
 
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
