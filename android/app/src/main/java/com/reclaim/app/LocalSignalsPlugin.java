@@ -146,6 +146,46 @@ public class LocalSignalsPlugin extends Plugin {
         call.resolve(result);
     }
 
+    // How long after a risk-nudge notification a check-in can still plausibly be a reaction to
+    // it, for RiskScorer's adaptive-tuning loop below. Long enough to cover "later that day"
+    // (including the nightly check-in prompt), short enough that an unrelated check-in from days
+    // later never gets attributed to a stale notification.
+    private static final long CORRELATION_WINDOW_MS = 6L * 60 * 60 * 1000;
+
+    // Called by CheckInStore.add() (checkinStore.js) right after logging any check-in. Correlates
+    // against whichever risk-nudge notification most recently fired (if any, and if recent enough)
+    // and nudges RiskScorer's weights accordingly -- see RiskScorer's class doc comment and
+    // RiskNudgeMonitor.buildPendingFactorsJson for the other half of this loop. A no-op, resolving
+    // immediately, when no notification is pending or it's too old to plausibly be related.
+    @PluginMethod
+    public void recordCheckinOutcome(PluginCall call) {
+        String type = call.getString("type", "");
+        long checkinTimeMs = call.getDouble("timestamp", (double) System.currentTimeMillis()).longValue();
+
+        String json = db().getMeta("pending_notification_factors");
+        db().setMeta("pending_notification_factors", ""); // consumed either way -- never matched twice
+        if (json != null && !json.isEmpty()) {
+            try {
+                org.json.JSONObject pending = new org.json.JSONObject(json);
+                long postedAt = pending.optLong("postedAt", 0);
+                long elapsed = checkinTimeMs - postedAt;
+                // Skip (but still consume, above) a check-in that precedes the notification --
+                // clock skew edge case -- or one too old to plausibly be a reaction to it.
+                if (elapsed >= 0 && elapsed <= CORRELATION_WINDOW_MS) {
+                    org.json.JSONArray factors = pending.optJSONArray("factors");
+                    if ("slipped".equals(type)) {
+                        RiskScorer.adjustWeights(getContext(), factors, true);
+                    } else if ("resisted".equals(type)) {
+                        RiskScorer.adjustWeights(getContext(), factors, false);
+                    }
+                }
+            } catch (org.json.JSONException e) {
+                // Malformed -- nothing to correlate; already consumed above.
+            }
+        }
+        call.resolve();
+    }
+
     private String resolveLabel(String packageName) {
         try {
             PackageManager pm = getContext().getPackageManager();

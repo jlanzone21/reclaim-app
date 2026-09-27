@@ -57,6 +57,7 @@ const CheckInStore = (function () {
     );
     DB.scheduleSave();
     syncRiskProfile();
+    recordOutcome(record);
     return record;
   }
 
@@ -77,6 +78,13 @@ const CheckInStore = (function () {
   // it needs to stay current after every check-in change, not just preference edits.
   function syncRiskProfile() {
     if (typeof RiskProfile !== "undefined") RiskProfile.syncToNative();
+  }
+
+  // RiskScorer's adaptive-tuning loop: only meaningful for a newly-added check-in (not a removal),
+  // and native no-ops harmlessly if this one doesn't actually follow a recent notification.
+  function recordOutcome(record) {
+    if (typeof LocalSignals === "undefined" || !LocalSignals.available()) return;
+    LocalSignals.recordCheckinOutcome(record.type, Date.now()).catch(() => {});
   }
 
   function exportJson() {

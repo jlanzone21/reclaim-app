@@ -1,12 +1,17 @@
 package com.reclaim.app;
 
 import android.content.Context;
+import android.util.Log;
 
 import org.json.JSONArray;
 import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.util.Calendar;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -20,9 +25,14 @@ import java.util.Set;
  * watch for (UserPreferencesStore's tempting_times/common_triggers), not keyword matches --
  * those stay a separate, passive signal for Insights, not an input here.
  *
- * A planned v2 (not built yet): a small deterministic feedback loop that nudges these weights
- * based on whether a check-in shortly after a notification was "resisted" or "slipped" --
- * genuinely adaptive without needing real ML or involving the on-device LLM in numeric tuning.
+ * Adaptive tuning (v2): the five base factor weights below are stored, mutable values
+ * (LocalSignalsDb.app_meta's "risk_weights"), not Java literals -- adjustWeights() nudges them a
+ * small, fixed amount based on whether a check-in shortly after a notification was "resisted" or
+ * "slipped" (see LocalSignalsPlugin.recordCheckinOutcome, the JS-side caller in checkinStore.js).
+ * Deliberately NOT the convergence bonus from RiskScorer's own history, and NOT ML or the
+ * on-device LLM -- a handful of check-ins is nowhere near enough to train anything, and nudging a
+ * number is a math problem, not a language one. Bounded per-factor so a small, sparse data set
+ * can't swing a weight far off its starting point in one or two events.
  */
 final class RiskScorer {
     private RiskScorer() {}
@@ -41,17 +51,45 @@ final class RiskScorer {
         SOCIAL_MEDIA_PACKAGES.add("com.facebook.katana");
     }
 
+    private static final String TAG = "RiskScorer";
+    private static final String META_KEY_WEIGHTS = "risk_weights";
+
+    // "duration" is really a cap in points -- the +2/minute rate is derived from it (rate =
+    // weight/15) so "reaches full weight after 15 minutes" stays true as the cap itself adapts.
+    private static final class WeightSpec {
+        final int def, min, max;
+        WeightSpec(int def, int min, int max) { this.def = def; this.min = min; this.max = max; }
+    }
+
+    // name -> {default, min, max}. Bounds are roughly half to one-and-a-half times the default --
+    // wide enough for real adjustment to matter, narrow enough that a sparse data set can't send a
+    // weight to zero or let it dominate every other factor.
+    private static final Map<String, WeightSpec> WEIGHT_SPECS = new LinkedHashMap<>();
+    static {
+        WEIGHT_SPECS.put("triggerApp", new WeightSpec(30, 15, 45));
+        WEIGHT_SPECS.put("duration", new WeightSpec(30, 15, 45));
+        WEIGHT_SPECS.put("selfReportedTime", new WeightSpec(20, 10, 30));
+        WEIGHT_SPECS.put("historicalTime", new WeightSpec(15, 8, 22));
+        WEIGHT_SPECS.put("socialMedia", new WeightSpec(10, 5, 15));
+    }
+
+    // Small and fixed on purpose -- see class doc comment. ~7-8 correlated events to walk a weight
+    // from its default to a bound, not one or two.
+    private static final int ADJUST_DELTA = 2;
+
     static final class Result {
         final int score;
         final int threshold;
         final String reason; // internal, logcat-only -- not shown to the user
         final JSONArray userReasons; // plain-language, shown in-app once opened -- see PendingRiskAlert
+        final JSONArray factors; // machine-readable names of which factors fired, for adjustWeights
 
-        Result(int score, int threshold, String reason, JSONArray userReasons) {
+        Result(int score, int threshold, String reason, JSONArray userReasons, JSONArray factors) {
             this.score = score;
             this.threshold = threshold;
             this.reason = reason;
             this.userReasons = userReasons;
+            this.factors = factors;
         }
 
         boolean triggers() {
@@ -61,24 +99,31 @@ final class RiskScorer {
 
     static Result score(Context ctx, String currentPackage, long sessionMinutes) {
         LocalSignalsDb db = LocalSignalsDb.getInstance(ctx);
+        Map<String, Integer> weights = loadWeights(db);
         int points = 0;
         int factorCount = 0;
         StringBuilder reason = new StringBuilder();
         JSONArray userReasons = new JSONArray();
+        JSONArray factors = new JSONArray();
 
         if (db.isAllowlisted(currentPackage)) {
-            points += 30;
+            int w = weights.get("triggerApp");
+            points += w;
             factorCount++;
-            reason.append("trigger-app(+30) ");
+            factors.put("triggerApp");
+            reason.append("trigger-app(+").append(w).append(") ");
             userReasons.put("You're on an app you flagged as a trigger.");
         }
 
-        // Gradual, not a cliff: +2/minute, capped at +30 (15 minutes) so a long session doesn't
-        // keep adding weight forever once the point's already made.
-        int durationPoints = (int) Math.min(30, sessionMinutes * 2);
+        // Gradual, not a cliff: rate is derived from the cap so "reaches full weight after 15
+        // minutes" stays true as the cap itself adapts -- a long session doesn't keep adding
+        // weight forever once the point's already made.
+        int durationCap = weights.get("duration");
+        int durationPoints = (int) Math.min(durationCap, Math.round(sessionMinutes * (durationCap / 15.0)));
         if (durationPoints > 0) {
             points += durationPoints;
             factorCount++;
+            factors.put("duration");
             reason.append("duration=").append(sessionMinutes).append("m(+").append(durationPoints).append(") ");
             userReasons.put("You've been there for " + sessionMinutes + " minutes.");
         }
@@ -86,17 +131,21 @@ final class RiskScorer {
         String currentBucket = timeBucket(Calendar.getInstance().get(Calendar.HOUR_OF_DAY));
         Set<String> temptingTimes = parseJsonArray(db.getMeta("tempting_times"));
         if (temptingTimes.contains(currentBucket)) {
-            points += 20;
+            int w = weights.get("selfReportedTime");
+            points += w;
             factorCount++;
-            reason.append("self-reported-time(+20) ");
+            factors.put("selfReportedTime");
+            reason.append("self-reported-time(+").append(w).append(") ");
             userReasons.put("It's a time of day you told us is hard for you.");
         }
 
         Set<String> riskyBuckets = parseJsonArray(db.getMeta("risky_time_buckets"));
         if (riskyBuckets.contains(currentBucket)) {
-            points += 15;
+            int w = weights.get("historicalTime");
+            points += w;
             factorCount++;
-            reason.append("historical-time(+15) ");
+            factors.put("historicalTime");
+            reason.append("historical-time(+").append(w).append(") ");
             userReasons.put("This time of day has been difficult for you before, based on your check-ins.");
         }
 
@@ -104,9 +153,11 @@ final class RiskScorer {
         Set<String> topSlipTags = parseJsonArray(db.getMeta("top_slip_tags"));
         boolean socialMediaFlagged = commonTriggers.contains("Social media") || topSlipTags.contains("Social media");
         if (socialMediaFlagged && SOCIAL_MEDIA_PACKAGES.contains(currentPackage)) {
-            points += 10;
+            int w = weights.get("socialMedia");
+            points += w;
             factorCount++;
-            reason.append("social-media(+10) ");
+            factors.put("socialMedia");
+            reason.append("social-media(+").append(w).append(") ");
             userReasons.put("It's a social media app, which you've flagged as a trigger.");
         }
 
@@ -117,6 +168,7 @@ final class RiskScorer {
         // significant, not just "one more addend." Counts which distinct factors fired, not their
         // magnitude -- a 1-minute session counts the same as a 15-minute one for this purpose, since
         // this is about how many different kinds of signal are converging, not how strong any one is.
+        // Fixed, not adjusted by adjustWeights -- see class doc comment.
         int convergenceBonus = factorCount >= 4 ? 30 : factorCount >= 3 ? 15 : 0;
         if (convergenceBonus > 0) {
             points += convergenceBonus;
@@ -125,7 +177,52 @@ final class RiskScorer {
         }
 
         int threshold = thresholdForIntensity(db.getMeta("notification_intensity"));
-        return new Result(points, threshold, reason.toString().trim(), userReasons);
+        return new Result(points, threshold, reason.toString().trim(), userReasons, factors);
+    }
+
+    private static Map<String, Integer> loadWeights(LocalSignalsDb db) {
+        Map<String, Integer> weights = new HashMap<>();
+        for (Map.Entry<String, WeightSpec> e : WEIGHT_SPECS.entrySet()) weights.put(e.getKey(), e.getValue().def);
+        String json = db.getMeta(META_KEY_WEIGHTS);
+        if (json != null && !json.isEmpty()) {
+            try {
+                JSONObject obj = new JSONObject(json);
+                for (String key : WEIGHT_SPECS.keySet()) {
+                    if (obj.has(key)) weights.put(key, obj.getInt(key));
+                }
+            } catch (JSONException e) {
+                // Malformed -- fall back to defaults rather than failing the whole score.
+            }
+        }
+        return weights;
+    }
+
+    // Called by LocalSignalsPlugin.recordCheckinOutcome once it's confirmed a check-in falls
+    // within the correlation window of a notification that fired. increase=true means "slipped"
+    // (the factors that fired correctly flagged real risk -- reinforce them); false means
+    // "resisted" (the flagged risk didn't materialize into a slip -- ease off slightly).
+    static void adjustWeights(Context ctx, JSONArray firedFactors, boolean increase) {
+        if (firedFactors == null || firedFactors.length() == 0) return;
+        LocalSignalsDb db = LocalSignalsDb.getInstance(ctx);
+        Map<String, Integer> weights = loadWeights(db);
+        int delta = increase ? ADJUST_DELTA : -ADJUST_DELTA;
+
+        for (int i = 0; i < firedFactors.length(); i++) {
+            String name = firedFactors.optString(i, null);
+            WeightSpec spec = WEIGHT_SPECS.get(name);
+            if (spec == null) continue; // unknown/stale factor name -- ignore rather than fail
+            int current = weights.containsKey(name) ? weights.get(name) : spec.def;
+            weights.put(name, Math.max(spec.min, Math.min(spec.max, current + delta)));
+        }
+
+        JSONObject out = new JSONObject();
+        try {
+            for (Map.Entry<String, Integer> e : weights.entrySet()) out.put(e.getKey(), e.getValue());
+        } catch (JSONException e) {
+            return; // shouldn't happen (plain ints), but don't half-write weights if it does
+        }
+        db.setMeta(META_KEY_WEIGHTS, out.toString());
+        Log.d(TAG, "adjusted weights " + (increase ? "+" : "-") + ADJUST_DELTA + " for " + firedFactors + " -> " + out);
     }
 
     // Same four buckets as TEMPTING_TIME_BUCKETS (constants.js) / RiskProfile (riskProfile.js) --

@@ -175,6 +175,9 @@ final class RiskNudgeMonitor {
 
         LocalSignalsDb db = LocalSignalsDb.getInstance(ctx);
         db.setMeta("pending_risk_alert", buildPendingAlertJson(ctx, packageName, result));
+        // Read (and cleared) by LocalSignalsPlugin.recordCheckinOutcome once a check-in actually
+        // happens -- see RiskScorer's class doc comment for the adaptive-tuning loop this feeds.
+        db.setMeta("pending_notification_factors", buildPendingFactorsJson(result));
 
         // Tapping the notification body (not the call action) opens the app -- app.js checks for
         // the pending alert above on boot and shows the detail screen instead of landing on Chat.
@@ -211,6 +214,20 @@ final class RiskNudgeMonitor {
 
         nm.notify(NOTIFICATION_ID, builder.build());
         Log.d(TAG, "posted risk nudge notification");
+    }
+
+    // Machine-readable factor names (not the plain-language reasons above) plus a timestamp, so
+    // recordCheckinOutcome can later tell which weights to nudge and whether the check-in that
+    // triggered it happened soon enough after this notification to plausibly be related.
+    private static String buildPendingFactorsJson(RiskScorer.Result result) {
+        try {
+            org.json.JSONObject obj = new org.json.JSONObject();
+            obj.put("factors", result.factors);
+            obj.put("postedAt", System.currentTimeMillis());
+            return obj.toString();
+        } catch (org.json.JSONException e) {
+            return null;
+        }
     }
 
     // The specific, plain-language detail (which app, which reasons) never appears in the

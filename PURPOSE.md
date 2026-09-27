@@ -182,13 +182,9 @@ reality:
       still has the same latent bug, not touched since it's a debug tool,
       not a shipped feature.
 
-      **Planned v2, not built yet:** a small deterministic feedback loop
-      that nudges these weights based on whether a check-in shortly after
-      a notification was "resisted" or "slipped" — genuinely adaptive
-      without needing real ML or the on-device LLM anywhere near numeric
-      tuning. Needs real usage data to mean anything, so it's next once
-      this version has actually run against real behavior for a while, not
-      before.
+      **v2 shipped** — see the adaptive-tuning checklist item further down
+      for the actual feedback loop, once the convergence bonus (also
+      below) landed first per the confirmed build order.
 - [x] **Fixed a real architectural bug: two divergent tool implementations.**
       `ResourcesAgent` (Basic mode, used when the on-device AI isn't
       downloaded) had its own hand-duplicated copy of every resource
@@ -389,6 +385,52 @@ reality:
       afterward, and `RiskProfile.syncToNative()` re-run to restore
       `risky_time_buckets` to its real (empty) derived value rather than
       leaving the test value in place.
+- [x] **Adaptive weight tuning (v2 of the risk-nudge item above).** The
+      last of the four pivotal-conversation features, built in the
+      confirmed order (4, 2, 3). `RiskScorer`'s five base factor weights
+      (trigger-app, duration, self-reported-time, historical-time,
+      social-media — not the convergence bonus, deliberately, see below)
+      are now stored, mutable values in `LocalSignalsDb.app_meta`
+      (`risk_weights`), not Java literals, with per-factor bounds
+      (roughly half to one-and-a-half times each default) so a sparse
+      data set can't send a weight to zero or let it dominate.
+      `RiskNudgeMonitor.postNotification` now also records which factors
+      actually fired for that notification (`pending_notification_factors`,
+      consumed once). `CheckInStore.add()` (checkinStore.js) calls a new
+      `recordCheckinOutcome` plugin method after every check-in; if a
+      notification fired within the last 6 hours, its factors get nudged
+      ±2 — up for "slipped" (the flagged risk was real, reinforce it),
+      down for "resisted" (the flagged risk didn't materialize, ease off)
+      — deliberately small and fixed, not proportional to anything, so a
+      handful of data points drifts a weight gradually rather than
+      swinging it. Explicitly not the convergence bonus, and explicitly
+      not ML or the on-device LLM — same reasoning as the risk-nudge
+      item above: nudging a number is a math problem, this needs to stay
+      debuggable, and a handful of check-ins is nowhere near enough data
+      to train anything real anyway.
+
+      Verified on-device with the real mechanism end to end, not
+      isolated unit checks: triggered a real notification, confirmed
+      `pending_notification_factors` held the right factor names, added a
+      real check-in through the live WebView, and confirmed via logcat
+      both the exact weight delta applied (`adjusted weights +2 for
+      ["selfReportedTime"] -> {...,"selfReportedTime":22,...}`) and that
+      a subsequent score computation actually used the new value
+      (`self-reported-time(+22)`). Confirmed the reverse direction the
+      same way (`adjusted weights -2 for ["duration","selfReportedTime"]
+      -> {"duration":28,"selfReportedTime":20,...}`), and confirmed
+      `pending_notification_factors` is cleared after being consumed
+      either way. One real mistake caught mid-test: the first verification
+      check-in was logged as `type: "slipped"` to test the increase
+      direction, which — unlike a `resisted` check-in — actually feeds
+      `RiskProfile`'s real slip-pattern detection; removed it again
+      immediately (`CheckInStore.remove`) rather than leaving fabricated
+      slip data sitting in real check-in history, and confirmed
+      `risky_time_buckets` returned to its correct derived value
+      afterward. A small amount of genuine weight drift (from real,
+      correlated test events, not fabricated ones) was left in place
+      deliberately — that's this feature working as intended, not residue
+      to clean up.
 
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
@@ -457,7 +499,7 @@ reality:
   anyway. Using the on-device chat model to "reason about" weight
   adjustments was considered and also rejected — nudging a number is a
   math problem, not a language problem, and an LLM-driven adjustment
-  process would be unreliable and hard to debug or trust. The planned v2
-  adaptive layer (see the risk-nudge checklist item above) is a small
-  deterministic feedback rule instead, in the same spirit as everything
-  else in this system: explainable code, not vibes.
+  process would be unreliable and hard to debug or trust. The adaptive
+  weight-tuning checklist item above ships that instead: a small
+  deterministic feedback rule, in the same spirit as everything else in
+  this system — explainable code, not vibes.

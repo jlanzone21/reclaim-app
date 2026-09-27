@@ -84,6 +84,15 @@ const LocalSignals = (function () {
     return action || null;
   }
 
+  // RiskScorer's adaptive-tuning loop: correlates this check-in against whichever risk-nudge
+  // notification most recently fired (if any, and if recent enough) and nudges its weights
+  // accordingly. See RiskScorer.java's class doc comment. A no-op on native's side if nothing's
+  // pending -- safe to call after every check-in, not just ones known to follow a notification.
+  async function recordCheckinOutcome(type, timestampMs) {
+    if (!available()) return;
+    await plugin().recordCheckinOutcome({ type, timestamp: timestampMs });
+  }
+
   // ============================================================================================
   // TEMPORARY -- backs the Testing panel (debugTestPanel.js). See LocalSignalsPlugin.java's own
   // matching comment block; remove both together before shipping this to a real user.
@@ -127,6 +136,7 @@ const LocalSignals = (function () {
     syncRiskContext,
     getPendingRiskAlert,
     getPendingNightlyAction,
+    recordCheckinOutcome,
     debugRunBackgroundCheck,
     debugSendNightlyCheckin,
     debugSendRiskNudge,
