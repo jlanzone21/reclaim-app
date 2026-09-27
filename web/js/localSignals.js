@@ -76,6 +76,14 @@ const LocalSignals = (function () {
     return alert || null;
   }
 
+  // NightlyCheckinActionReceiver writes this when a notification action is actually tapped --
+  // "quick_resisted" or "open_checkin". Consumed once, same reasoning as getPendingRiskAlert.
+  async function getPendingNightlyAction() {
+    if (!available()) return null;
+    const { action } = await plugin().getPendingNightlyAction();
+    return action || null;
+  }
+
   // ============================================================================================
   // TEMPORARY -- backs the Testing panel (debugTestPanel.js). See LocalSignalsPlugin.java's own
   // matching comment block; remove both together before shipping this to a real user.
@@ -84,6 +92,11 @@ const LocalSignals = (function () {
   async function debugRunBackgroundCheck() {
     if (!available()) return;
     await plugin().debugRunBackgroundCheck();
+  }
+
+  async function debugSendNightlyCheckin() {
+    if (!available()) return;
+    await plugin().debugSendNightlyCheckin();
   }
 
   async function debugSendRiskNudge() {
@@ -113,7 +126,9 @@ const LocalSignals = (function () {
     getInstalledApps,
     syncRiskContext,
     getPendingRiskAlert,
+    getPendingNightlyAction,
     debugRunBackgroundCheck,
+    debugSendNightlyCheckin,
     debugSendRiskNudge,
     debugClearRiskNudgeCooldown,
     debugPeekPendingRiskAlert,

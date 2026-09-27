@@ -134,6 +134,18 @@ public class LocalSignalsPlugin extends Plugin {
         call.resolve(result);
     }
 
+    // NightlyCheckinActionReceiver writes here when a notification action is actually tapped (see
+    // NightlyCheckinWorker's own comment for why it's not set at post time). "quick_resisted" or
+    // "open_checkin" -- consumed once, cleared on read, same reasoning as getPendingRiskAlert.
+    @PluginMethod
+    public void getPendingNightlyAction(PluginCall call) {
+        String action = db().getMeta("pending_nightly_action");
+        if (action != null) db().setMeta("pending_nightly_action", "");
+        JSObject result = new JSObject();
+        result.put("action", action != null && !action.isEmpty() ? action : null);
+        call.resolve(result);
+    }
+
     private String resolveLabel(String packageName) {
         try {
             PackageManager pm = getContext().getPackageManager();
@@ -146,15 +158,22 @@ public class LocalSignalsPlugin extends Plugin {
     // ==========================================================================================
     // TEMPORARY -- backs the Testing panel (Privacy tab, bottom, clearly marked in the UI).
     // Exists only to make manually verifying background features fast during development, instead
-    // of waiting up to 15 minutes for the real periodic schedule or hand-triggering things over
-    // adb/CDP. Remove this whole block, the four methods it defines, and the UI that calls them
-    // before shipping this to a real user. See PURPOSE.md.
+    // of waiting up to 15 minutes for the real periodic schedule (or, for the nightly check-in,
+    // until 9:30pm) or hand-triggering things over adb/CDP. Remove this whole block, the methods
+    // it defines, and the UI that calls them before shipping this to a real user. See PURPOSE.md.
     // ==========================================================================================
 
     @PluginMethod
     public void debugRunBackgroundCheck(PluginCall call) {
         androidx.work.WorkManager.getInstance(getContext())
                 .enqueue(new androidx.work.OneTimeWorkRequest.Builder(BaselineSampleWorker.class).build());
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void debugSendNightlyCheckin(PluginCall call) {
+        androidx.work.WorkManager.getInstance(getContext())
+                .enqueue(new androidx.work.OneTimeWorkRequest.Builder(NightlyCheckinWorker.class).build());
         call.resolve();
     }
 

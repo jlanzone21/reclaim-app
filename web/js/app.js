@@ -124,6 +124,34 @@
     }
   }
 
+  // NightlyCheckinActionReceiver (native) writes this when a notification action is actually
+  // tapped -- see its own and NightlyCheckinWorker's comments for why the flag only gets set on a
+  // real tap, and why this needs a native round-trip at all (the WebView isn't loaded when the
+  // notification fires, so the check-in can't be logged directly from there).
+  async function checkPendingNightlyAction() {
+    if (typeof LocalSignals === "undefined" || !LocalSignals.available()) return;
+    const action = await LocalSignals.getPendingNightlyAction();
+    if (action === "quick_resisted") {
+      CheckInStore.add({ timestamp: new Date().toISOString(), type: "resisted", tags: [] });
+      if (typeof RiskProfile !== "undefined") RiskProfile.syncToNative();
+    } else if (action === "open_checkin") {
+      showView("checkin");
+    }
+  }
+
+  // MainActivity is singleTask, so tapping a notification while the app is already alive in the
+  // background just re-foregrounds the existing WebView instead of reloading it -- the DB.init()
+  // boot call below never re-runs in that case, so neither pending-flag check would ever fire
+  // again until the next cold start. Capacitor fires this standard lifecycle event every time the
+  // app returns to foreground (cold boot included), so check both there too. Confirmed via real
+  // device testing this was needed: without it, "Tell me more" tapped against an already-running
+  // app silently left the flag unconsumed and never navigated to Check-In.
+  document.addEventListener("resume", () => {
+    if (busy) return;
+    checkPendingNightlyAction();
+    if (typeof RiskAlertView !== "undefined") RiskAlertView.checkPending();
+  });
+
   navItems.forEach((btn) => {
     btn.addEventListener("click", () => showView(btn.dataset.view));
   });
@@ -141,6 +169,7 @@
       PreferencesView.init();
       RiskAlertView.init();
       RiskAlertView.checkPending();
+      checkPendingNightlyAction();
       DebugTestPanel.init(); // TEMPORARY -- see debugTestPanel.js
       // Covers data that predates RiskNudgeMonitor's native mirror, or check-ins logged before
       // this boot -- ordinary saves/check-ins push this themselves (see userPreferencesStore.js,

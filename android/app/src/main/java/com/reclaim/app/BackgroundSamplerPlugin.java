@@ -14,6 +14,7 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import java.util.Calendar;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -28,6 +29,9 @@ import java.util.concurrent.TimeUnit;
 @CapacitorPlugin(name = "BackgroundSampler")
 public class BackgroundSamplerPlugin extends Plugin {
     private static final String UNIQUE_WORK_NAME = "reclaim_app_baseline_sample";
+    private static final String NIGHTLY_WORK_NAME = "reclaim_app_nightly_checkin";
+    private static final int NIGHTLY_HOUR = 21;
+    private static final int NIGHTLY_MINUTE = 30;
 
     @PluginMethod
     public void enable(PluginCall call) {
@@ -42,7 +46,29 @@ public class BackgroundSamplerPlugin extends Plugin {
         WorkManager.getInstance(getContext())
                 .enqueueUniquePeriodicWork(UNIQUE_WORK_NAME, ExistingPeriodicWorkPolicy.KEEP, request);
 
+        PeriodicWorkRequest nightlyRequest = new PeriodicWorkRequest.Builder(NightlyCheckinWorker.class, 24, TimeUnit.HOURS)
+                .setInitialDelay(millisUntilNext(NIGHTLY_HOUR, NIGHTLY_MINUTE), TimeUnit.MILLISECONDS)
+                .build();
+        WorkManager.getInstance(getContext())
+                .enqueueUniquePeriodicWork(NIGHTLY_WORK_NAME, ExistingPeriodicWorkPolicy.KEEP, nightlyRequest);
+
         call.resolve();
+    }
+
+    // How long until the next occurrence of NIGHTLY_HOUR:NIGHTLY_MINUTE local time -- today if
+    // that hasn't passed yet, otherwise tomorrow. WorkManager's setInitialDelay only accepts a
+    // duration, not a wall-clock time, so this is how a "daily at 9:30pm" schedule gets built from
+    // a plain 24-hour period.
+    private static long millisUntilNext(int hour, int minute) {
+        Calendar target = Calendar.getInstance();
+        target.set(Calendar.HOUR_OF_DAY, hour);
+        target.set(Calendar.MINUTE, minute);
+        target.set(Calendar.SECOND, 0);
+        target.set(Calendar.MILLISECOND, 0);
+        if (target.getTimeInMillis() <= System.currentTimeMillis()) {
+            target.add(Calendar.DATE, 1);
+        }
+        return target.getTimeInMillis() - System.currentTimeMillis();
     }
 
     @PluginMethod

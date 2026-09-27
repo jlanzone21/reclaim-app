@@ -274,10 +274,11 @@ reality:
       this pass.
 - [x] **Testing panel — TEMPORARY, not a real feature.** A dashed-amber
       "⚠ Testing tools" panel at the bottom of Privacy, only visible
-      on-device (`LocalSignals.available()`), with four buttons: run the
-      background check now, send a check-in (risk nudge) notification
-      now, clear the notification cooldown, and peek the pending alert
-      without consuming it. Exists because this session kept needing to
+      on-device (`LocalSignals.available()`), with buttons to: run the
+      background check now, send a risk-nudge notification now, send a
+      nightly check-in notification now, clear the notification cooldown,
+      and peek the pending risk alert without consuming it. Exists because
+      this session kept needing to
       hand-trigger these exact things over adb/CDP to verify anything —
       forcing WorkManager jobs, deleting SharedPreferences files
       underneath a live process (which doesn't actually work, learned the
@@ -294,6 +295,68 @@ reality:
       (it can only trigger things the app already does on its own
       schedule), but a "send yourself a notification" button has no
       business existing in a shipped recovery app.
+- [x] **Nightly check-in notification.** A once-a-day prompt around
+      9:30pm — `NightlyCheckinWorker` (WorkManager, 24h periodic,
+      wall-clock initial delay computed via `Calendar` since WorkManager
+      only takes durations) — deliberately timed just before
+      `RiskScorer.timeBucket`'s "Night" bucket (10pm) starts, so it doubles
+      as a preventive touchpoint, not just data collection. "Went well"
+      needs no app-open at all; "Tell me more" opens straight to Check-In.
+      Both log through the same `CheckInStore` everything else already
+      reads (`RiskProfile`, `personalContext.js`, Insights) — "Went well"
+      logs a `resisted` check-in with no tags directly; "Tell me more"
+      lands on the ordinary Check-In flow for real detail.
+
+      Caught and fixed two real bugs via on-device testing, not
+      theoretical concerns:
+      1. An early draft wrote the pending "open Check-In" flag inside
+         `doWork()` itself, i.e. the moment the notification was *posted*,
+         not tapped — would have misfired open to Check-In on the next
+         unrelated app launch for anyone who never touched the
+         notification. Fixed before this ever reached a device: both
+         actions moved behind a `BroadcastReceiver`
+         (`NightlyCheckinActionReceiver`) so the flag is only ever written
+         on an actual tap.
+      2. That fix was itself incomplete for "Tell me more": modern Android
+         blocks a `BroadcastReceiver` from calling `startActivity()` on its
+         own, even synchronously in direct response to a notification tap
+         — confirmed on-device via logcat ("Indirect notification activity
+         start (trampoline) from com.reclaim.app blocked" /
+         "Background activity launch blocked!"), not assumed from
+         documentation. "Went well" was unaffected (it never launches an
+         activity), but "Tell me more" had to move to a direct
+         `PendingIntent.getActivity()` targeting `MainActivity` with an
+         extra (`NightlyCheckinWorker.EXTRA_ACTION`); `MainActivity.
+         onCreate()`/`onNewIntent()` reads it, writes the same pending
+         flag, and cancels the notification itself — same flag, same
+         `app.js` consumer, just reached without a receiver in the middle.
+
+      A third gap, also only visible on-device: `MainActivity` is
+      `singleTask`, so tapping a notification while the app is already
+      alive in the background just re-foregrounds the existing WebView
+      instead of reloading it — the one-time `DB.init().then()` boot check
+      never re-runs in that case. Fixed by also listening for Capacitor's
+      standard `resume` lifecycle event (fires on every return to
+      foreground, cold boot included) and re-checking both this pending
+      flag and `RiskAlertView`'s on resume, not just at boot.
+
+      Verified on-device across all four real combinations by physically
+      tapping the actual notification action buttons (not simulated via
+      `adb shell am broadcast`, which turned out to silently fail against
+      a non-exported receiver and would have produced a false pass):
+      "Went well" and "Tell me more", each with the app cold-started
+      (killed via `run-as … kill -9`, not `force-stop`, since force-stop
+      itself cancels the app's active notifications and doesn't represent
+      a real background kill) and with the app merely backgrounded and
+      still alive. All four correctly cancelled the notification, set/
+      consumed the pending flag exactly once, and landed in the right
+      place (`resisted` check-in logged, or the Check-In tab shown).
+
+      Known limitation, documented not fixed: WorkManager's periodic
+      scheduling isn't wall-clock-exact long-term — each run reschedules
+      relative to actual completion time, not a fixed daily anchor, so the
+      9:30pm target can drift under Doze/battery optimization over many
+      days. Fine for a "roughly evening" reminder.
 
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging

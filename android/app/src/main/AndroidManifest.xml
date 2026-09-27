@@ -65,6 +65,14 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
+
+        <!-- Handles NightlyCheckinWorker's "Went well" action only — not exported, only ever
+             triggered by this app's own PendingIntent. The other action launches MainActivity
+             directly instead; see NightlyCheckinActionReceiver.java and NightlyCheckinWorker's
+             class comment for why. -->
+        <receiver
+            android:name=".NightlyCheckinActionReceiver"
+            android:exported="false" />
     </application>
 
     <!-- Permissions -->
