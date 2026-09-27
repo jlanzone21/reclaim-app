@@ -1,24 +1,41 @@
 :root {
-  --bg: #f7f6f3;
-  --bg-elevated: #ffffff;
-  --bg-inset: #f0eee9;
-  --border: #e4e1da;
-  --border-strong: #d3cfc4;
-  --text: #23201b;
-  --text-muted: #6b665c;
-  --text-faint: #9a9488;
-  --accent: #c96442;
+  /* Brand, sampled directly from the logo mark (navy R, sunrise orange, slate mountains) --
+     see PURPOSE.md's "Decisions worth remembering" for the exact source values and roles.
+     Navy is the primary/structural color (sidebar, headers, primary buttons, chat bubbles);
+     orange is reserved for interactive/active moments (focus, selection, the send button) so it
+     stays a highlight instead of getting diluted everywhere; slate is a secondary brand touch
+     for smaller, less prominent accents. */
+  --navy: #06335d;
+  --navy-deep: #042642;
+  --navy-text: #ffffff;
+  --navy-text-muted: rgba(255, 255, 255, 0.68);
+  --slate: #6585a1;
+  /* Logo orange (#fe8722) deepened for AA text/UI contrast on light backgrounds -- the raw
+     bright value fails WCAG at these sizes (~2.4:1); this keeps the same hue family at a
+     usable contrast. Dark mode below uses the true bright value instead, since dark
+     backgrounds make it both safe and truer to the logo. */
+  --accent: #c2540a;
   --accent-text: #ffffff;
-  --user-bubble: #2b2925;
-  --user-bubble-text: #f7f6f3;
+
+  /* Cool, navy-harmonized neutrals (replacing the old warm cream palette). */
+  --bg: #f3f6f9;
+  --bg-elevated: #ffffff;
+  --bg-inset: #eaeff4;
+  --border: #dce3ea;
+  --border-strong: #c2ccd6;
+  --text: #17242f;
+  --text-muted: #5b6b79;
+  --text-faint: #93a3af;
+  --user-bubble: var(--navy);
+  --user-bubble-text: #ffffff;
   --agent-bubble: #ffffff;
-  --tool-bg: #fbfaf7;
-  --tool-border: #e4e1da;
-  --success: #4a7c59;
+  --tool-bg: #f7f9fb;
+  --tool-border: #dce3ea;
+  --success: #3f8558;
   --crisis: #b3261e;
   --crisis-bg: #fbeceb;
   --crisis-border: #f0c9c6;
-  --shadow: 0 1px 2px rgba(20, 18, 14, 0.06), 0 1px 12px rgba(20, 18, 14, 0.04);
+  --shadow: 0 1px 2px rgba(6, 20, 36, 0.07), 0 1px 12px rgba(6, 20, 36, 0.05);
   --radius-lg: 18px;
   --radius-md: 12px;
   --radius-sm: 8px;
@@ -27,51 +44,67 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #1b1a17;
-    --bg-elevated: #24221e;
-    --bg-inset: #201f1b;
-    --border: #37342d;
-    --border-strong: #464236;
-    --text: #ece8e0;
-    --text-muted: #a8a196;
-    --text-faint: #726c60;
-    --accent: #e08063;
-    --accent-text: #1b1a17;
-    --user-bubble: #e8e4db;
-    --user-bubble-text: #201f1b;
-    --agent-bubble: #24221e;
-    --tool-bg: #201f1b;
-    --tool-border: #37342d;
+    /* Lighter/brighter than light mode's navy so it still reads as a distinct surface against
+       a near-black backdrop, rather than disappearing into it. */
+    --navy: #2c5f92;
+    --navy-deep: #1f4570;
+    --navy-text: #ffffff;
+    --navy-text-muted: rgba(255, 255, 255, 0.68);
+    --slate: #86a6c0;
+    /* The true logo orange, used as-is: dark backgrounds give it plenty of contrast (~8:1)
+       without needing to deepen it the way light mode does. */
+    --accent: #fe8722;
+    --accent-text: #1a130d;
+
+    --bg: #0e1620;
+    --bg-elevated: #16212c;
+    --bg-inset: #111a24;
+    --border: #26333f;
+    --border-strong: #37485a;
+    --text: #e8edf2;
+    --text-muted: #9fb0be;
+    --text-faint: #67788a;
+    --user-bubble: var(--navy);
+    --user-bubble-text: #ffffff;
+    --agent-bubble: #16212c;
+    --tool-bg: #111a24;
+    --tool-border: #26333f;
     --success: #7fb890;
     --crisis: #ff8983;
     --crisis-bg: #2e1c1a;
     --crisis-border: #4a2c28;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 1px 16px rgba(0, 0, 0, 0.2);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 16px rgba(0, 0, 0, 0.25);
     color-scheme: dark;
   }
 }
 
 :root[data-theme="dark"] {
-  --bg: #1b1a17;
-  --bg-elevated: #24221e;
-  --bg-inset: #201f1b;
-  --border: #37342d;
-  --border-strong: #464236;
-  --text: #ece8e0;
-  --text-muted: #a8a196;
-  --text-faint: #726c60;
-  --accent: #e08063;
-  --accent-text: #1b1a17;
-  --user-bubble: #e8e4db;
-  --user-bubble-text: #201f1b;
-  --agent-bubble: #24221e;
-  --tool-bg: #201f1b;
-  --tool-border: #37342d;
+  --navy: #2c5f92;
+  --navy-deep: #1f4570;
+  --navy-text: #ffffff;
+  --navy-text-muted: rgba(255, 255, 255, 0.68);
+  --slate: #86a6c0;
+  --accent: #fe8722;
+  --accent-text: #1a130d;
+
+  --bg: #0e1620;
+  --bg-elevated: #16212c;
+  --bg-inset: #111a24;
+  --border: #26333f;
+  --border-strong: #37485a;
+  --text: #e8edf2;
+  --text-muted: #9fb0be;
+  --text-faint: #67788a;
+  --user-bubble: var(--navy);
+  --user-bubble-text: #ffffff;
+  --agent-bubble: #16212c;
+  --tool-bg: #111a24;
+  --tool-border: #26333f;
   --success: #7fb890;
   --crisis: #ff8983;
   --crisis-bg: #2e1c1a;
   --crisis-border: #4a2c28;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 1px 16px rgba(0, 0, 0, 0.2);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 16px rgba(0, 0, 0, 0.25);
   color-scheme: dark;
 }
 
@@ -104,8 +137,7 @@ body {
   display: flex;
   flex-direction: column;
   padding: 18px 14px;
-  border-right: 1px solid var(--border);
-  background: var(--bg-inset);
+  background: var(--navy);
   gap: 4px;
 }
 
@@ -116,14 +148,16 @@ body {
   font-weight: 600;
   font-size: 15.5px;
   padding: 4px 10px 18px;
+  color: var(--navy-text);
 }
 
-/* The logo is dark green on white, so it stays on its own white tile in both themes. */
+/* The logo carries its own white background, so it stays on a white tile regardless of theme --
+   that also reads nicely as a little badge against the navy sidebar. */
 .brand-logo {
   width: 30px;
   height: 30px;
   border-radius: 8px;
-  box-shadow: 0 0 0 1px var(--border);
+  background: #ffffff;
   flex-shrink: 0;
 }
 
@@ -136,7 +170,7 @@ body {
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text-muted);
+  color: var(--navy-text-muted);
   font: inherit;
   font-size: 13.5px;
   text-align: left;
@@ -145,19 +179,19 @@ body {
 
 .nav-item svg {
   flex-shrink: 0;
-  opacity: 0.85;
+  opacity: 0.9;
 }
 
 .nav-item:hover {
-  background: var(--bg-elevated);
-  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--navy-text);
 }
 
 .nav-item.active {
-  background: var(--bg-elevated);
-  color: var(--text);
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--navy-text);
   font-weight: 600;
-  box-shadow: var(--shadow);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .sidebar-spacer {
@@ -184,7 +218,7 @@ body {
 .sidebar-note {
   font-size: 11px;
   line-height: 1.5;
-  color: var(--text-faint);
+  color: var(--navy-text-muted);
   padding: 0 10px;
 }
 
@@ -342,8 +376,8 @@ button.conn-status:hover {
 
 .ai-panel-primary {
   border: none;
-  background: var(--accent);
-  color: var(--accent-text);
+  background: var(--navy);
+  color: var(--navy-text);
   font-weight: 600;
 }
 
@@ -411,7 +445,7 @@ button.conn-status:hover {
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  background: var(--bg-inset);
+  background: color-mix(in srgb, var(--navy) 10%, var(--bg-elevated));
   color: var(--accent);
   margin-bottom: 14px;
 }
@@ -491,8 +525,8 @@ button.conn-status:hover {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: var(--accent);
-  color: var(--accent-text);
+  background: var(--navy);
+  color: var(--navy-text);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -588,7 +622,7 @@ button.conn-status:hover {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
-  color: var(--text-faint);
+  color: var(--slate);
 }
 
 .tool-card[data-status="running"] .spinner {
@@ -765,8 +799,6 @@ button.conn-status:hover {
     align-items: stretch;
     gap: 4px;
     padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px));
-    border-right: none;
-    border-top: 1px solid var(--border);
   }
 
   .sidebar-brand,
@@ -784,6 +816,12 @@ button.conn-status:hover {
     padding: 6px 2px;
     font-size: 10.5px;
     text-align: center;
+  }
+
+  /* A left-edge accent bar (the vertical-sidebar treatment) doesn't read as "active" in a
+     horizontal row of tabs -- a bottom bar matches how tab bars conventionally show selection. */
+  .nav-item.active {
+    box-shadow: inset 0 -2px 0 var(--accent);
   }
 
   .sidebar-crisis-btn {
@@ -904,8 +942,8 @@ button.conn-status:hover {
   padding: 11px;
   border: none;
   border-radius: var(--radius-md);
-  background: var(--accent);
-  color: var(--accent-text);
+  background: var(--navy);
+  color: var(--navy-text);
   font: inherit;
   font-weight: 600;
   cursor: pointer;
@@ -1139,8 +1177,8 @@ a.resource-contact:active {
   padding: 12px;
   border: none;
   border-radius: var(--radius-md);
-  background: var(--accent);
-  color: var(--accent-text);
+  background: var(--navy);
+  color: var(--navy-text);
   font: inherit;
   font-weight: 600;
   font-size: 14px;

@@ -431,6 +431,54 @@ reality:
       correlated test events, not fabricated ones) was left in place
       deliberately — that's this feature working as intended, not residue
       to clean up.
+- [x] **UI rebrand — navy/orange palette from the logo, plus a new AI
+      "sparkle cluster" icon.** The chat UI (`web/css/styles.css`) used a
+      warm Claude-style cream/terracotta palette left over from
+      scaffolding; restyled to match the actual logo. Colors were sampled
+      directly from the logo PNG (not eyeballed) — navy `#06335d`, orange
+      `#fe8722`, slate `#6585a1`. Roles split deliberately, confirmed with
+      the user before building: navy is primary/structural (the sidebar
+      is now a solid navy surface instead of a light strip, plus primary
+      buttons, the chat avatar, user message bubbles); orange is reserved
+      for interactive/active moments (send button, focus rings, selected
+      chips, the active-nav accent bar) so it stays a highlight instead of
+      getting diluted everywhere. Light mode's orange is deepened to
+      `#c2540a` for WCAG AA text contrast (the raw logo orange is only
+      ~2.4:1 on white); dark mode uses the true bright `#fe8722` as-is,
+      since a dark backdrop gives it plenty of contrast without needing to
+      mute it. Neutrals shifted from warm cream to cool navy-harmonized
+      grays. Semantic colors (success green, crisis red) deliberately left
+      untouched — safety-critical UI, not brand.
+
+      The agent's icon (empty-state + every chat-message avatar) was a
+      heart, which read as "care/support" rather than "AI." Replaced with
+      a 4-point sparkle (the same "AI-generated" visual shorthand as
+      Gemini/Copilot), then — per explicit request — evolved into a
+      cluster of three sparkles at decreasing size in one glyph, arranged
+      in a triangular composition so they stay visually distinct rather
+      than colliding. Iterated live in the browser (injecting candidate
+      SVGs via devtools before touching the file) after the first
+      attempt crowded the small sparkle right against the medium one,
+      which collapsed into an indistinct blur at the 16px avatar size.
+
+      Verified in the actual Browser pane (not just by reading the CSS)
+      across light/dark mode and all four views, and separately confirmed
+      on-device after `cap sync` + rebuild — including an incidental
+      confirmation that dark mode's lightened navy (`#2c5f92`, needed so
+      button surfaces don't disappear into a near-black background) renders
+      correctly on real hardware, via a leftover risk-nudge alert from
+      earlier testing that happened to surface on that same launch.
+
+      One environment issue hit and worked around, not a code bug: this
+      session's own working directory (separate from the canonical
+      `ReclaimApp\Reclaim` checkout) contains a stale duplicate `web/`
+      folder, and `.claude/launch.json`'s dev-server preview was silently
+      serving *that* instead of the real files — confirmed by checking
+      response `Last-Modified` headers and probing for a marker file.
+      Worked around by running a second, throwaway server directly against
+      the real directory rather than trusting the configured one; the
+      configured preview may still misbehave for future browser-based
+      testing until that's actually diagnosed.
 
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
