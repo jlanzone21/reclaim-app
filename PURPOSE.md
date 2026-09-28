@@ -623,6 +623,38 @@ reality:
         Test-set home coordinates were cleared afterward so the device
         is left for the user to set their own for real, not pre-filled
         from testing.
+- [x] **Fixed a real bug: the nightly check-in notification had never
+      once fired on the user's own phone.** User reported not getting an
+      end-of-day review notification and asked to verify the pipeline was
+      actually working. It wasn't, and not for a subtle reason:
+      `BackgroundSamplerPlugin.enable()` is the *only* place that
+      schedules WorkManager jobs, both the baseline sampler and the
+      nightly check-in, and JS only ever calls `enable()` from the
+      "Turn on background sampling" button's one-time click handler
+      (`app.js`'s `refreshTrackingToggle`/click listener, only reachable
+      by visiting Privacy). NightlyCheckinWorker's scheduling was added
+      to `enable()` well after this test device had already flipped that
+      toggle on — so the button was already permanently "on"/disabled,
+      and nothing ever called `enable()` again to pick up the newly-added
+      schedule. It had been silently dead on arrival since the feature
+      shipped. Confirmed directly, not guessed: `dumpsys jobscheduler`
+      showed exactly one JobScheduler entry for `com.reclaim.app` (the
+      ~15-minute baseline sampler), none for the nightly one.
+
+      Fix: `app.js` now calls `ensureBackgroundSchedulingCurrent()` on
+      every boot (`DB.init().then()`, alongside the other per-boot
+      catch-up calls), which re-invokes `BackgroundSampler.enable()`
+      whenever tracking was already found on — safe because `enable()`
+      is idempotent (`ExistingPeriodicWorkPolicy.KEEP`, see its own
+      comment) and this never opts in someone who hasn't already granted
+      tracking, since it only re-confirms, never initiates. Also fixes
+      this same class of bug for any future addition to `enable()`'s
+      scheduling, not just this one instance.
+
+      Verified on-device: fresh launch after the fix, `dumpsys
+      jobscheduler` now shows a second `com.reclaim.app` job that didn't
+      exist before, with a scheduled run time landing exactly at 9:30pm
+      tonight — the configured `NIGHTLY_HOUR`/`NIGHTLY_MINUTE`.
 
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging

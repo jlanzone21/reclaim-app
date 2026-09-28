@@ -175,6 +175,7 @@
       // this boot -- ordinary saves/check-ins push this themselves (see userPreferencesStore.js,
       // checkinStore.js), this just catches anyone already past that.
       RiskProfile.syncToNative();
+      ensureBackgroundSchedulingCurrent();
       busy = false;
       input.placeholder = "Tell me what's going on…";
       updateSendState();
@@ -639,6 +640,26 @@
   // ---- Privacy view: background sampling toggle ----
 
   const trackingToggleBtn = document.getElementById("trackingToggleBtn");
+
+  // BackgroundSamplerPlugin.enable() is the only place that schedules WorkManager jobs, and it
+  // only ever ran from the toggle button's click handler -- a one-time action. Real bug this
+  // caught: NightlyCheckinWorker's scheduling was added to enable() well after tracking had
+  // already been turned on on a real device, and since the toggle was already "on" (disabled),
+  // nothing ever called enable() again to pick up the new schedule -- it silently never fired,
+  // ever, confirmed via dumpsys jobscheduler showing only the baseline sampler's job, none for
+  // the nightly one. Re-invoking enable() at every boot fixes this and any future addition the
+  // same way -- it's idempotent (KEEP policy, see its own comment) and never opts anyone in who
+  // hasn't already granted tracking; isScheduled() (checked first) is what makes that safe.
+  async function ensureBackgroundSchedulingCurrent() {
+    if (typeof BackgroundSampler === "undefined" || !BackgroundSampler.available()) return;
+    try {
+      const alreadyOn = await BackgroundSampler.isScheduled();
+      if (alreadyOn) await BackgroundSampler.enable();
+    } catch (e) {
+      // Best-effort -- a failure here just means scheduling isn't re-confirmed this boot, not a
+      // reason to block startup.
+    }
+  }
 
   async function refreshTrackingToggle() {
     if (!BackgroundSampler.available()) {
