@@ -58,7 +58,23 @@ final class RiskNudgeMonitor {
     // NightlyCheckinWorker/ForegroundAppMonitor: new ID, old one deleted below.
     private static final String CHANNEL_ID = "reclaim_app_nudge_v2";
     private static final String OLD_CHANNEL_ID = "reclaim_app_nudge";
-    private static final int NOTIFICATION_ID = 2; // distinct from ForegroundAppMonitor's
+    static final int NOTIFICATION_ID = 2; // distinct from ForegroundAppMonitor's -- package-private, MainActivity cancels it too
+
+    // Read by MainActivity.onCreate()/onNewIntent(), same pattern as NightlyCheckinWorker's own
+    // EXTRA_ACTION -- marks that the app was opened via this notification's body tap (or its
+    // full-screen intent auto-launch, which reuses the same PendingIntent and can't be told apart
+    // from a real tap at the receiving end -- both count as "responded," see
+    // NotificationTracking's own comment on what that means). The "Call" action deliberately isn't
+    // tracked this way: wrapping it through anything other than a direct, unmodified
+    // PendingIntent.getActivity() to the dialer risks the exact background-activity-launch block
+    // this session already hit and fixed for NightlyCheckinWorker -- not worth risking a
+    // safety-adjacent feature (calling an accountability partner) just to count a tap.
+    static final String EXTRA_ACTION = "risk_action";
+    static final String ACTION_OPEN = "open_risk_alert";
+
+    // Shorter than the nightly check-in's: this is about an in-the-moment risk window, not a
+    // routine daily touchpoint -- stale well before half a day has passed.
+    private static final long TIMEOUT_MS = 3L * 60 * 60 * 1000;
 
     private RiskNudgeMonitor() {}
 
@@ -195,11 +211,16 @@ final class RiskNudgeMonitor {
         // Read (and cleared) by LocalSignalsPlugin.recordCheckinOutcome once a check-in actually
         // happens -- see RiskScorer's class doc comment for the adaptive-tuning loop this feeds.
         db.setMeta("pending_notification_factors", buildPendingFactorsJson(result));
+        // Not used to change behavior here (this type already always uses a full-screen intent,
+        // see below) -- just keeps its sent/responded stats current for Insights, same as the
+        // nightly check-in's.
+        NotificationTracking.recordSentAndShouldEscalate(ctx, NotificationTracking.TYPE_RISK);
 
         // Tapping the notification body (not the call action) opens the app -- app.js checks for
         // the pending alert above on boot and shows the detail screen instead of landing on Chat.
         Intent openApp = new Intent(ctx, MainActivity.class);
         openApp.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        openApp.putExtra(EXTRA_ACTION, ACTION_OPEN);
         PendingIntent openAppIntent = PendingIntent.getActivity(
                 ctx, 0, openApp, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
@@ -214,6 +235,7 @@ final class RiskNudgeMonitor {
                 // the screen is off/locked. Android won't let a background app steal focus from
                 // one actively in use, by design, and this doesn't try to work around that.
                 .setFullScreenIntent(openAppIntent, true)
+                .setTimeoutAfter(TIMEOUT_MS)
                 .setAutoCancel(true);
 
         String phone = db.getMeta("accountability_phone");

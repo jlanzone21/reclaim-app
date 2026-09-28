@@ -1405,6 +1405,31 @@ a.resource-contact:active {
   background: var(--crisis-bg);
 }
 
+/* Risk-alert "I'm okay" countdown -- a filling shaded bar behind the label so the 10s wait before
+   it's clickable reads as "counting down," not "broken." See riskAlertView.js. */
+.dismiss-countdown-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.dismiss-countdown-fill {
+  position: absolute;
+  inset: 0;
+  width: 0%;
+  background: color-mix(in srgb, var(--text-faint) 30%, transparent);
+  pointer-events: none;
+}
+
+.dismiss-countdown-label {
+  position: relative;
+  z-index: 1;
+}
+
+.dismiss-countdown-btn:disabled {
+  cursor: default;
+  opacity: 1; /* the fill bar itself is the "not ready yet" signal -- don't also dim the text */
+}
+
 /* ---- TEMPORARY: Testing panel (debugTestPanel.js) -- deliberately loud/different from the rest
    of the app's styling so it reads as "not a real feature" at a glance. Remove this whole block
    along with debugTestPanel.js and its markup in index.html before shipping to a real user. ---- */

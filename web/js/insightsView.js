@@ -13,6 +13,7 @@ const InsightsView = (function () {
       usageList: document.getElementById("activityUsageList"),
       eventsList: document.getElementById("activityEventsList"),
       matchesList: document.getElementById("activityMatchesList"),
+      notificationStats: document.getElementById("notificationStatsList"),
     };
 
     els.exportBtn.addEventListener("click", exportData);
@@ -31,6 +32,7 @@ const InsightsView = (function () {
     // reads through the native LocalSignals bridge, so it renders in as soon as it resolves
     // rather than blocking everything else on it.
     renderRecentActivity();
+    renderNotificationStats();
   }
 
   function renderStats(entries) {
@@ -244,6 +246,51 @@ const InsightsView = (function () {
     const a =
       Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  // "Sent"/"responded" per notification type -- see NotificationTracking.java (native) for
+  // exactly what counts as a response. A bespoke small renderer, not renderActivityList, since
+  // there's no per-row timestamp here, just two running totals.
+  async function renderNotificationStats() {
+    if (!LocalSignals.available()) {
+      renderStatsList([], "Not available on this platform");
+      return;
+    }
+    const stats = await LocalSignals.getNotificationStats();
+    const rows = [
+      ["Nightly check-in", stats.nightly],
+      ["Risk check-in", stats.risk],
+    ]
+      .filter(([, s]) => s && s.sent > 0)
+      .map(([label, s]) => {
+        const pct = Math.round((100 * (s.responded || 0)) / s.sent);
+        return { label, detail: `${s.responded || 0} of ${s.sent} answered (${pct}%)` };
+      });
+    renderStatsList(rows, "No notifications sent yet");
+  }
+
+  function renderStatsList(rows, emptyText) {
+    els.notificationStats.innerHTML = "";
+    if (!rows.length) {
+      const empty = document.createElement("div");
+      empty.className = "activity-empty";
+      empty.textContent = emptyText;
+      els.notificationStats.appendChild(empty);
+      return;
+    }
+    for (const row of rows) {
+      const item = document.createElement("div");
+      item.className = "activity-row";
+      const main = document.createElement("div");
+      main.className = "activity-row-main";
+      main.textContent = row.label;
+      item.appendChild(main);
+      const detail = document.createElement("div");
+      detail.className = "activity-row-detail";
+      detail.textContent = row.detail;
+      item.appendChild(detail);
+      els.notificationStats.appendChild(item);
+    }
   }
 
   function appLabelResolver(installedApps) {

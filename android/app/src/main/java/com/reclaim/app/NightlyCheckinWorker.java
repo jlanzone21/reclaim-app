@@ -65,6 +65,11 @@ public class NightlyCheckinWorker extends Worker {
     static final String EXTRA_ACTION = "nightly_action";
     static final String ACTION_OPEN_CHECKIN = "open_checkin"; // matches the app_meta value app.js expects
 
+    // Cleared automatically if never acted on -- stays relevant most of the next day (someone
+    // might reasonably answer "how was yesterday" the next morning), but should be gone well
+    // before that evening's new one posts, not still sitting in the shade from the day before.
+    private static final long TIMEOUT_MS = 12L * 60 * 60 * 1000;
+
     // Every {title, body} pair asks the same underlying question -- did today go okay or not --
     // just worded differently, so a daily notification doesn't read as the exact same robotic
     // string every single night. Picked at random per post, not by day-of-week/rotation order, so
@@ -107,6 +112,13 @@ public class NightlyCheckinWorker extends Worker {
         PendingIntent wentWell = actionIntent(ctx, NightlyCheckinActionReceiver.ACTION_WENT_WELL, 1);
         String[] message = MESSAGES[new java.util.Random().nextInt(MESSAGES.length)];
 
+        // Escalates to a full-screen intent only when the PREVIOUS nightly check-in went
+        // unanswered -- see NotificationTracking's own comment. Not unconditional the way
+        // RiskNudgeMonitor's already is: this prompt is a routine daily touchpoint, not a risk
+        // alert, so it should only interrupt more assertively after being ignored once, not
+        // every single night.
+        boolean escalate = NotificationTracking.recordSentAndShouldEscalate(ctx, NotificationTracking.TYPE_NIGHTLY);
+
         NotificationCompat.Builder builder = new NotificationCompat.Builder(ctx, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle(message[0])
@@ -115,7 +127,14 @@ public class NightlyCheckinWorker extends Worker {
                 .setContentIntent(openCheckIn)
                 .addAction(0, "Went well", wentWell)
                 .addAction(0, "Tell me more", openCheckIn)
+                .setTimeoutAfter(TIMEOUT_MS)
                 .setAutoCancel(true);
+
+        if (escalate) {
+            // Same honest limit as RiskNudgeMonitor's own use of this -- only reliably takes over
+            // when the screen is off/locked, never yanks focus from something actively in use.
+            builder.setFullScreenIntent(openCheckIn, true);
+        }
 
         nm.notify(NOTIFICATION_ID, builder.build());
         return Result.success();

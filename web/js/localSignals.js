@@ -94,6 +94,16 @@ const LocalSignals = (function () {
     await plugin().recordCheckinOutcome({ type, timestamp: timestampMs, tags: tags || [] });
   }
 
+  // How many nightly/risk notifications have been sent vs. actually responded to (any action tap
+  // or opening the app counts -- see NotificationTracking.java). Shape:
+  // {"nightly":{"sent":N,"responded":N},"risk":{"sent":N,"responded":N}}, either key possibly
+  // missing if that type has never posted yet.
+  async function getNotificationStats() {
+    if (!available()) return {};
+    const { stats } = await plugin().getNotificationStats();
+    return stats || {};
+  }
+
   // ============================================================================================
   // TEMPORARY -- backs the Testing panel (debugTestPanel.js). See LocalSignalsPlugin.java's own
   // matching comment block; remove both together before shipping this to a real user.
@@ -138,6 +148,7 @@ const LocalSignals = (function () {
     getPendingRiskAlert,
     getPendingNightlyAction,
     recordCheckinOutcome,
+    getNotificationStats,
     debugRunBackgroundCheck,
     debugSendNightlyCheckin,
     debugSendRiskNudge,

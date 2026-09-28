@@ -655,6 +655,80 @@ reality:
       jobscheduler` now shows a second `com.reclaim.app` job that didn't
       exist before, with a scheduled run time landing exactly at 9:30pm
       tonight — the configured `NIGHTLY_HOUR`/`NIGHTLY_MINUTE`.
+- [x] **Notification escalation, timeouts, sent/responded tracking, and a
+      10-second "I'm okay" delay.** User asked for notifications to
+      auto-open the app if a previous one went unanswered, for
+      unanswered notifications to eventually time out, for sent/responded
+      counts to be tracked, and for the risk alert's "I'm okay" to
+      require a real pause before it's clickable. Flagged one honest
+      platform limit up front rather than overpromise: Android will not
+      let a background app steal focus from whatever's actively in use,
+      full stop — already confirmed twice this session. What's real and
+      buildable: reliably auto-opening the app when the phone is idle or
+      locked, which `RiskNudgeMonitor` already always does via
+      `setFullScreenIntent`; `NightlyCheckinWorker` didn't do this at all
+      before this pass.
+
+      **New shared class, `NotificationTracking.java`**: per-type
+      (`nightly`/`risk`) sent/responded counters plus a `last_answered_
+      TYPE` flag in `app_meta`. `recordSentAndShouldEscalate` returns
+      true only when the *previous* occurrence of that type was left
+      unanswered (never on the first-ever notification of a type, since
+      there's nothing to escalate from) — `NightlyCheckinWorker` now
+      conditionally adds `setFullScreenIntent` on that signal, escalating
+      only after being ignored once, not every night (unlike
+      `RiskNudgeMonitor`, which already always uses it — that type has
+      nothing further to escalate to, so it just gets stats tracking
+      here, not a behavior change). "Responded" means any action tap or
+      opening the app at all — not graded by which choice, just whether
+      it was engaged with before timing out.
+
+      One documented, deliberate gap: the risk-nudge notification's
+      "Call [name]" action isn't tracked. Wrapping it through anything
+      other than a direct, unmodified `PendingIntent.getActivity()` to
+      the dialer risks the exact background-activity-launch block this
+      session already hit and fixed for `NightlyCheckinWorker` — not
+      worth risking a safety-adjacent feature just to count a tap.
+
+      **Timeouts** via `NotificationCompat.setTimeoutAfter`: 3 hours for
+      the risk nudge (an in-the-moment risk window, stale quickly), 12
+      hours for the nightly check-in (relevant most of the next day, but
+      gone before that evening's new one posts).
+
+      **The 10-second wait** on the risk alert's "I'm okay"
+      (`riskAlertView.js`) disables the button and runs a CSS-transitioned
+      shaded fill behind the label — a real 10s pause, not just a
+      disabled state that looks broken, per the user's own request for
+      something "visually nice looking but also clear."
+
+      Verified on-device, and a real bug caught mid-verification, not
+      just assumed from the code: confirmed a first-ever nightly
+      notification posts with `fullscreenIntent=null` and `timeout=PT12H`
+      (`dumpsys notification`); left it unanswered and confirmed the
+      *second* one escalated to a real `fullscreenIntent` PendingIntent;
+      then, unprompted, watched that escalated notification's full-screen
+      intent actually auto-fire and open the app on its own (confirmed
+      via `ActivityTaskManager: START ... BAL_ALLOW_NON_APP_VISIBLE_WINDOW`
+      in logcat) — about as strong a real-world confirmation of this
+      mechanism as testing could produce. Confirmed the risk nudge's
+      `timeout=PT3H`. Confirmed Insights renders the live counts correctly
+      ("Nightly check-in: 1 of 3 answered (33%)"). The bug: that same
+      auto-fire, followed by a real tap on the still-visible notification
+      (risk-nudge's `handleRiskIntent` didn't explicitly cancel it, unlike
+      the nightly path), invoked the response handler twice for one
+      notification — caught directly via `notification_stats` briefly
+      showing `responded:2` against `sent:1`, an impossible ratio that was
+      the tell. Fixed with two changes: `handleRiskIntent` now explicitly
+      cancels the notification (not just relying on `setAutoCancel`, which
+      doesn't reliably fire when a full-screen intent auto-launches rather
+      than a real shade tap), and `NotificationTracking.recordResponded`
+      is now idempotent per occurrence (a repeat call once `last_answered_
+      TYPE` is already `"true"` is a no-op). Re-verified directly by
+      delivering the same intent to `MainActivity` twice in a row
+      (`adb shell am start` with the same extra) and confirming `responded`
+      advanced by exactly 1, not 2. The 10-second countdown was verified
+      in-browser: the fill reaches 100% and the button becomes clickable
+      at exactly 10s, not before.
 
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging

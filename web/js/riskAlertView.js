@@ -6,7 +6,13 @@
  * once per alert, not every time the app happens to be reopened afterward.
  */
 const RiskAlertView = (function () {
+  // Deliberately slow -- long enough to make "I'm okay" a real choice, not a reflex tap that
+  // dismisses this before it's actually been read. The filling bar behind the label (CSS) is what
+  // makes the wait read as "counting down" rather than "the button is broken."
+  const DISMISS_WAIT_MS = 10000;
+
   let els = {};
+  let dismissTimer = null;
 
   function init() {
     els = {
@@ -16,6 +22,7 @@ const RiskAlertView = (function () {
       call: document.getElementById("riskAlertCall"),
       chat: document.getElementById("riskAlertChat"),
       dismiss: document.getElementById("riskAlertDismiss"),
+      dismissFill: document.getElementById("riskAlertDismissFill"),
     };
     els.dismiss.addEventListener("click", close);
     els.chat.addEventListener("click", () => {
@@ -62,10 +69,28 @@ const RiskAlertView = (function () {
     }
 
     els.overlay.classList.add("visible");
+    startDismissCountdown();
+  }
+
+  function startDismissCountdown() {
+    clearTimeout(dismissTimer);
+    els.dismiss.disabled = true;
+    // Reset instantly (no transition), then force a reflow before starting the real transition --
+    // without the reflow the browser can coalesce the 0%-then-100% into a single jump instead of
+    // an actual 10s fill, especially on a repeat open where the fill is already mid/full.
+    els.dismissFill.style.transition = "none";
+    els.dismissFill.style.width = "0%";
+    void els.dismissFill.offsetWidth;
+    els.dismissFill.style.transition = `width ${DISMISS_WAIT_MS}ms linear`;
+    els.dismissFill.style.width = "100%";
+    dismissTimer = setTimeout(() => {
+      els.dismiss.disabled = false;
+    }, DISMISS_WAIT_MS);
   }
 
   function close() {
     els.overlay.classList.remove("visible");
+    clearTimeout(dismissTimer);
   }
 
   return { init, checkPending };

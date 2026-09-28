@@ -25,5 +25,6 @@ public class NightlyCheckinActionReceiver extends BroadcastReceiver {
         // No app UI at all -- app.js logs the actual check-in on next boot/resume (see its own
         // comment) since this native receiver can't reach db.js's sql.js directly.
         LocalSignalsDb.getInstance(ctx).setMeta("pending_nightly_action", "quick_resisted");
+        NotificationTracking.recordResponded(ctx, NotificationTracking.TYPE_NIGHTLY);
     }
 }

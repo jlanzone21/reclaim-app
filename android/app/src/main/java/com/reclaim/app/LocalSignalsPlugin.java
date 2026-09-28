@@ -192,6 +192,20 @@ public class LocalSignalsPlugin extends Plugin {
         call.resolve();
     }
 
+    // For Insights -- see NotificationTracking's own comment for exactly what "sent"/"responded"
+    // count. Shape: {"nightly":{"sent":N,"responded":N},"risk":{"sent":N,"responded":N}}, missing
+    // a type entirely (or the whole object empty) if nothing of that type has posted yet.
+    @PluginMethod
+    public void getNotificationStats(PluginCall call) {
+        JSObject result = new JSObject();
+        try {
+            result.put("stats", new JSObject(NotificationTracking.statsJson(getContext())));
+        } catch (org.json.JSONException e) {
+            result.put("stats", new JSObject());
+        }
+        call.resolve(result);
+    }
+
     private String resolveLabel(String packageName) {
         try {
             PackageManager pm = getContext().getPackageManager();
