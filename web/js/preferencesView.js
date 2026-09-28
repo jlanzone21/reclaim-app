@@ -1,12 +1,15 @@
 /**
  * The one-time setup form (accountability/pastor contacts, tempting times/triggers/locations,
- * trigger apps, notification intensity) — shown as the second step of first-launch onboarding
- * (chained from the welcome overlay's "I understand"), and reachable any time after from Privacy's
- * "Edit your preferences" so nothing here is a one-shot, especially the accountability partner
- * contact, which matters most when it's filled in later rather than skipped forever.
+ * home location, trigger apps, notification intensity) — shown as the second step of first-launch
+ * onboarding (chained from the welcome overlay's "I understand"), and reachable any time after
+ * from Privacy's "Edit your preferences" so nothing here is a one-shot, especially the
+ * accountability partner contact, which matters most when it's filled in later rather than
+ * skipped forever.
  *
  * UserPreferencesStore is the only place this data lives — see its own header for why that's
- * deliberate (it's also what the AI's per-turn context is built from, see personalContext.js).
+ * deliberate (it's also what the AI's per-turn context is built from, see personalContext.js —
+ * except home_lat/home_lon, deliberately not part of that context; see UserPreferencesStore's
+ * header for why).
  */
 const PreferencesView = (function () {
   let els = {};
@@ -15,6 +18,10 @@ const PreferencesView = (function () {
   let selectedIntensity = "medium";
   let mode = "onboarding"; // "onboarding" | "edit" — controls Skip vs Close and what happens on open/close
   let onDone = null;
+  // Staged like every other field here -- only actually written on Save, so Skip/Close discards a
+  // freshly-captured-but-unsaved location the same way it discards an unsaved name/phone edit.
+  let homeLat = null;
+  let homeLon = null;
 
   function init() {
     els = {
@@ -26,6 +33,9 @@ const PreferencesView = (function () {
       timeGrid: document.getElementById("prefTimeGrid"),
       triggerGrid: document.getElementById("prefTriggerGrid"),
       locations: document.getElementById("prefLocations"),
+      homeStatus: document.getElementById("prefHomeStatus"),
+      saveHomeBtn: document.getElementById("prefSaveHomeBtn"),
+      clearHomeBtn: document.getElementById("prefClearHomeBtn"),
       allowlistSummary: document.getElementById("prefAllowlistSummary"),
       intensityScale: document.getElementById("prefIntensityScale"),
       otherNotes: document.getElementById("prefOtherNotes"),
@@ -39,6 +49,7 @@ const PreferencesView = (function () {
     renderChipGrid(els.timeGrid, TEMPTING_TIME_BUCKETS, selectedTimes);
     renderChipGrid(els.triggerGrid, CONDITION_TAGS, selectedTriggers);
     wireIntensityScale();
+    wireHomeLocation();
 
     els.save.addEventListener("click", () => { persist(true); close(); });
     els.skip.addEventListener("click", () => close());
@@ -74,6 +85,9 @@ const PreferencesView = (function () {
     els.pastorPhone.value = prefs.pastor_phone || "";
     els.locations.value = prefs.tempting_locations || "";
     els.otherNotes.value = prefs.other_notes || "";
+    homeLat = prefs.home_lat ?? null;
+    homeLon = prefs.home_lon ?? null;
+    renderHomeStatus();
 
     selectedTimes = new Set(prefs.tempting_times || []);
     selectedTriggers = new Set(prefs.common_triggers || []);
@@ -114,6 +128,49 @@ const PreferencesView = (function () {
     });
   }
 
+  function wireHomeLocation() {
+    els.saveHomeBtn.addEventListener("click", async () => {
+      if (typeof NativeLocation === "undefined" || !NativeLocation.available()) {
+        els.homeStatus.textContent = "Not available on this platform.";
+        return;
+      }
+      els.saveHomeBtn.disabled = true;
+      els.homeStatus.textContent = "Getting your location…";
+      try {
+        let granted = await NativeLocation.hasPermission();
+        if (!granted) granted = await NativeLocation.requestPermission();
+        if (!granted) {
+          els.homeStatus.textContent = "Location permission needed — grant it from Privacy, then try again.";
+          return;
+        }
+        const pos = await NativeLocation.getPosition();
+        const lat = pos && (pos.precise_lat ?? pos.coarse_lat);
+        const lon = pos && (pos.precise_lon ?? pos.coarse_lon);
+        if (lat == null || lon == null) {
+          els.homeStatus.textContent = "Couldn't get your location — try again in a moment.";
+          return;
+        }
+        homeLat = lat;
+        homeLon = lon;
+        renderHomeStatus();
+      } finally {
+        els.saveHomeBtn.disabled = false;
+      }
+    });
+
+    els.clearHomeBtn.addEventListener("click", () => {
+      homeLat = null;
+      homeLon = null;
+      renderHomeStatus();
+    });
+  }
+
+  function renderHomeStatus() {
+    const isSet = homeLat != null && homeLon != null;
+    els.homeStatus.textContent = isSet ? "Home location set." : "Not set yet.";
+    els.clearHomeBtn.hidden = !isSet;
+  }
+
   async function renderAllowlistSummary() {
     if (!LocalSignals.available()) {
       els.allowlistSummary.textContent = "Not available on this platform.";
@@ -141,6 +198,8 @@ const PreferencesView = (function () {
       tempting_locations: els.locations.value.trim(),
       notification_intensity: selectedIntensity,
       other_notes: els.otherNotes.value.trim(),
+      home_lat: homeLat,
+      home_lon: homeLon,
     };
     if (markOnboardingDone && !prefs.onboarding_completed_at) {
       fields.onboarding_completed_at = new Date().toISOString();

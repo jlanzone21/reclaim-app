@@ -60,12 +60,13 @@ const InsightsView = (function () {
       "ratio"
     );
 
-    // mood_rating/urge_intensity/sleep_hours are optional on every check-in (see
-    // checkinStore.js) -- average only over entries where that specific field was filled in,
-    // not every check-in, so one person skipping "hours of sleep" doesn't skew everyone's average.
+    // mood_rating/urge_intensity are optional on every check-in (see checkinStore.js) -- average
+    // only over entries where that specific field was filled in, not every check-in, so one
+    // person skipping a field doesn't skew everyone's average. sleep_hours isn't shown here
+    // anymore since the form no longer collects it (see checkinView.js) -- a card that could only
+    // ever show stale historical data or "none logged" forever isn't worth the space.
     addAverageStatCard(recent, "mood_rating", "avg mood (last 30 days)", "mood", 1, "/5");
     addAverageStatCard(recent, "urge_intensity", "avg urge intensity (last 30 days)", "urge", 1, "/5");
-    addAverageStatCard(recent, "sleep_hours", "avg sleep, hrs (last 30 days)", "sleep", 1, "h");
   }
 
   function addAverageStatCard(entries, field, label, kind, decimals, suffix) {
@@ -188,6 +189,7 @@ const InsightsView = (function () {
       LocalSignals.getInstalledApps(),
     ]);
     const labelFor = appLabelResolver(installedApps);
+    const home = UserPreferencesStore.get();
 
     renderActivityList(
       els.usageList,
@@ -199,7 +201,7 @@ const InsightsView = (function () {
         return {
           when: s.sampled_at,
           main: s.detected_domain || appLabel || "(no app permission)",
-          detail: [s.detected_domain && appLabel, notifLabel].filter(Boolean).join(" · "),
+          detail: [s.detected_domain && appLabel, notifLabel, homeLabel(s, home)].filter(Boolean).join(" · "),
         };
       }),
       "No background samples yet — grant permissions and turn on background sampling in Privacy"
@@ -216,6 +218,32 @@ const InsightsView = (function () {
       matches.map((m) => ({ when: m.occurred_at, main: labelFor(m.package_name), detail: m.matched_keyword })),
       "No keyword matches yet"
     );
+  }
+
+  // Turns a usage sample's raw lat/lon into a "Home"/"Away from home" label against the home
+  // location saved in onboarding (see UserPreferencesStore's header for why that's never shown as
+  // raw coordinates) -- this is the fix for location data that otherwise "doesn't mean anything to
+  // the user." Coarse-only samples (no fine location permission) are rounded to 1 decimal degree
+  // at the source (~11km, see nativeLocation.js), so a tight radius there would be meaningless --
+  // use a much wider one and say "Near home" rather than falsely implying building-level precision.
+  function homeLabel(sample, home) {
+    if (!home || home.home_lat == null || home.home_lon == null) return null;
+    const lat = sample.precise_lat ?? sample.coarse_lat;
+    const lon = sample.precise_lon ?? sample.coarse_lon;
+    if (lat == null || lon == null) return null;
+    const dist = distanceMeters(lat, lon, home.home_lat, home.home_lon);
+    if (sample.precise_lat != null) return dist <= 200 ? "Home" : "Away from home";
+    return dist <= 15000 ? "Near home" : "Away from home";
+  }
+
+  function distanceMeters(lat1, lon1, lat2, lon2) {
+    const R = 6371000;
+    const toRad = (d) => (d * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
   function appLabelResolver(installedApps) {

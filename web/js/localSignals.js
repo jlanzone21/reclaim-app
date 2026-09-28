@@ -84,13 +84,14 @@ const LocalSignals = (function () {
     return action || null;
   }
 
-  // RiskScorer's adaptive-tuning loop: correlates this check-in against whichever risk-nudge
-  // notification most recently fired (if any, and if recent enough) and nudges its weights
-  // accordingly. See RiskScorer.java's class doc comment. A no-op on native's side if nothing's
-  // pending -- safe to call after every check-in, not just ones known to follow a notification.
-  async function recordCheckinOutcome(type, timestampMs) {
+  // RiskScorer's adaptive-tuning loop, both halves: correlates this check-in against whichever
+  // risk-nudge notification most recently fired (if any, and if recent enough), AND against this
+  // check-in's own tags (independent of any notification) -- see RiskScorer.java's class doc
+  // comment. A no-op on native's side for whichever half doesn't apply -- safe to call after
+  // every check-in.
+  async function recordCheckinOutcome(type, timestampMs, tags) {
     if (!available()) return;
-    await plugin().recordCheckinOutcome({ type, timestamp: timestampMs });
+    await plugin().recordCheckinOutcome({ type, timestamp: timestampMs, tags: tags || [] });
   }
 
   // ============================================================================================

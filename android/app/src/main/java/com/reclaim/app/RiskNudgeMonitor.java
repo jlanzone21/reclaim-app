@@ -37,7 +37,7 @@ import androidx.core.content.ContextCompat;
  * NOT yank focus away from another app you're actively using. That's Android's own anti-abuse
  * design, not a bug here.
  *
- * The notification/lock-screen text is deliberately generic (GENERIC_TEXT below) -- never names
+ * The notification/lock-screen text is deliberately generic (GENERIC_TEXTS below) -- never names
  * the app or pattern that triggered it, since anyone glancing at a locked phone could see that
  * text. The specific "here's what we noticed" detail (RiskScorer's userReasons) is written to
  * LocalSignalsDb's app_meta instead, read back and shown by app.js only once the app is actually
@@ -168,8 +168,17 @@ final class RiskNudgeMonitor {
     // notification banner, and the lock screen if a full-screen intent actually takes over) --
     // never names the app or the specific pattern. The real "here's what we noticed" detail only
     // shows once the app is actually open, which requires deliberately unlocking first. See
-    // PURPOSE.md's "Decisions worth remembering".
-    private static final String GENERIC_TEXT = "Reclaim wants to check in with you.";
+    // PURPOSE.md's "Decisions worth remembering". Several equally-generic phrasings, picked at
+    // random per post, purely so this doesn't read as the exact same robotic string every time --
+    // none of them may reveal any more than the original single string did.
+    private static final String[] GENERIC_TEXTS = {
+            "Reclaim wants to check in with you.",
+            "Got a second to check in?",
+            "Just checking in with you.",
+            "Reclaim has a quick check-in for you.",
+            "Checking in — got a moment?",
+            "A quick check-in, whenever you're ready.",
+    };
 
     private static void postNotification(Context ctx, String packageName, RiskScorer.Result result) {
         NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
@@ -197,7 +206,7 @@ final class RiskNudgeMonitor {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(ctx, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle("Reclaim")
-                .setContentText(GENERIC_TEXT)
+                .setContentText(GENERIC_TEXTS[new java.util.Random().nextInt(GENERIC_TEXTS.length)])
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setCategory(NotificationCompat.CATEGORY_REMINDER)
                 .setContentIntent(openAppIntent)
@@ -240,7 +249,7 @@ final class RiskNudgeMonitor {
 
     // The specific, plain-language detail (which app, which reasons) never appears in the
     // notification itself -- only here, read back by app.js once the app is actually open. See
-    // GENERIC_TEXT above.
+    // GENERIC_TEXTS above.
     private static String buildPendingAlertJson(Context ctx, String packageName, RiskScorer.Result result) {
         try {
             org.json.JSONObject alert = new org.json.JSONObject();

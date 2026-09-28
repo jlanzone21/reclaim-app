@@ -68,7 +68,9 @@ const DB = (function () {
       notification_intensity TEXT NOT NULL DEFAULT 'medium',
       other_notes TEXT,
       onboarding_completed_at TEXT,
-      updated_at TEXT
+      updated_at TEXT,
+      home_lat REAL,
+      home_lon REAL
     );
 
     CREATE INDEX IF NOT EXISTS idx_resources_type ON resources(type);
@@ -211,10 +213,17 @@ const DB = (function () {
   }
 
   function migrateColumns() {
-    const cols = all("PRAGMA table_info(checkins)").map((c) => c.name);
-    if (!cols.includes("mood_rating")) run("ALTER TABLE checkins ADD COLUMN mood_rating INTEGER");
-    if (!cols.includes("urge_intensity")) run("ALTER TABLE checkins ADD COLUMN urge_intensity INTEGER");
-    if (!cols.includes("sleep_hours")) run("ALTER TABLE checkins ADD COLUMN sleep_hours REAL");
+    const checkinCols = all("PRAGMA table_info(checkins)").map((c) => c.name);
+    if (!checkinCols.includes("mood_rating")) run("ALTER TABLE checkins ADD COLUMN mood_rating INTEGER");
+    if (!checkinCols.includes("urge_intensity")) run("ALTER TABLE checkins ADD COLUMN urge_intensity INTEGER");
+    // sleep_hours: kept for any existing installs that already logged it, but the check-in form no
+    // longer collects it (superseded by the condition tags above, which already cover "what was
+    // going on" -- a second sleep-specific field wasn't adding anything the tags didn't).
+    if (!checkinCols.includes("sleep_hours")) run("ALTER TABLE checkins ADD COLUMN sleep_hours REAL");
+
+    const prefCols = all("PRAGMA table_info(user_preferences)").map((c) => c.name);
+    if (!prefCols.includes("home_lat")) run("ALTER TABLE user_preferences ADD COLUMN home_lat REAL");
+    if (!prefCols.includes("home_lon")) run("ALTER TABLE user_preferences ADD COLUMN home_lon REAL");
   }
 
   async function init() {

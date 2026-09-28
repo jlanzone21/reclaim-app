@@ -531,6 +531,98 @@ reality:
       live-tested (its 60-minute real-session threshold isn't practical
       to force) — worth a real on-device confirmation once genuinely
       idle for an hour on a flagged app, not assumed correct from here.
+- [x] **Notification text variety, home location, check-in trigger tags over
+      sleep hours, and tag-correlated adaptive tuning — four related asks
+      in one pass.**
+      - **Notification text variety.** The nightly check-in and risk-nudge
+        notifications always showed the exact same string. Both now pick
+        randomly from a small pool of equally-meaning phrasings each time
+        they post (8 variants for the nightly prompt, 6 for the risk
+        nudge) — the risk-nudge pool stays exactly as privacy-generic as
+        the original single string was, never hinting at why it fired.
+      - **Home location, on-device only.** Location data was being
+        collected but never meant anything to the user — Insights never
+        even displayed it. Added a "Save current location as home" step
+        to onboarding (`web/js/preferencesView.js`, using the already-
+        wired-but-previously-uncalled `NativeLocation.getPosition()`),
+        staged like every other onboarding field (only persisted on
+        Save, so Skip/Close discards it same as an unsaved name/phone
+        edit). Stored in `user_preferences` (`home_lat`/`home_lon`),
+        deliberately kept OUT of `personalContext.js`'s AI-facing
+        sentences and out of the native `app_meta` mirror everything
+        else in that store gets — see `userPreferencesStore.js`'s header
+        for why a raw coordinate pair gets treated as more sensitive
+        than the rest of onboarding. Insights' recent-activity panel now
+        labels each sample "Home" / "Near home" / "Away from home"
+        (`insightsView.js`, Haversine distance, computed client-side)
+        instead of showing nothing — coarse-only samples (no fine
+        location permission) get a much wider, honestly-labeled radius
+        since they're only accurate to ~11km at the source.
+      - **Check-in form: sleep hours removed.** The condition-tag
+        selector ("What was going on?") already covered "what triggered
+        this" — Boredom, Loneliness, Stress, Fatigue, etc. — before this
+        pass; only the separate numeric "hours of sleep" field and its
+        Insights average-stat card were removed as redundant. The
+        `sleep_hours` DB column and any already-logged values are left
+        alone, just no longer written to by the form.
+      - **Tag-correlated adaptive tuning.** The user asked directly:
+        does picking a check-in tag actually influence RiskScorer, e.g.
+        does "Boredom" make screen-time duration matter more, does
+        "Loneliness" make being alone matter more? Answer at the time
+        was no — `recordCheckinOutcome` never even received the check-in's
+        tags, only `type` and a timestamp; the only existing tag-to-
+        factor connection was one hardcoded special case ("Social media"
+        tag + a hardcoded app list → the `socialMedia` factor). Built the
+        general version: `RiskScorer.TAG_TO_FACTORS` maps condition tags
+        to the factor(s) they plausibly relate to (Boredom/Stress →
+        `duration`; Loneliness/Alone and unsupervised/Conflict with
+        someone → the new `alone` factor below; Fatigue/Late at night →
+        `selfReportedTime` + `historicalTime`; Social media → `socialMedia`)
+        — several tags (Anger or frustration, Feeling low, Celebrating,
+        Unexpected exposure, Other) are deliberately left unmapped rather
+        than force a connection with no real signal behind it.
+        `adjustWeightsForTags` runs on every check-in, independent of and
+        alongside the existing notification-correlation mechanism (not a
+        replacement for it) — both can adjust the same weight for the
+        same check-in, deliberately not deduplicated against each other.
+        Multiple selected tags that map to the same factor dedupe into
+        one nudge, not one per tag.
+
+        The loneliness mapping exposed a real gap: `nearby_device_bucket`
+        existed in the schema with a reader method
+        (`mostRecentNearbyDeviceBucket`) already written for RiskScorer,
+        but nothing had ever called it — `BaselineSampleWorker` never
+        invoked nearby-device scanning at all, despite `NearbyDevicesPlugin`
+        having working scan logic all along (just JS-facing, async, for
+        the Privacy tab's permission UI). Added `NearbyDevices.java`, a
+        plain native helper mirroring `DeviceLocation.java`'s pattern
+        (no Capacitor bridge, callable directly from a Worker), whose BLE
+        scan blocks the calling thread ~3 seconds — acceptable since
+        `Worker.doWork()` is meant to do blocking work off the main
+        thread, and it's skipped entirely (no permission check overhead
+        even) for anyone who hasn't granted the permission. This directly
+        feeds a new sixth RiskScorer factor, `alone` (fires when the bucket
+        is exactly "0", i.e. no nearby devices detected at all — missing
+        data/no scan yet is `null`, which never fires it).
+
+        Verified on-device, every piece, not assumed from the code:
+        confirmed a real BLE scan now populates `nearby_device_bucket`
+        (previously `NULL` on every prior row, a real `"6+"` on the first
+        row sampled after this shipped); confirmed the tag-correlation
+        math directly via logcat both directions with an isolated test
+        (cleared a stale pending notification-correlation entry first so
+        only the tag mechanism was being exercised) —
+        `adjusted weights +2 for [duration, alone] -> {"duration":30,
+        "alone":17,...}` for Boredom+Loneliness tagged "slipped", then
+        exactly reversed (`-2`, back to 28/15) for the same tags tagged
+        "resisted"; confirmed real GPS capture end-to-end by driving the
+        actual onboarding button through the live WebView (an initial
+        4-second wait in the test itself was too short for a real fix —
+        not a bug, just an undersized test timeout — 8 seconds was
+        enough) through to a persisted, correctly-saved coordinate pair.
+        Test-set home coordinates were cleared afterward so the device
+        is left for the user to set their own for real, not pre-filled
+        from testing.
 
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging

@@ -25,10 +25,18 @@ import java.util.Set;
  * watch for (UserPreferencesStore's tempting_times/common_triggers), not keyword matches --
  * those stay a separate, passive signal for Insights, not an input here.
  *
- * Adaptive tuning (v2): the five base factor weights below are stored, mutable values
+ * Adaptive tuning (v2): the six base factor weights below are stored, mutable values
  * (LocalSignalsDb.app_meta's "risk_weights"), not Java literals -- adjustWeights() nudges them a
- * small, fixed amount based on whether a check-in shortly after a notification was "resisted" or
- * "slipped" (see LocalSignalsPlugin.recordCheckinOutcome, the JS-side caller in checkinStore.js).
+ * small, fixed amount, two independent ways (both land in the same risk_weights store, and both
+ * can adjust the same check-in's outcome -- deliberately not deduplicated against each other, see
+ * LocalSignalsPlugin.recordCheckinOutcome):
+ *   1. Notification correlation -- whether a check-in shortly after a notification was "resisted"
+ *      or "slipped" reinforces/eases off whichever factors actually fired in that notification.
+ *   2. Tag correlation -- independent of any notification, which condition tags the person picked
+ *      for THIS check-in (TAG_TO_FACTORS below) reinforces/eases off the factors that tag plausibly
+ *      relates to. Only tags with a reasonably direct, explainable connection are mapped; several
+ *      (Feeling low, Celebrating, Unexpected exposure, Other, Anger or frustration) are
+ *      deliberately left unmapped rather than force a guess with no real signal behind it.
  * Deliberately NOT the convergence bonus from RiskScorer's own history, and NOT ML or the
  * on-device LLM -- a handful of check-ins is nowhere near enough to train anything, and nudging a
  * number is a math problem, not a language one. Bounded per-factor so a small, sparse data set
@@ -71,11 +79,31 @@ final class RiskScorer {
         WEIGHT_SPECS.put("selfReportedTime", new WeightSpec(20, 10, 30));
         WEIGHT_SPECS.put("historicalTime", new WeightSpec(15, 8, 22));
         WEIGHT_SPECS.put("socialMedia", new WeightSpec(10, 5, 15));
+        WEIGHT_SPECS.put("alone", new WeightSpec(15, 8, 25));
     }
 
     // Small and fixed on purpose -- see class doc comment. ~7-8 correlated events to walk a weight
     // from its default to a bound, not one or two.
     private static final int ADJUST_DELTA = 2;
+
+    // Which factor(s) a self-reported check-in tag (CONDITION_TAGS, constants.js) plausibly
+    // relates to, for the tag-correlation half of adjustWeights (see class doc comment). Picking
+    // more than one tag that maps to the same factor doesn't double-nudge it -- see
+    // adjustWeightsForTags, which dedupes into a set before adjusting.
+    private static final Map<String, String[]> TAG_TO_FACTORS = new HashMap<>();
+    static {
+        TAG_TO_FACTORS.put("Stress", new String[] {"duration"});
+        TAG_TO_FACTORS.put("Boredom", new String[] {"duration"});
+        TAG_TO_FACTORS.put("Loneliness", new String[] {"alone"});
+        TAG_TO_FACTORS.put("Alone and unsupervised", new String[] {"alone"});
+        TAG_TO_FACTORS.put("Conflict with someone", new String[] {"alone"});
+        TAG_TO_FACTORS.put("Fatigue", new String[] {"selfReportedTime", "historicalTime"});
+        TAG_TO_FACTORS.put("Late at night", new String[] {"selfReportedTime", "historicalTime"});
+        TAG_TO_FACTORS.put("Social media", new String[] {"socialMedia"});
+        // Deliberately absent, not mapped to anything: "Anger or frustration", "Feeling low",
+        // "Celebrating or rewarding myself", "Unexpected exposure", "Other" -- no factor here has a
+        // direct enough relationship to these to be worth guessing at.
+    }
 
     static final class Result {
         final int score;
@@ -161,6 +189,18 @@ final class RiskScorer {
             userReasons.put("It's a social media app, which you've flagged as a trigger.");
         }
 
+        // "0" specifically (not "1-2" etc.) -- a real signal of physical solitude, not just "not
+        // many people nearby." null (no scan yet, or permission not granted) never fires this --
+        // missing data means "unknown," not "alone imagined as the safer default."
+        if ("0".equals(db.mostRecentNearbyDeviceBucket())) {
+            int w = weights.get("alone");
+            points += w;
+            factorCount++;
+            factors.put("alone");
+            reason.append("alone(+").append(w).append(") ");
+            userReasons.put("No one else seems to be nearby right now.");
+        }
+
         // Convergence bonus: any single factor above is weak evidence on its own (being on social
         // media, or it being late, doesn't mean someone is struggling) -- but several of them true
         // at once is a materially different, stronger signal than the same points spread thin would
@@ -202,13 +242,38 @@ final class RiskScorer {
     // (the factors that fired correctly flagged real risk -- reinforce them); false means
     // "resisted" (the flagged risk didn't materialize into a slip -- ease off slightly).
     static void adjustWeights(Context ctx, JSONArray firedFactors, boolean increase) {
-        if (firedFactors == null || firedFactors.length() == 0) return;
+        if (firedFactors == null) return;
+        Set<String> names = new HashSet<>();
+        for (int i = 0; i < firedFactors.length(); i++) {
+            String name = firedFactors.optString(i, null);
+            if (name != null) names.add(name);
+        }
+        adjustWeights(ctx, names, increase);
+    }
+
+    // The tag-correlation half of adaptive tuning (see class doc comment) -- called by
+    // LocalSignalsPlugin.recordCheckinOutcome for every check-in, independent of whether it also
+    // correlated with a preceding notification. Maps each selected tag to its factor(s) via
+    // TAG_TO_FACTORS, deduped into a set first so picking two tags that map to the same factor
+    // (e.g. both "Fatigue" and "Late at night") nudges it once, not twice.
+    static void adjustWeightsForTags(Context ctx, JSONArray tags, boolean increase) {
+        if (tags == null) return;
+        Set<String> names = new HashSet<>();
+        for (int i = 0; i < tags.length(); i++) {
+            String tag = tags.optString(i, null);
+            String[] mapped = tag != null ? TAG_TO_FACTORS.get(tag) : null;
+            if (mapped != null) names.addAll(java.util.Arrays.asList(mapped));
+        }
+        adjustWeights(ctx, names, increase);
+    }
+
+    private static void adjustWeights(Context ctx, Set<String> names, boolean increase) {
+        if (names.isEmpty()) return;
         LocalSignalsDb db = LocalSignalsDb.getInstance(ctx);
         Map<String, Integer> weights = loadWeights(db);
         int delta = increase ? ADJUST_DELTA : -ADJUST_DELTA;
 
-        for (int i = 0; i < firedFactors.length(); i++) {
-            String name = firedFactors.optString(i, null);
+        for (String name : names) {
             WeightSpec spec = WEIGHT_SPECS.get(name);
             if (spec == null) continue; // unknown/stale factor name -- ignore rather than fail
             int current = weights.containsKey(name) ? weights.get(name) : spec.def;
@@ -222,7 +287,7 @@ final class RiskScorer {
             return; // shouldn't happen (plain ints), but don't half-write weights if it does
         }
         db.setMeta(META_KEY_WEIGHTS, out.toString());
-        Log.d(TAG, "adjusted weights " + (increase ? "+" : "-") + ADJUST_DELTA + " for " + firedFactors + " -> " + out);
+        Log.d(TAG, "adjusted weights " + (increase ? "+" : "-") + ADJUST_DELTA + " for " + names + " -> " + out);
     }
 
     // Same four buckets as TEMPTING_TIME_BUCKETS (constants.js) / RiskProfile (riskProfile.js) --

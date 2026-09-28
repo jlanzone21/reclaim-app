@@ -8,13 +8,16 @@
  *     tags: string[], notes,
  *     mood_rating: 1-5 | null,      // how they felt overall at check-in time
  *     urge_intensity: 1-5 | null,   // how strong the pull/urge was
- *     sleep_hours: number | null,   // hours slept the night before
+ *     sleep_hours: number | null,   // no longer collected by the form (see checkinView.js --
+ *                                   // condition tags already cover "what was going on" without a
+ *                                   // second sleep-specific number); kept in the schema/shape so
+ *                                   // any pre-existing logged values aren't silently dropped.
  *   }
  *
- * The three rating fields are optional (null when skipped) — self-reported
- * mood/urge/sleep are well-documented relapse-risk correlates, included so
+ * mood_rating/urge_intensity are optional (null when skipped) — self-reported
+ * mood/urge are well-documented relapse-risk correlates, included so
  * a future model has more than just tags/notes to learn from, but the
- * check-in form must never feel like homework, so none of them are
+ * check-in form must never feel like homework, so neither is
  * required.
  *
  * Everything stays on-device — nothing is sent anywhere. Callers must wait
@@ -80,11 +83,12 @@ const CheckInStore = (function () {
     if (typeof RiskProfile !== "undefined") RiskProfile.syncToNative();
   }
 
-  // RiskScorer's adaptive-tuning loop: only meaningful for a newly-added check-in (not a removal),
-  // and native no-ops harmlessly if this one doesn't actually follow a recent notification.
+  // RiskScorer's adaptive-tuning loop: only meaningful for a newly-added check-in (not a removal).
+  // Tags feed the tag-correlation half (see RiskScorer's class doc comment) -- native no-ops
+  // harmlessly for whichever half doesn't apply (no recent notification, no mapped tags, etc).
   function recordOutcome(record) {
     if (typeof LocalSignals === "undefined" || !LocalSignals.available()) return;
-    LocalSignals.recordCheckinOutcome(record.type, Date.now()).catch(() => {});
+    LocalSignals.recordCheckinOutcome(record.type, Date.now(), record.tags).catch(() => {});
   }
 
   function exportJson() {

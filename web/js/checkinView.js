@@ -11,7 +11,6 @@ const CheckInView = (function () {
       whenInput: document.getElementById("checkinWhen"),
       tagGrid: document.getElementById("conditionTags"),
       notes: document.getElementById("checkinNotes"),
-      sleepInput: document.getElementById("checkinSleep"),
       moodScale: document.getElementById("moodScale"),
       urgeScale: document.getElementById("urgeScale"),
       form: document.getElementById("checkinForm"),
@@ -90,7 +89,6 @@ const CheckInView = (function () {
     e.preventDefault();
     const whenValue = els.whenInput.value;
     const timestamp = whenValue ? new Date(whenValue).toISOString() : new Date().toISOString();
-    const sleepValue = els.sleepInput.value.trim();
 
     CheckInStore.add({
       timestamp,
@@ -99,7 +97,6 @@ const CheckInView = (function () {
       notes: els.notes.value.trim(),
       mood_rating: selectedMood,
       urge_intensity: selectedUrge,
-      sleep_hours: sleepValue ? parseFloat(sleepValue) : null,
     });
 
     selectedTags = new Set();
@@ -109,7 +106,6 @@ const CheckInView = (function () {
     resetScalePicker(els.moodScale);
     resetScalePicker(els.urgeScale);
     els.notes.value = "";
-    els.sleepInput.value = "";
     setType("resisted");
     setDefaultWhen();
     renderRecentList();
@@ -149,7 +145,6 @@ const CheckInView = (function () {
       const ratingParts = [];
       if (entry.mood_rating != null) ratingParts.push(`Mood ${entry.mood_rating}/5`);
       if (entry.urge_intensity != null) ratingParts.push(`Urge ${entry.urge_intensity}/5`);
-      if (entry.sleep_hours != null) ratingParts.push(`${entry.sleep_hours}h sleep`);
 
       meta.appendChild(when);
       if (entry.tags.length) meta.appendChild(tags);

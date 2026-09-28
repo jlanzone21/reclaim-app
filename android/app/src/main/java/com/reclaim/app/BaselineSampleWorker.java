@@ -30,6 +30,11 @@ import java.util.List;
  * Also folds in whatever TrackingAccessibilityService (browser domain) and
  * RecentNotificationListenerService (notifying app) last cached, so a browsed site or a triggering
  * app shows up automatically on the next periodic tick.
+ *
+ * Also runs a short nearby-device BLE scan (NearbyDevices.java) when permission's been granted --
+ * unlike everything else here, this one genuinely blocks the thread for ~3 seconds rather than
+ * reading something already cached, since there's no way to bucket "how many devices nearby"
+ * without actually scanning in the moment. Feeds RiskScorer's "alone" factor.
  */
 public class BaselineSampleWorker extends Worker {
     private static final String TAG = "BaselineSampleWorker";
@@ -87,6 +92,14 @@ public class BaselineSampleWorker extends Worker {
                     row.put("precise_lat", DeviceLocation.roundTo(location.getLatitude(), 6));
                     row.put("precise_lon", DeviceLocation.roundTo(location.getLongitude(), 6));
                 }
+            }
+
+            // Blocks this thread ~3s -- acceptable here (Worker.doWork() is meant to do blocking
+            // work off the main thread), skipped entirely via hasAccess() for anyone who hasn't
+            // granted this permission. Feeds RiskScorer's "alone" factor -- see its own comment.
+            if (NearbyDevices.hasAccess(getApplicationContext())) {
+                String nearbyBucket = NearbyDevices.bucket(getApplicationContext());
+                if (nearbyBucket != null) row.put("nearby_device_bucket", nearbyBucket);
             }
 
             long id = LocalSignalsDb.getInstance(getApplicationContext()).insertUsageSample(row);

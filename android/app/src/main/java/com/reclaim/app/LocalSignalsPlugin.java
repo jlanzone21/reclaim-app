@@ -152,15 +152,20 @@ public class LocalSignalsPlugin extends Plugin {
     // later never gets attributed to a stale notification.
     private static final long CORRELATION_WINDOW_MS = 6L * 60 * 60 * 1000;
 
-    // Called by CheckInStore.add() (checkinStore.js) right after logging any check-in. Correlates
-    // against whichever risk-nudge notification most recently fired (if any, and if recent enough)
-    // and nudges RiskScorer's weights accordingly -- see RiskScorer's class doc comment and
-    // RiskNudgeMonitor.buildPendingFactorsJson for the other half of this loop. A no-op, resolving
-    // immediately, when no notification is pending or it's too old to plausibly be related.
+    // Called by CheckInStore.add() (checkinStore.js) right after logging any check-in. Runs BOTH
+    // halves of RiskScorer's adaptive tuning (see its own class doc comment), independently:
+    //   1. Notification correlation -- whichever risk-nudge notification most recently fired (if
+    //      any, and if recent enough) gets its factors nudged.
+    //   2. Tag correlation -- this check-in's own selected tags get their mapped factors nudged,
+    //      regardless of whether a notification fired at all.
+    // A no-op for whichever half doesn't apply, not the whole call -- e.g. a check-in with no
+    // recent notification but real tags still runs half 2.
     @PluginMethod
     public void recordCheckinOutcome(PluginCall call) {
         String type = call.getString("type", "");
         long checkinTimeMs = call.getDouble("timestamp", (double) System.currentTimeMillis()).longValue();
+        boolean slipped = "slipped".equals(type);
+        boolean resisted = "resisted".equals(type);
 
         String json = db().getMeta("pending_notification_factors");
         db().setMeta("pending_notification_factors", ""); // consumed either way -- never matched twice
@@ -173,15 +178,16 @@ public class LocalSignalsPlugin extends Plugin {
                 // clock skew edge case -- or one too old to plausibly be a reaction to it.
                 if (elapsed >= 0 && elapsed <= CORRELATION_WINDOW_MS) {
                     org.json.JSONArray factors = pending.optJSONArray("factors");
-                    if ("slipped".equals(type)) {
-                        RiskScorer.adjustWeights(getContext(), factors, true);
-                    } else if ("resisted".equals(type)) {
-                        RiskScorer.adjustWeights(getContext(), factors, false);
-                    }
+                    if (slipped) RiskScorer.adjustWeights(getContext(), factors, true);
+                    else if (resisted) RiskScorer.adjustWeights(getContext(), factors, false);
                 }
             } catch (org.json.JSONException e) {
                 // Malformed -- nothing to correlate; already consumed above.
             }
+        }
+
+        if (slipped || resisted) {
+            RiskScorer.adjustWeightsForTags(getContext(), call.getArray("tags"), slipped);
         }
         call.resolve();
     }

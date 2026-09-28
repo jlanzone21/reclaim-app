@@ -154,9 +154,6 @@
                 <button type="button" class="scale-btn" data-value="5" title="Overwhelming">5</button>
               </div>
 
-              <label class="field-label" for="checkinSleep">Hours of sleep last night (optional)</label>
-              <input type="number" id="checkinSleep" class="field-input" min="0" max="24" step="0.5" placeholder="e.g. 6.5" />
-
               <label class="field-label" for="checkinNotes">Anything else worth noting? (optional)</label>
               <textarea id="checkinNotes" class="field-input field-textarea" rows="3" placeholder="No pressure to share details — even a word or two helps."></textarea>
 
@@ -328,6 +325,18 @@
 
       <div class="field-label">Where does it usually happen?</div>
       <input type="text" id="prefLocations" class="field-input" placeholder="e.g. alone in my room, late at night at work" />
+
+      <div class="field-label">Home location</div>
+      <p style="margin:0 0 8px; font-size:12.5px; color:var(--text-muted);">
+        Save where you are right now as "home" so Insights can tell you were safely home instead of
+        just showing coordinates that don't mean anything. This stays on this device only — it's
+        never sent anywhere, and Insights only ever shows "Home" or "Away," never the raw location.
+      </p>
+      <p style="margin:0 0 8px; font-size:12.5px; color:var(--text-muted);" id="prefHomeStatus">Not set yet.</p>
+      <div style="display:flex; gap:8px;">
+        <button type="button" class="secondary-btn" id="prefSaveHomeBtn" style="flex:1;">Save current location as home</button>
+        <button type="button" class="secondary-btn" id="prefClearHomeBtn" style="flex:0 0 auto;" hidden>Clear</button>
+      </div>
 
       <div class="field-label">Apps that are a slipping point</div>
       <p style="margin:0 0 8px; font-size:12.5px; color:var(--text-muted);" id="prefAllowlistSummary">Loading…</p>

@@ -65,6 +65,21 @@ public class NightlyCheckinWorker extends Worker {
     static final String EXTRA_ACTION = "nightly_action";
     static final String ACTION_OPEN_CHECKIN = "open_checkin"; // matches the app_meta value app.js expects
 
+    // Every {title, body} pair asks the same underlying question -- did today go okay or not --
+    // just worded differently, so a daily notification doesn't read as the exact same robotic
+    // string every single night. Picked at random per post, not by day-of-week/rotation order, so
+    // it doesn't become a predictable pattern either.
+    private static final String[][] MESSAGES = {
+            {"How was today?", "Any struggles worth noting, or did it go well?"},
+            {"Evening check-in", "How are you feeling as today wraps up?"},
+            {"Quick check-in", "Rough day or a smooth one? Either way, we'd like to know."},
+            {"Before you wind down", "Anything from today worth logging?"},
+            {"How'd today go?", "No pressure — just checking in on you."},
+            {"Checking in", "What was today like for you?"},
+            {"One more thing before bed", "How are you doing tonight?"},
+            {"Reflecting on today", "Good day, hard day, or somewhere in between?"},
+    };
+
     public NightlyCheckinWorker(@NonNull Context context, @NonNull WorkerParameters params) {
         super(context, params);
     }
@@ -90,11 +105,12 @@ public class NightlyCheckinWorker extends Worker {
 
         PendingIntent openCheckIn = openCheckInIntent(ctx);
         PendingIntent wentWell = actionIntent(ctx, NightlyCheckinActionReceiver.ACTION_WENT_WELL, 1);
+        String[] message = MESSAGES[new java.util.Random().nextInt(MESSAGES.length)];
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(ctx, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
-                .setContentTitle("How was today?")
-                .setContentText("Any struggles worth noting, or did it go well?")
+                .setContentTitle(message[0])
+                .setContentText(message[1])
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setContentIntent(openCheckIn)
                 .addAction(0, "Went well", wentWell)

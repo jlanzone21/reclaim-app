@@ -12,10 +12,19 @@
  *     notification_intensity: 'low' | 'medium' | 'high',
  *     other_notes,
  *     onboarding_completed_at,                       // ISO string once they've been through setup
+ *     home_lat, home_lon,                            // number | null, captured via device GPS
  *   }
  *
- * personalContext.js turns this into plain-language sentences for the AI's per-turn context —
- * this table is the single source of truth, not a separate file kept in sync by hand.
+ * home_lat/home_lon deliberately do NOT get mirrored into personalContext.js's AI-facing
+ * sentences or into LocalSignalsDb (unlike everything else in this store) -- a raw coordinate
+ * pair is meaningfully more sensitive than "tempted at night" or an accountability partner's
+ * name, so it stays exactly where the user put it (this table, this device) and is used only for
+ * the Home/Away label in Insights (insightsView.js), computed client-side against usage_samples'
+ * own lat/lon. If a native risk-scoring use ever needs it, that's a deliberate future decision,
+ * not something to wire up implicitly by extending the existing mirror.
+ *
+ * personalContext.js turns the rest of this into plain-language sentences for the AI's per-turn
+ * context — this table is the single source of truth, not a separate file kept in sync by hand.
  */
 const UserPreferencesStore = (function () {
   const DEFAULTS = {
@@ -29,6 +38,8 @@ const UserPreferencesStore = (function () {
     notification_intensity: "medium",
     other_notes: "",
     onboarding_completed_at: null,
+    home_lat: null,
+    home_lon: null,
   };
 
   function parseRow(row) {
@@ -62,6 +73,8 @@ const UserPreferencesStore = (function () {
       next.other_notes || null,
       next.onboarding_completed_at || null,
       now,
+      next.home_lat ?? null,
+      next.home_lon ?? null,
     ];
     if (exists) {
       DB.run(
@@ -70,7 +83,8 @@ const UserPreferencesStore = (function () {
            pastor_name = ?, pastor_phone = ?,
            tempting_times = ?, common_triggers = ?, tempting_locations = ?,
            notification_intensity = ?, other_notes = ?,
-           onboarding_completed_at = ?, updated_at = ?
+           onboarding_completed_at = ?, updated_at = ?,
+           home_lat = ?, home_lon = ?
          WHERE id = 1`,
         params
       );
@@ -79,8 +93,9 @@ const UserPreferencesStore = (function () {
         `INSERT INTO user_preferences
            (id, accountability_name, accountability_phone, pastor_name, pastor_phone,
             tempting_times, common_triggers, tempting_locations,
-            notification_intensity, other_notes, onboarding_completed_at, updated_at)
-         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            notification_intensity, other_notes, onboarding_completed_at, updated_at,
+            home_lat, home_lon)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         params
       );
     }
