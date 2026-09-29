@@ -69,8 +69,8 @@ const ResourceRepo = (function () {
     return randomByTheme("devotional", theme);
   }
 
-  // Three at most: in the middle of an urge, a long list is more overwhelming than helpful.
-  function getCopingMechanisms(theme, limit = 3) {
+  // Two at most: in the middle of an urge, a long list is more overwhelming than helpful.
+  function getCopingMechanisms(theme, limit = 2) {
     const rows = shuffle(byType("coping_mechanism"));
     const matches = theme ? rows.filter((r) => r.tags.includes(theme)) : [];
     return [...matches, ...rows.filter((r) => !matches.includes(r))].slice(0, limit);
@@ -85,9 +85,11 @@ const ResourceRepo = (function () {
     return a;
   }
 
-  function getBiblePlans() {
-    const plans = byType("bible_plan");
-    return plans.map((plan) => {
+  // Two at most, same reasoning as everything else here -- there are only 4 today, but this
+  // shouldn't silently start dumping all of them the moment a 5th gets added.
+  function getBiblePlans(limit = 2) {
+    const plans = shuffle(byType("bible_plan"));
+    return plans.slice(0, limit).map((plan) => {
       const days = DB.all(
         "SELECT day_number, reference, reflection FROM bible_plan_days WHERE plan_id = ? ORDER BY day_number",
         [plan.id]
@@ -99,7 +101,7 @@ const ResourceRepo = (function () {
   // Filtered to a mentioned state when there is one, so "sort through quickly" actually happens
   // instead of returning all 36+ nationwide entries. See getSmallGroups' comment for why this
   // reads live rather than from a local copy.
-  async function getSmallGroups(query, limit = 5) {
+  async function getSmallGroups(query, limit = 2) {
     const state = detectState(query);
     const rows = await fromSupabase("small_group", { state, limit });
     if (rows === null) return null;
@@ -111,12 +113,12 @@ const ResourceRepo = (function () {
     return fromSupabase("counseling_center");
   }
 
-  // Shared by getSermons/getArticles/getCounselingCenters/getSmallGroups: capped at 5 and shuffled
+  // Shared by getSermons/getArticles/getCounselingCenters/getSmallGroups: capped at 2 and shuffled
   // (matches the coping-toolkit precedent -- a long list in the middle of a hard moment overwhelms
   // more than it helps) and returns null on failure (network down, Supabase unreachable) so the
   // caller can show a short "couldn't reach" line instead of an empty or broken card. Deliberately
   // no on-device fallback for any of these -- see README's "Data storage".
-  async function fromSupabase(type, { state, limit = 5 } = {}) {
+  async function fromSupabase(type, { state, limit = 2 } = {}) {
     try {
       const rows = await SupabaseClient.queryResources(type, state ? { state } : {});
       return shuffle(rows).slice(0, limit);

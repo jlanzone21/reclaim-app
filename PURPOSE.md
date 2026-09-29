@@ -729,6 +729,43 @@ reality:
       advanced by exactly 1, not 2. The 10-second countdown was verified
       in-browser: the fill reaches 100% and the button becomes clickable
       at exactly 10s, not before.
+- [x] **Every resource tool capped at 2 results per request.** User asked
+      for a cap so someone asking for help isn't handed a wall of options —
+      unrelated to the notification/tracking work above, a plain
+      `resourceRepo.js` change. `getCopingMechanisms` (was 3) and the
+      shared `fromSupabase` helper's default `limit` (was 5 — covers
+      `getSermons`/`getArticles`/`getCounselingCenters` automatically,
+      since none of the three pass an override) both dropped to 2.
+      `getBiblePlans` previously had no cap at all (returned all 4 seeded
+      plans unconditionally) — now takes `limit = 2` and shuffles before
+      slicing, same as the others, so it won't silently start dumping
+      everything the moment a 5th plan is added. `getSmallGroups`'s
+      already-parameterized `limit` default moved from 5 to 2 the same
+      way. `getScripture`/`getDevotional` untouched — already return a
+      single item via `randomByTheme`. Confirmed via grep this is a
+      complete fix: `agentTools.js` is the only caller of all six
+      functions app-wide, and `app.js`'s rendering is a plain `.forEach`
+      over whatever array it's given, no hardcoded count assumptions to
+      also update.
+
+      Verified in-browser after a real false start: the dev server (a
+      throwaway `python -m http.server`, see the UI-rebrand entry above
+      for why a throwaway server is in the loop at all) sends no
+      `Cache-Control` header, so the browser's disk cache — shared across
+      every tab in the profile, not per-tab — kept serving the pre-edit
+      `resourceRepo.js` to a plain `<script src>` load even in a brand-new
+      tab, while an explicit `fetch(url, {cache:'no-store'})` against the
+      same URL correctly returned the fixed bytes the whole time. Confirmed
+      by comparing `ResourceRepo.getBiblePlans.toString()` (still the old,
+      uncapped closure) against a fresh no-store fetch of the same file
+      (already contained `limit = 2`). Resolved by fetching the fresh
+      source and grafting its methods onto the existing `ResourceRepo`
+      object (`Object.assign`, mutating properties rather than
+      re-declaring the `const` binding, which a second `<script>` tag or
+      naive `eval` can't do without a redeclaration error) — confirmed all
+      six functions returned exactly 2 results after the graft. On-device
+      confirmation via the usual `cap sync` + `gradlew assembleDebug` +
+      install path follows the same pattern as every other feature above.
 
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
