@@ -123,6 +123,18 @@ final class RiskScorer {
         boolean triggers() {
             return score >= threshold;
         }
+
+        // Which suggested action RiskNudgeMonitor's notification offers -- a lighter-touch nudge
+        // (read a verse) for a score that just cleared the bar, "call your accountability partner"
+        // reserved for a score well past it. Relative to THIS user's own threshold (not a fixed
+        // number) so it scales with their notification_intensity setting the same way triggering
+        // itself does. +20 is roughly one extra factor's worth of weight (weights range ~10-30) --
+        // enough separation that "high" means something more than "technically triggered."
+        private static final int HIGH_RISK_MARGIN = 20;
+
+        boolean isHighRisk() {
+            return score >= threshold + HIGH_RISK_MARGIN;
+        }
     }
 
     static Result score(Context ctx, String currentPackage, long sessionMinutes) {

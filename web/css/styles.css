@@ -194,25 +194,28 @@ body {
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
-.sidebar-spacer {
-  flex: 1;
+/* Home sits in the middle of the 5 nav items with its icon in a raised, darker circle -- the
+   same "distinguished center tab" treatment a lot of bottom-tab-bar apps use, so it reads as the
+   app's home base rather than just another item in the row. */
+.nav-item-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--navy-deep);
+  flex-shrink: 0;
 }
 
-.sidebar-crisis-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 10px;
-  border: 1px solid var(--crisis-border);
-  border-radius: var(--radius-sm);
-  background: var(--crisis-bg);
-  color: var(--crisis);
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-bottom: 10px;
+.nav-item-home.active {
+  /* The badge already sets this item apart -- the shared left-accent-bar active style would
+     compete with it rather than add to it. */
+  box-shadow: none;
+}
+
+.sidebar-spacer {
+  flex: 1;
 }
 
 .sidebar-note {
@@ -404,6 +407,27 @@ button.conn-status:hover {
   background: var(--bg-inset);
   border-color: var(--border);
   color: var(--text);
+}
+
+/* Small, corner-only crisis access on Home -- moved out of the persistent sidebar nav (every
+   other screen still has one: Chat keeps its own safety-banner link). Kept compact deliberately,
+   but still colored/bordered distinctly so it doesn't just blend into an ordinary icon button. */
+.home-crisis-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--crisis-border);
+  background: var(--crisis-bg);
+  color: var(--crisis);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.home-crisis-btn:hover {
+  filter: brightness(0.97);
 }
 
 /* Chat area */
@@ -824,17 +848,17 @@ button.conn-status:hover {
     box-shadow: inset 0 -2px 0 var(--accent);
   }
 
-  .sidebar-crisis-btn {
-    flex: 1;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-    margin-bottom: 0;
-    padding: 6px 2px;
-    font-size: 10px;
-    text-align: center;
-    white-space: normal;
+  .nav-item-home.active {
+    box-shadow: none;
+  }
+
+  /* Raised, larger center tab -- the "FAB in a tab bar" pattern, most visible here where all 5
+     items sit in one horizontal row. */
+  .nav-item-badge {
+    width: 40px;
+    height: 40px;
+    margin-top: -14px;
+    box-shadow: var(--shadow);
   }
 }
 
@@ -1310,6 +1334,59 @@ a.resource-contact:active {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--navy-text-muted);
+}
+
+/* Quick shortcut to the accountability partner, same tel: mechanism as the crisis modal and
+   RiskAlertView -- hidden entirely (not just disabled) when no partner's been set, matching how
+   the crisis modal and risk-alert overlay already handle that same "nothing configured" case. */
+.home-call-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  margin-top: 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.home-call-card:hover {
+  border-color: var(--success);
+}
+
+.home-call-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  color: var(--success);
+  flex-shrink: 0;
+}
+
+.home-call-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.home-call-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.home-call-sub {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 /* Insights */

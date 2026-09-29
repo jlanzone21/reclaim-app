@@ -26,16 +26,22 @@ import androidx.core.content.ContextCompat;
  *
  * Runs from BaselineSampleWorker at the same ~15-minute cadence as ForegroundAppMonitor, which
  * this reuses the session-detection shape of, but is a real feature, not that class's
- * verification tool. Two things happen when it fires: a notification with a "Call [name]" action
- * that opens the phone's own dialer pre-filled -- same tel:-only, on-device, user-confirms-the-
- * call choice as the crisis modal (never auto-dials, never sends anything itself) -- and an
- * attempt to actually interrupt, via setFullScreenIntent(), the same mechanism calls/alarms use.
+ * verification tool. Two things happen when it fires: a notification with a suggested action
+ * tiered by RiskScorer.Result.isHighRisk() -- high risk suggests "Call [name]" (opens the phone's
+ * own dialer pre-filled, same tel:-only, on-device, user-confirms-the-call choice as the crisis
+ * modal, never auto-dials or sends anything itself), anything lower suggests "Read a verse"
+ * instead (opens straight to Home, which already shows one) -- and, on the SECOND consecutive one
+ * left unanswered (not the first -- see NotificationTracking), an attempt to actually interrupt via
+ * setFullScreenIntent(), the same mechanism calls/alarms use. User's own framing, twice over: one
+ * ignored nudge might just be bad timing, but two in a row is worth escalating for; and a minor
+ * score doesn't warrant the same ask as one well past the bar.
  *
- * Honest limit on that second part, not worked around: Android deliberately blocks a background
+ * Honest limit on that escalation, not worked around: Android deliberately blocks a background
  * app from stealing focus from whatever's actively in use, so a full-screen intent only reliably
  * takes over when the screen is off/locked (opens the app instead of the lock screen) -- it does
- * NOT yank focus away from another app you're actively using. That's Android's own anti-abuse
- * design, not a bug here.
+ * NOT yank focus away from another app you're actively using, on the second miss or any other.
+ * That's Android's own anti-abuse design (enforced since Android 10), not a bug here, and not
+ * something worked around -- see this session's discussion of why not.
  *
  * The notification/lock-screen text is deliberately generic (GENERIC_TEXTS below) -- never names
  * the app or pattern that triggered it, since anyone glancing at a locked phone could see that
@@ -211,10 +217,12 @@ final class RiskNudgeMonitor {
         // Read (and cleared) by LocalSignalsPlugin.recordCheckinOutcome once a check-in actually
         // happens -- see RiskScorer's class doc comment for the adaptive-tuning loop this feeds.
         db.setMeta("pending_notification_factors", buildPendingFactorsJson(result));
-        // Not used to change behavior here (this type already always uses a full-screen intent,
-        // see below) -- just keeps its sent/responded stats current for Insights, same as the
-        // nightly check-in's.
-        NotificationTracking.recordSentAndShouldEscalate(ctx, NotificationTracking.TYPE_RISK);
+        // Same escalate-on-a-miss pattern as NightlyCheckinWorker, not unconditional the way this
+        // used to be: a single ignored risk nudge does nothing further, but a SECOND one in a row
+        // (the previous occurrence went unanswered) escalates to a full-screen takeover attempt.
+        // User's own framing: the first miss might just be bad timing, but being ignored twice in
+        // a row is a real signal worth interrupting for.
+        boolean escalate = NotificationTracking.recordSentAndShouldEscalate(ctx, NotificationTracking.TYPE_RISK);
 
         // Tapping the notification body (not the call action) opens the app -- app.js checks for
         // the pending alert above on boot and shows the detail screen instead of landing on Chat.
@@ -231,15 +239,24 @@ final class RiskNudgeMonitor {
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setCategory(NotificationCompat.CATEGORY_REMINDER)
                 .setContentIntent(openAppIntent)
-                // Real, honest limit -- see the class doc comment: only reliably takes over when
-                // the screen is off/locked. Android won't let a background app steal focus from
-                // one actively in use, by design, and this doesn't try to work around that.
-                .setFullScreenIntent(openAppIntent, true)
                 .setTimeoutAfter(TIMEOUT_MS)
                 .setAutoCancel(true);
 
+        if (escalate) {
+            // Real, honest limit either way -- see the class doc comment: only reliably takes
+            // over when the screen is off/locked. Android won't let a background app steal focus
+            // from one actively in use, by design, and this doesn't try to work around that.
+            builder.setFullScreenIntent(openAppIntent, true);
+        }
+
+        // Tiered suggested action -- user's own framing: a score that just cleared the bar
+        // doesn't warrant the same ask as one well past it. High risk (see Result.isHighRisk)
+        // suggests actually calling the accountability partner; anything lower suggests a
+        // lighter-touch action instead. Falls back to the lighter action even at high risk if no
+        // partner's been set -- better than no suggested action at all.
         String phone = db.getMeta("accountability_phone");
-        if (phone != null && !phone.trim().isEmpty()) {
+        boolean hasPartner = phone != null && !phone.trim().isEmpty();
+        if (result.isHighRisk() && hasPartner) {
             // ACTION_DIAL, not ACTION_CALL: opens the phone's own dialer pre-filled, doesn't place
             // the call itself -- the same "opens native communication, never sends anything"
             // choice as the crisis modal's tel: links, and needs no extra runtime permission.
@@ -249,6 +266,13 @@ final class RiskNudgeMonitor {
             String name = db.getMeta("accountability_name");
             String label = "Call " + (name != null && !name.trim().isEmpty() ? name.trim() : "them");
             builder.addAction(0, label, callIntent);
+        } else {
+            // Reuses the same PendingIntent as the body tap (not a new action/extra) -- Home is
+            // already the screen the app opens onto, and it already shows a real scripture card
+            // (see homeView.js), so this needs no new plumbing to be true today. A worship-music
+            // suggestion was also asked for, but nothing in the app links to any yet -- not
+            // building a button with nowhere real to go; add it once that content exists.
+            builder.addAction(0, "Read a verse", openAppIntent);
         }
 
         nm.notify(NOTIFICATION_ID, builder.build());

@@ -814,6 +814,151 @@ reality:
       through to Home's numbers, no console errors) and on-device
       (confirmed `home` is the visible panel on a fresh launch, with a
       real verse and 3 populated stat cards, via the live WebView bridge).
+- [x] **Crisis access moved off the persistent nav; Home nav item redesigned
+      as a centered "home base" tab.** Two related nav asks in one pass:
+      "In crisis? Get help now" was in the sidebar (every screen, including
+      the mobile bottom bar as a 6th tile) — moved to a small circular
+      icon-only button in Home's topbar corner instead (`home-crisis-btn`,
+      same `id="crisisBtn"` so `app.js`'s existing listener needed no
+      change). Chat keeps its own separate safety-banner crisis link
+      untouched, so crisis access isn't reduced to one screen only, just
+      no longer duplicated on every screen. Nav items reordered so Home
+      sits 3rd of 5 (Chat, Check-In, Home, Insights, Privacy), with its
+      icon in a darker circular badge (`nav-item-badge`, `--navy-deep`) —
+      on the mobile bottom bar specifically, the badge is enlarged and
+      raised above the row (`margin-top: -14px`), the common "FAB in a
+      tab bar" pattern, so it reads as the app's home base rather than
+      just another tab.
+
+      Verified in-browser (nav order, badge styling, crisis button opens
+      the same modal, Chat's banner link untouched, no console errors)
+      and on-device (`navOrder` reads `[chat, checkin, home, insights,
+      privacy]`, `crisisBtn` present and the old `.sidebar-crisis-btn`
+      confirmed gone, via the live WebView bridge).
+- [x] **Tried, then abandoned: running the on-device AI from a real background
+      check** (not just keyword matching) against `TrackingAccessibility
+      Service`'s captured page text. User asked for this directly. The real
+      constraint, confirmed by reading the code before building anything:
+      `BaselineSampleWorker`'s own doc comment already says "the app and its
+      WebView may be fully closed" when it runs -- `LocalModel` (WebLLM) has
+      only ever run inside that WebView's JS/WebGPU context, which a native
+      background Worker has no access to at all.
+
+      Built a throwaway feasibility spike (`HeadlessAiService`, `web/ai-
+      headless.html`, a temporary `DebugBackgroundCheckReceiver`) to test
+      this directly rather than guess: a WebView created from a plain
+      background Service, never attached to any Activity/window. First
+      result, genuinely surprising: WebGPU fully initializes there --
+      confirmed on-device with the app process killed and no Activity alive
+      (`{"hasGpu":true,"adapterFound":true,"f16":true,"deviceCreated":true}`).
+      Second test, the one that actually mattered: loading the real cached
+      model and running inference in that same headless context. Decisive
+      negative result -- confirmed via logcat, not inferred: the OS's own
+      low-memory killer terminated the process mid-load
+      (`lowmemorykiller: Kill 'com.reclaim.app'... reason: filecache is low
+      ... after thrashing`), under perfectly ordinary memory pressure, well
+      before the model finished loading. A plain background Service with no
+      foreground notification is one of the system's first reclaim targets,
+      and a 2-4GB model load takes long enough that it doesn't survive.
+
+      Per the user's own pre-agreed fallback ("try it, default to the
+      simpler approach if it's not working well"), abandoned rather than
+      pursued further (e.g. as a genuine foreground service, which would
+      trade this problem for a persistent "AI checking..." notification
+      every ~15 minutes plus real battery cost, for an approach already
+      shown fragile at its base). All spike code removed (`HeadlessAi
+      Service.java`, `ai-headless.html`, `DebugBackgroundCheckReceiver.java`,
+      the manifest entries, and `BaselineSampleWorker`'s temporary hook) --
+      nothing of it shipped. The real next step, not yet built: analyze
+      captured text with the AI once the app is actually opened, where the
+      real chat WebView is already alive and not memory-starved, rather
+      than from the native background path at all.
+- [x] **Risk-nudge notification now only tries to auto-open on the SECOND
+      consecutive miss, not every time.** User asked directly, with a
+      specific correction along the way: they explicitly want this one to
+      actually interrupt whatever the person is doing, not just politely
+      wait for the screen to be off/locked. Would not build a way to
+      forcibly steal focus from an actively-used app -- Android has blocked
+      that for every app since Android 10, enforced at the OS/WindowManager
+      level, and the only ways around it resemble the overlay-hijacking
+      technique stalkerware uses. What actually changed instead: the exact
+      same escalate-on-a-miss pattern `NightlyCheckinWorker` already used
+      (`NotificationTracking.recordSentAndShouldEscalate`) was wired into
+      `RiskNudgeMonitor` too -- previously it called this only to keep stats
+      current, discarding the return value, and used `setFullScreenIntent`
+      unconditionally on every post. Now a single ignored risk nudge does
+      nothing further; a second one in a row (previous occurrence never
+      answered) escalates to the same full-screen takeover attempt as
+      before -- still only reliable when the screen is off/locked, same
+      honest limit as always.
+
+      Verified on-device, both halves independently, not assumed from the
+      code: cleared state, sent one nudge -- confirmed no
+      `ActivityTaskManager: START` for MainActivity in logcat, and the
+      notification sitting quietly in the shade (screenshot). Sent a second
+      without responding to the first -- this one's `escalate` correctly
+      computed `true`, and on an earlier pass (before repeated testing
+      tripped Android's own anti-abuse throttle on this permission, see
+      below) its full-screen intent auto-fired for real, confirmed via
+      `ActivityTaskManager: START ... BAL_ALLOW_NON_APP_VISIBLE_WINDOW` --
+      the same confirmation signature already used to verify this mechanism
+      for the nightly check-in, above.
+
+      One real platform behavior surfaced along the way, worth remembering
+      for future testing: Android 14+ tracks `USE_FULL_SCREEN_INTENT` as its
+      own app-op, separate from the manifest permission grant, and will
+      start silently rejecting further attempts
+      (`cmd appops get ... USE_FULL_SCREEN_INTENT` showed `rejectTime=...`)
+      after a burst of full-screen intents in a short window with none of
+      them "used" -- exactly what rapid manual re-testing does. Not a bug,
+      not worked around -- this is Android's own anti-abuse throttling
+      doing its job, and a real user's actual (much sparser) usage pattern
+      wouldn't trigger it in practice.
+- [x] **Reverted back to Qwen3.5-2B** after trying Qwen3.5-4B live on-device
+      (warm, on-tone reply, correctly used the accountability partner's
+      name -- but ~37-41s to a two-sentence reply, clearly worse for a chat
+      UI than the 2B model's feel). User's call after seeing both side by
+      side; `MODEL.base`/`downloadMB` in `localModel.js` reverted, confirmed
+      on-device (`LocalModel.getStatus()` loaded `Qwen3.5-2B` from cache,
+      reached `state: "ready"`).
+- [x] **Risk-nudge notification's suggested action now tiered by severity, plus
+      a Home shortcut to call the accountability partner.** User asked for
+      both together. `RiskScorer.Result` gained `isHighRisk()` -- score at
+      least 20 past THIS user's own threshold (not a fixed number, so it
+      scales with their notification_intensity the same way triggering
+      itself does; roughly one extra factor's worth of weight). High risk
+      (and a partner actually set) suggests "Call [name]", same dialer
+      intent as before; anything lower suggests "Read a verse" instead,
+      reusing the same PendingIntent as the body tap -- no new plumbing,
+      since Home already opens by default and already shows a real verse
+      (see the Home-view entry above). Falls back to "Read a verse" even at
+      high risk if no partner's set, rather than no action at all. A
+      worship-music suggestion was also asked for, for the low-risk case --
+      not built, since nothing in the app links to any yet; flagged rather
+      than shipping a dead button, add it once that content exists.
+
+      Home shortcut: a new tappable card (`home-call-card`) below the verse
+      card, same real `tel:` mechanism as the crisis modal and RiskAlertView
+      (a real anchor click, not `window.location`), hidden entirely rather
+      than disabled when no partner's set.
+
+      Verified on-device, both tiers independently, with a real (not
+      simulated) high score -- reused this session's own proven technique
+      (see the convergence-bonus entry above) rather than guessing: added
+      Reclaim's own package to the trigger-app allowlist, set a matching
+      tempting time, and added two temporary `slipped` check-ins (RiskProfile
+      needs 2+ to derive a risky-time pattern) to genuinely earn the
+      historical-time factor and the 3-factor convergence bonus. Confirmed
+      `score=0 threshold=60` -> notification shade showed "Read a verse", no
+      call action; confirmed `score=84 threshold=35` (`trigger-app(+32)
+      self-reported-time(+22) historical-time(+15) convergence=3factors
+      (+15)`) -> shade showed "Call Jake" instead. All test state (the two
+      fake check-ins, the allowlist entry, tempting_times/intensity) removed
+      and `RiskProfile.syncToNative()` re-run afterward to restore real
+      derived values, same cleanup discipline as that earlier entry.
+      Home's call shortcut confirmed separately, in-browser: renders "Call
+      Jake", builds the exact `tel:5551234567` href, and correctly hides
+      when the preference is cleared.
 
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging

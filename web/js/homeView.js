@@ -3,6 +3,10 @@
  * (via CheckInStore.summary, shared with insightsView.js) -- never the on-device tracking data
  * (usage samples, app events, keyword matches). That's meant to be found deliberately in Insights/
  * Privacy, not sitting on the screen anyone glancing at the phone sees first.
+ *
+ * Also a one-tap shortcut to call the accountability partner, when one's been set -- same real
+ * relationship RiskNudgeMonitor's high-risk notification action and the crisis modal already
+ * point to, just reachable without waiting for either of those to fire.
  */
 const HomeView = (function () {
   let els = {};
@@ -13,6 +17,8 @@ const HomeView = (function () {
       verseText: document.getElementById("homeVerseText"),
       verseRef: document.getElementById("homeVerseRef"),
       statRow: document.getElementById("homeStatRow"),
+      callBtn: document.getElementById("homeCallBtn"),
+      callLabel: document.getElementById("homeCallLabel"),
     };
     initialized = true;
     refresh();
@@ -21,7 +27,28 @@ const HomeView = (function () {
   function refresh() {
     if (!initialized) return init();
     renderVerse();
+    renderAccountabilityShortcut();
     renderStats();
+  }
+
+  // Same tel: mechanism as the crisis modal and RiskAlertView -- a real anchor click, not a
+  // window.location assignment, since that's the one already proven to work here. Hidden
+  // entirely, not just disabled, when no partner's been set -- same as those two.
+  function renderAccountabilityShortcut() {
+    const prefs = typeof UserPreferencesStore !== "undefined" ? UserPreferencesStore.get() : null;
+    if (!prefs || !prefs.accountability_phone) {
+      els.callBtn.hidden = true;
+      return;
+    }
+    els.callBtn.hidden = false;
+    els.callLabel.textContent = "Call " + (prefs.accountability_name || "your accountability partner");
+    els.callBtn.onclick = () => {
+      const a = document.createElement("a");
+      a.href = `tel:${prefs.accountability_phone.replace(/[^\d+]/g, "")}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    };
   }
 
   // Draws from the same local scripture set Chat's scripture tool uses (resourceRepo.js/
