@@ -36,8 +36,8 @@ just "does it work."
 
 ## What's built
 
-- Chat, Check-In, Insights UI shell, local resource library, on-device AI
-  (see README for detail).
+- Home, Chat, Check-In, Insights UI shell, local resource library,
+  on-device AI (see README for detail).
 - Real small-group data live from Supabase (read-only, public content —
   unrelated to the tracking system below).
 
@@ -766,6 +766,54 @@ reality:
       six functions returned exactly 2 results after the graft. On-device
       confirmation via the usual `cap sync` + `gradlew assembleDebug` +
       install path follows the same pattern as every other feature above.
+- [x] **"I'm okay" delay shortened to 5 seconds** (`riskAlertView.js`,
+      `DISMISS_WAIT_MS`), down from the 10s set when this button first
+      shipped (see that entry above). User asked directly, no other
+      behavior changed. Verified on-device with real timing, not assumed
+      from the constant: triggered a real risk alert via the debug panel's
+      "Send risk-nudge notification now" (`LocalSignals.debugSendRiskNudge()`),
+      rendered it (`RiskAlertView.checkPending()`), then polled the
+      dismiss button's `disabled` state in a tight loop — stayed `true`
+      through ~4.4s and flipped to `false` by ~5.3s (a ~400-800ms offset
+      baked into the timer-start measurement from the trigger call's own
+      setup latency), consistent with a real 5000ms window rather than the
+      old 10000ms one.
+- [x] **New Home view — the screen the app now opens onto**, instead of
+      Chat. User asked for a landing screen summarizing non-sensitive
+      insight data plus a spot for a bible verse. New `homeView.js` +
+      a `view-home` panel in `index.html`, made the default visible panel
+      (Chat's panel gained `hidden`, Home's nav item gained `active`) —
+      no boot-time view-switch call needed, same as how Chat used to be
+      default purely through static markup.
+
+      **Verse card**: pulls from `ResourceRepo.getScripture()` (no theme
+      filter), the same local 16-verse set Chat's scripture tool already
+      draws from — wires the spot up to real content now rather than
+      leaving a dead placeholder, since the content already existed. A
+      real "verse of the day" (fixed per calendar day, or drawn from verses
+      added later per the resource-inventory gaps discussed earlier this
+      session) is still future work, not this pass.
+
+      **Insight summary**: deliberately only the self-reported check-in
+      numbers (streak, resisted/slipped ratio last 30 days, avg mood) —
+      never the on-device tracking data (usage samples, app events,
+      keyword matches). That tracking data is meant to be found
+      deliberately in Insights/Privacy, not sitting on the screen the app
+      opens onto, which anyone glancing at an unlocked phone would see
+      first. Same privacy reasoning as everything else in this doc,
+      applied to a new surface.
+
+      Refactored rather than duplicated: the streak/ratio/average
+      arithmetic moved into a new `CheckInStore.summary(entries)`, and both
+      Home and Insights (`insightsView.js`) now call it instead of each
+      computing its own copy — the exact class of drift this doc's "two
+      divergent tool implementations" entry (above) already burned once.
+
+      Verified in-browser (nav switches correctly, Insights still renders
+      all five stat cards post-refactor, a real logged check-in flows
+      through to Home's numbers, no console errors) and on-device
+      (confirmed `home` is the visible panel on a fresh launch, with a
+      real verse and 3 populated stat cards, via the live WebView bridge).
 
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging

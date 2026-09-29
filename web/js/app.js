@@ -115,6 +115,7 @@
     viewPanels.forEach((panel) => {
       panel.hidden = panel.dataset.viewPanel !== name;
     });
+    if (name === "home") HomeView.refresh();
     if (name === "checkin") CheckInView.renderRecentList();
     if (name === "insights") InsightsView.refresh();
     if (name === "privacy") {
@@ -166,6 +167,7 @@
     .then(() => {
       CheckInView.init();
       InsightsView.init();
+      HomeView.init();
       PreferencesView.init();
       RiskAlertView.init();
       RiskAlertView.checkPending();

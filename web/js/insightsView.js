@@ -38,26 +38,15 @@ const InsightsView = (function () {
   function renderStats(entries) {
     els.statRow.innerHTML = "";
 
-    const total = entries.length;
-    const lastSlip = entries.find((e) => e.type === "slipped");
-    let streakText = "—";
-    let streakLabel = "No slips logged yet";
-    if (lastSlip) {
-      const days = Math.max(0, Math.floor((Date.now() - new Date(lastSlip.timestamp)) / 86400000));
-      streakText = String(days);
-      streakLabel = days === 1 ? "day since last slip" : "days since last slip";
-    }
-
-    const thirtyDaysAgo = Date.now() - 30 * 86400000;
-    const recent = entries.filter((e) => new Date(e.timestamp).getTime() >= thirtyDaysAgo);
-    const recentResisted = recent.filter((e) => e.type === "resisted").length;
-    const recentSlipped = recent.filter((e) => e.type === "slipped").length;
+    const s = CheckInStore.summary(entries);
+    const streakText = s.streakDays == null ? "—" : String(s.streakDays);
+    const streakLabel = s.streakDays == null ? "No slips logged yet" : s.streakDays === 1 ? "day since last slip" : "days since last slip";
 
     addStatCard(els.statRow, streakText, streakLabel, "streak");
-    addStatCard(els.statRow, String(total), total === 1 ? "check-in logged" : "check-ins logged", "total");
+    addStatCard(els.statRow, String(s.total), s.total === 1 ? "check-in logged" : "check-ins logged", "total");
     addStatCard(
       els.statRow,
-      `${recentResisted} / ${recentSlipped}`,
+      `${s.recentResisted} / ${s.recentSlipped}`,
       "stayed strong / slipped (last 30 days)",
       "ratio"
     );
@@ -67,17 +56,15 @@ const InsightsView = (function () {
     // person skipping a field doesn't skew everyone's average. sleep_hours isn't shown here
     // anymore since the form no longer collects it (see checkinView.js) -- a card that could only
     // ever show stale historical data or "none logged" forever isn't worth the space.
-    addAverageStatCard(recent, "mood_rating", "avg mood (last 30 days)", "mood", 1, "/5");
-    addAverageStatCard(recent, "urge_intensity", "avg urge intensity (last 30 days)", "urge", 1, "/5");
+    addAverageStatCard(s.avgMood, "avg mood (last 30 days)", "mood", 1, "/5");
+    addAverageStatCard(s.avgUrge, "avg urge intensity (last 30 days)", "urge", 1, "/5");
   }
 
-  function addAverageStatCard(entries, field, label, kind, decimals, suffix) {
-    const values = entries.map((e) => e[field]).filter((v) => v != null);
-    if (!values.length) {
+  function addAverageStatCard(avg, label, kind, decimals, suffix) {
+    if (avg == null) {
       addStatCard(els.statRow, "—", `${label} — none logged yet`, kind);
       return;
     }
-    const avg = values.reduce((a, b) => a + b, 0) / values.length;
     addStatCard(els.statRow, `${avg.toFixed(decimals)}${suffix}`, label, kind);
   }
 

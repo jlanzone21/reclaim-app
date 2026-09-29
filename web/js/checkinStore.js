@@ -95,5 +95,34 @@ const CheckInStore = (function () {
     return JSON.stringify(list(), null, 2);
   }
 
-  return { list, add, remove, clear, exportJson };
+  // Single source of truth for the streak/ratio/average numbers shown on both Home and Insights --
+  // computed once here rather than twice against each view's own copy of the same arithmetic (see
+  // PURPOSE.md's "two divergent tool implementations" entry for exactly the kind of drift that
+  // splitting this apart invited before).
+  function summary(entries) {
+    const total = entries.length;
+    const lastSlip = entries.find((e) => e.type === "slipped");
+    const streakDays = lastSlip ? Math.max(0, Math.floor((Date.now() - new Date(lastSlip.timestamp)) / 86400000)) : null;
+
+    const thirtyDaysAgo = Date.now() - 30 * 86400000;
+    const recent = entries.filter((e) => new Date(e.timestamp).getTime() >= thirtyDaysAgo);
+    const recentResisted = recent.filter((e) => e.type === "resisted").length;
+    const recentSlipped = recent.filter((e) => e.type === "slipped").length;
+
+    const avg = (field) => {
+      const values = recent.map((e) => e[field]).filter((v) => v != null);
+      return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
+    };
+
+    return {
+      total,
+      streakDays,
+      recentResisted,
+      recentSlipped,
+      avgMood: avg("mood_rating"),
+      avgUrge: avg("urge_intensity"),
+    };
+  }
+
+  return { list, add, remove, clear, exportJson, summary };
 })();

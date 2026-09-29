@@ -9,7 +9,7 @@ const RiskAlertView = (function () {
   // Deliberately slow -- long enough to make "I'm okay" a real choice, not a reflex tap that
   // dismisses this before it's actually been read. The filling bar behind the label (CSS) is what
   // makes the wait read as "counting down" rather than "the button is broken."
-  const DISMISS_WAIT_MS = 10000;
+  const DISMISS_WAIT_MS = 5000;
 
   let els = {};
   let dismissTimer = null;
@@ -77,7 +77,7 @@ const RiskAlertView = (function () {
     els.dismiss.disabled = true;
     // Reset instantly (no transition), then force a reflow before starting the real transition --
     // without the reflow the browser can coalesce the 0%-then-100% into a single jump instead of
-    // an actual 10s fill, especially on a repeat open where the fill is already mid/full.
+    // an actual fill over DISMISS_WAIT_MS, especially on a repeat open where the fill is already mid/full.
     els.dismissFill.style.transition = "none";
     els.dismissFill.style.width = "0%";
     void els.dismissFill.offsetWidth;
