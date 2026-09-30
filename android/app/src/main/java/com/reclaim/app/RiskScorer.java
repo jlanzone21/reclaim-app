@@ -20,12 +20,17 @@ import java.util.Set;
  * needs to be debuggable: every point added is traceable to a specific, explainable reason).
  *
  * The goal per the plan: notice a lead-up pattern and intercept BEFORE a slip, not react to
- * evidence one is already happening. So this weighs context that has actually preceded this
+ * evidence one is already happening. So this mostly weighs context that has actually preceded this
  * person's own past slips (RiskProfile, mirrored from CheckInStore) and what they told us to
- * watch for (UserPreferencesStore's tempting_times/common_triggers), not keyword matches --
- * those stay a separate, passive signal for Insights, not an input here.
+ * watch for (UserPreferencesStore's tempting_times/common_triggers) -- proxies, not direct
+ * evidence. The one exception is recentKeyword: an actual keyword match against on-screen text
+ * captured on the allowlist (TrackingAccessibilityService), which IS direct evidence, not a proxy
+ * -- previously kept out of this scorer entirely and left as an Insights-only passive signal;
+ * user explicitly asked for that reversed. Scoped to the current session's package (see its block
+ * in score() below), not "any match anywhere," and weighted higher than the proxy factors for
+ * exactly that reason.
  *
- * Adaptive tuning (v2): the six base factor weights below are stored, mutable values
+ * Adaptive tuning (v2): the base factor weights below are stored, mutable values
  * (LocalSignalsDb.app_meta's "risk_weights"), not Java literals -- adjustWeights() nudges them a
  * small, fixed amount, two independent ways (both land in the same risk_weights store, and both
  * can adjust the same check-in's outcome -- deliberately not deduplicated against each other, see
@@ -35,8 +40,8 @@ import java.util.Set;
  *   2. Tag correlation -- independent of any notification, which condition tags the person picked
  *      for THIS check-in (TAG_TO_FACTORS below) reinforces/eases off the factors that tag plausibly
  *      relates to. Only tags with a reasonably direct, explainable connection are mapped; several
- *      (Feeling low, Celebrating, Unexpected exposure, Other, Anger or frustration) are
- *      deliberately left unmapped rather than force a guess with no real signal behind it.
+ *      (Feeling low, Celebrating, Other, Anger or frustration) are deliberately left unmapped
+ *      rather than force a guess with no real signal behind it.
  * Deliberately NOT the convergence bonus from RiskScorer's own history, and NOT ML or the
  * on-device LLM -- a handful of check-ins is nowhere near enough to train anything, and nudging a
  * number is a math problem, not a language one. Bounded per-factor so a small, sparse data set
@@ -80,6 +85,10 @@ final class RiskScorer {
         WEIGHT_SPECS.put("historicalTime", new WeightSpec(15, 8, 22));
         WEIGHT_SPECS.put("socialMedia", new WeightSpec(10, 5, 15));
         WEIGHT_SPECS.put("alone", new WeightSpec(15, 8, 25));
+        // Higher default than the usage-pattern proxies above: this fires on an actual keyword
+        // match against captured on-screen text, not an inferred pattern -- see its block in
+        // score() below.
+        WEIGHT_SPECS.put("recentKeyword", new WeightSpec(35, 20, 50));
     }
 
     // Small and fixed on purpose -- see class doc comment. ~7-8 correlated events to walk a weight
@@ -100,9 +109,10 @@ final class RiskScorer {
         TAG_TO_FACTORS.put("Fatigue", new String[] {"selfReportedTime", "historicalTime"});
         TAG_TO_FACTORS.put("Late at night", new String[] {"selfReportedTime", "historicalTime"});
         TAG_TO_FACTORS.put("Social media", new String[] {"socialMedia"});
+        TAG_TO_FACTORS.put("Unexpected exposure", new String[] {"recentKeyword"});
         // Deliberately absent, not mapped to anything: "Anger or frustration", "Feeling low",
-        // "Celebrating or rewarding myself", "Unexpected exposure", "Other" -- no factor here has a
-        // direct enough relationship to these to be worth guessing at.
+        // "Celebrating or rewarding myself", "Other" -- no factor here has a direct enough
+        // relationship to these to be worth guessing at.
     }
 
     static final class Result {
@@ -213,6 +223,22 @@ final class RiskScorer {
             userReasons.put("No one else seems to be nearby right now.");
         }
 
+        // The strongest signal available: not a usage-pattern proxy like the factors above, but an
+        // actual keyword match against on-screen text captured on THIS app (TrackingAccessibility
+        // Service, allowlist-gated -- see PURPOSE.md). Scoped to currentPackage, not "any match
+        // anywhere," so a match from an unrelated earlier app/session never gets attributed to a
+        // totally different later one. Weighted higher than the proxy factors above on purpose --
+        // confirmed content beats inferred pattern.
+        int minutesSinceKeyword = LocalSignalsDb.minutesSince(db.mostRecentKeywordMatchAt(currentPackage));
+        if (minutesSinceKeyword >= 0 && minutesSinceKeyword <= RECENT_KEYWORD_WINDOW_MIN) {
+            int w = weights.get("recentKeyword");
+            points += w;
+            factorCount++;
+            factors.put("recentKeyword");
+            reason.append("recent-keyword(+").append(w).append(") ");
+            userReasons.put("Something on this screen recently matched a word or phrase you'd flagged.");
+        }
+
         // Convergence bonus: any single factor above is weak evidence on its own (being on social
         // media, or it being late, doesn't mean someone is struggling) -- but several of them true
         // at once is a materially different, stronger signal than the same points spread thin would
@@ -234,7 +260,7 @@ final class RiskScorer {
         // part of factors[]/adjustWeights, same reasoning as the convergence bonus above: this is a
         // deliberate design choice, not something a sparse per-user data set should be nudging.
         // Subtracted, not a threshold change, so it still shows up in the log/reason trail.
-        int minutesSinceOpen = minutesSinceLastReclaimOpen(db);
+        int minutesSinceOpen = LocalSignalsDb.minutesSince(db.getMeta("last_reclaim_open_at"));
         if (minutesSinceOpen >= 0 && minutesSinceOpen <= RECENT_RECLAIM_WINDOW_MIN) {
             points = Math.max(0, points - RECENT_RECLAIM_PROTECTION);
             reason.append("recent-reclaim-use(-").append(RECENT_RECLAIM_PROTECTION).append(") ");
@@ -247,22 +273,10 @@ final class RiskScorer {
     private static final int RECENT_RECLAIM_WINDOW_MIN = 30;
     private static final int RECENT_RECLAIM_PROTECTION = 25;
 
-    // minSdkVersion is 24 (android/variables.gradle) -- java.time.Instant.parse() needs API 26+,
-    // so this parses LocalSignalsDb.isoNow()'s own hand-formatted timestamp the same way that class
-    // writes it, via SimpleDateFormat, not java.time. Returns -1 if never set or unparseable --
-    // callers treat that as "unknown," never as "recently open."
-    private static int minutesSinceLastReclaimOpen(LocalSignalsDb db) {
-        String iso = db.getMeta("last_reclaim_open_at");
-        if (iso == null || iso.isEmpty()) return -1;
-        try {
-            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US);
-            sdf.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
-            long openedAt = sdf.parse(iso).getTime();
-            return (int) ((System.currentTimeMillis() - openedAt) / 60000);
-        } catch (java.text.ParseException e) {
-            return -1;
-        }
-    }
+    // Same window as the periodic background check's own cadence (BaselineSampleWorker, ~15 min --
+    // see RiskNudgeMonitor's class doc comment): a keyword match older than one sampling cycle is
+    // stale, not "currently happening."
+    private static final int RECENT_KEYWORD_WINDOW_MIN = 15;
 
     private static Map<String, Integer> loadWeights(LocalSignalsDb db) {
         Map<String, Integer> weights = new HashMap<>();

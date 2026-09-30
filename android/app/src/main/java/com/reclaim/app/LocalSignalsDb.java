@@ -251,6 +251,22 @@ final class LocalSignalsDb extends SQLiteOpenHelper {
         );
     }
 
+    // RiskScorer's recentKeyword factor: the most recent keyword_matches row's timestamp for THIS
+    // package specifically, not "any match anywhere" -- ties the signal to the actual session being
+    // scored rather than misattributing a match from an unrelated earlier app/session. null if this
+    // package has no matches at all.
+    String mostRecentKeywordMatchAt(String packageName) {
+        Cursor c = getReadableDatabase().rawQuery(
+            "SELECT occurred_at FROM keyword_matches WHERE package_name = ? ORDER BY occurred_at DESC LIMIT 1",
+            new String[]{packageName}
+        );
+        try {
+            return c.moveToFirst() ? c.getString(0) : null;
+        } finally {
+            c.close();
+        }
+    }
+
     // ---- app_meta (generic key/value, e.g. the mirrored accountability contact) ----
 
     String getMeta(String key) {
@@ -294,9 +310,28 @@ final class LocalSignalsDb extends SQLiteOpenHelper {
     // (or desugaring, not enabled here), and minSdk is 24 -- same reasoning as reclaim-beta's
     // BaselineSampleWorker.isoNow().
     static String isoNow() {
+        return isoFormat().format(new java.util.Date());
+    }
+
+    // Shared with minutesSince below so both directions (format/parse) of this same minSdk-24
+    // workaround use one SimpleDateFormat pattern/timezone, not two copies that could drift.
+    private static java.text.SimpleDateFormat isoFormat() {
         java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US);
         sdf.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
-        return sdf.format(new java.util.Date());
+        return sdf;
+    }
+
+    // Minutes between an isoNow()-formatted timestamp and now -- RiskScorer's shared building
+    // block for every "how recent was X" factor (recent Reclaim use, recent keyword match, ...).
+    // -1 for null/unparseable input, never a crash -- callers treat that as "unknown."
+    static int minutesSince(String iso) {
+        if (iso == null || iso.isEmpty()) return -1;
+        try {
+            long then = isoFormat().parse(iso).getTime();
+            return (int) ((System.currentTimeMillis() - then) / 60000);
+        } catch (java.text.ParseException e) {
+            return -1;
+        }
     }
 
     private JSONArray queryRecent(String sql, int limit) {

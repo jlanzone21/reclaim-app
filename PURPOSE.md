@@ -1120,6 +1120,53 @@ reality:
       shows `recent-reclaim-use(-25)` and comes out floored at 0. Confirmed
       the renamed "Find resources" button visually in the actual popup.
 
+- [x] **Allowlist text capture verified on-device for the first time, and
+      wired into RiskScorer as a new factor.** User asked to confirm text is
+      actually being captured from allowlisted apps, and then explicitly
+      asked for keyword matches to feed the risk score -- previously a
+      deliberate design choice kept them Insights-only (see RiskScorer's old
+      class doc comment); reversed on direct request, not assumed.
+
+      **Verification found the pipeline had genuinely never been exercised
+      on this device**: `enabled_accessibility_services` was empty --
+      `TrackingAccessibilityService` had never actually been turned on, so
+      Phase 5's "on-device confirmation... still outstanding" note
+      (elsewhere in this file) had never been resolved one way or the
+      other. Enabled it (`adb shell settings put secure
+      enabled_accessibility_services com.reclaim.app/.TrackingAccessibility
+      Service`), confirmed bound via `dumpsys accessibility`, then typed a
+      test string containing a keyword ("nsfw") into Chrome's address bar
+      -- never navigated anywhere, and the device had no network connection
+      at the time, so nothing resembling real explicit content was ever
+      loaded. Confirmed via the real `LocalSignals` bridge: real
+      `keyword_matches` rows, correct package (`com.android.chrome`),
+      correct keyword and category, pointing at a real `page_captures` row.
+
+      **New `recentKeyword` factor** (`RiskScorer.java`): default weight 35
+      (higher than every usage-pattern proxy factor -- an actual keyword
+      match is direct evidence, not an inferred pattern), window 15 minutes
+      (matches `BaselineSampleWorker`'s own cadence), scoped to
+      `currentPackage` specifically via a new
+      `LocalSignalsDb.mostRecentKeywordMatchAt(packageName)` query -- a
+      match in one app never gets attributed to an unrelated later
+      session's score. Parsed via a new shared `LocalSignalsDb.minutesSince
+      (iso)` helper (`minSdkVersion` is 24, same `java.time.Instant`
+      constraint as everywhere else this session) -- also used to de-
+      duplicate the near-identical parsing code the recent-Reclaim-use
+      protective factor already had. "Unexpected exposure" (a check-in
+      condition tag previously left deliberately unmapped -- no factor had
+      a direct relationship to it) now maps to this factor in
+      `TAG_TO_FACTORS`, since one finally does.
+
+      Verified on-device, not simulated: with the real keyword match from
+      the test above still in the database, triggered the real scoring
+      path with Chrome in the foreground -- log showed `recent-keyword
+      (+35)` alongside the existing factors, and a real notification
+      posted. Then foregrounded YouTube (allowlisted, but with no keyword
+      match of its own) and triggered the same check -- `recent-keyword`
+      correctly did NOT appear, confirming the per-package scoping isn't
+      leaking a match from one app into an unrelated session's score.
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing
