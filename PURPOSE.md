@@ -1245,6 +1245,34 @@ reality:
         everything falls back to the local verse text, so no verse card is
         ever empty.
 
+- [x] **Chat now requires the on-device AI download** (Nathaniel). Asked
+      for: people must download the model before they can use Chat, with the
+      input simply not accepting anything until it's there. Built: the
+      composer textarea, send button, and suggestion chips stay disabled
+      (placeholder says why) until `LocalModel` reports `ready`; the AI panel
+      is always shown while locked and its "Not now" button is hidden, so
+      the reason and the Download button can't be dismissed away. The
+      download is still a tap, never automatic (~1 GB, Wi-Fi advice kept).
+      The submit handler also refuses while locked, so a programmatic submit
+      can't sneak past the disabled UI.
+      - **Devices with no WebGPU are the one exception** (`unsupported`):
+        they can never run the model, so locking them out would mean no chat
+        at all -- they keep the scripted Basic mode. Everyone else, including
+        the `error` state (e.g. interrupted download), is locked until the
+        download works.
+      - The header's crisis button, the safety banner's "In crisis?" link,
+        and the crisis modal are outside the composer and still work while
+        locked. Crisis *detection* (`agentIsCrisis`) only runs on typed
+        messages, so a locked user gets the always-visible resources, not
+        the in-chat crisis card.
+      - A risk-notification "Tell me more / verse" tap auto-submits a verse
+        request into Chat; while locked that would be refused, so it lands
+        on Home's "Today's Verse" card instead.
+      - Verified in a real browser with WebGPU (locked state, unlocked state
+        via a stubbed `ready` status, no-WebGPU exception, blocked forced
+        submit, no console errors). The actual ~1 GB download-to-unlock path
+        and the Pixel 8a were not exercised.
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing

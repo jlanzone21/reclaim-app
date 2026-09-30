@@ -55,8 +55,9 @@ Android builds ship.
 - UI, Check-In, and Insights are complete (`web/`).
 - Chat uses Reclaim's own AI, running entirely on the user's device after a
   one-time ~1 GB download they opt into, personalized from their own
-  check-ins. Devices that can't run it (or haven't downloaded it yet) get a
-  scripted guide instead ("Basic mode"). Verified on the website in
+  check-ins. Chat won't take input until that download finishes; only devices
+  that can't run it at all (no WebGPU) get a scripted guide instead ("Basic
+  mode"). Verified on the website in
   desktop Chrome, in the Electron desktop app, and in the Android app on a
   Pixel 8a — see "The AI agent".
 - Crisis detection (`CRISIS_PATTERNS`, shared by all agents) is a simple
@@ -481,7 +482,8 @@ Markdown the model slips in.
   Face and the compiled GPU code from GitHub, then live in browser storage
   (Cache Storage, or IndexedDB where that's unavailable).
 - **Nothing downloads without a tap.** The chat view offers it; the badge in
-  the header (Basic mode / Downloading 42% / Reclaim AI) opens the same
+  the header (Download needed / Downloading 42% / Reclaim AI; "Basic mode" on
+  devices that can't run it) opens the same
   panel, including a plain-language reason when a device can't run it. Once
   downloaded, it loads automatically on later visits.
 - **Why Qwen3.5 2B:** Qwen3 1.7B was tested first with the same prompts and
