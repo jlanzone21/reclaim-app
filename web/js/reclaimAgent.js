@@ -25,11 +25,13 @@ const RECLAIM_UNSAFE_SENTENCE = [
   /\bhope\b(?![^.!?]*(?:n't\b|\b(?:not|no longer|less|let go|release|lift|free|ease|relief|past|beyond|instead|rather than|without)\b))[^.!?]*\b(?:overwhelm\w*|ashamed|shame|guilt\w*|disgust\w*|worse|hopeless|terrible|awful|dirty|worthless|alone|pain)\b/i,
   /\byou(?: are|'re| must be| should be| deserve to be)\s+(?!not\b|never\b)(?:so |really |truly |just |completely |totally )?(?:disgusting|dirty|worthless|pathetic|a failure|hopeless|beyond help|unforgivable)\b/i,
   /\b(?:shame on you|you deserve (?:this|it|to suffer|to feel))\b/i,
+  /\byou (?:don't|do not|won't) (?:really )?need (?:a |an |any |to (?:talk to|see) )?(?:pastor|counselor|therapist|small group|accountability|anyone|people|others)\b/i, // telling them real people aren't needed
+  /\bof your own making\b|(?<!not )\bso broken\b|\byou(?:'re| are)\s+(?!not\b|never\b)broken\b/i, // blames them or labels them broken ("you're not broken" is fine)
   /\byou (?:have|might have|may have|probably have|are suffering from)\s+(?:a |an )?(?:\w+\s+)?(?:disorder|depression|ocd|adhd|ptsd|bipolar)\b/i, // diagnosis
   /\b(?:not a big deal|no big deal|everyone does it|just this once)\b|\b(?:porn|watching it|looking at it) is (?:fine|okay|ok|normal|healthy|harmless)\b/i, // downplaying
   /\b(?:reach|call|text|contact|message) me\b|\bi(?:'m| am) always (?:here|available)\b/i, // the app standing in for real people
   /\bI (?:cannot|can't|can not|am unable to|am not able to) (?:share|provide|give(?! up)|offer|recommend|quote|find|show)\b/i, // refusing what the app just showed
-  /^I(?:'m| am) (?:just |only |not )?an? (?:[\w-]+ )?(?:friend|assistant|ai|bot|chatbot|app|program|model|companion|guide|counselor|therapist|pastor|christian|dictionary|bible|book|search engine)\b/i, // describing itself ("I am a Christian friend, not a Bible book")
+  /^I(?:'m| am) (?:just |only |not )?an? (?:[\w-]+ )?(?:friend|assistant|program|model|companion|guide|counselor|therapist|pastor|christian|dictionary|bible|book|search engine)\b/i, // describing itself ("I am a Christian friend, not a Bible book")
 ];
 
 const RECLAIM_SENTENCE_END = /^([\s\S]*?[.!?]+["'”’)]*)\s+/;

@@ -1274,6 +1274,27 @@ reality:
         was then confirmed by Nathaniel on the Pixel 8a (debug build,
         fresh install).
 
+- [x] **Chat prompt and filter tightened after a first prompt test**
+      (Nathaniel). A first run of the real agent against the on-device model
+      (desktop browser, ~11 clean prompts; the rest failed when the hidden
+      preview tab was throttled -- see the untracked `llm-prompt-tests/`
+      notes) showed the system prompt's own examples leaking into replies
+      ("have you talked to Joey about this?" for someone with no partner;
+      "I can't show you a verse on grace" for an urge), "Who are you?"
+      answered "you don't need a pastor, counselor, or small group", and a
+      shame reply blaming the person ("a trap of your own making... so
+      broken"). Changes: the prompt now calls the model an unnamed AI chat
+      bot for Reclaim 128, drops the "caring friend" framing and the verse
+      example, says never to blame or call them broken, tells it what to say
+      when asked who it is, and never to write a bracketed placeholder when no
+      partner is saved. `RECLAIM_UNSAFE_SENTENCE` gained two patterns (telling
+      them they don't need real people; "of your own making", "so broken",
+      "you're broken" -- "you're not broken" is allowed) and no longer drops
+      "I'm an AI/bot/app" sentences, which the new identity answer needs.
+      - Verified only by unit-testing the regexes in Node against sample
+        good and bad sentences. The new prompt has **not** been re-run against
+        the model, on a phone or in a browser; do that before relying on it.
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing
