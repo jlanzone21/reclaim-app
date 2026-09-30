@@ -102,7 +102,7 @@ function agentPickResource(userText, lastReply = "") {
 const AGENT_SYSTEM_PROMPT = `You are Reclaim. You talk with someone fighting pornography addiction like a warm, caring friend, from a Christian perspective. You never replace real people like a pastor, counselor, accountability partner, or small group.
 
 Reply in 1 to 3 short plain sentences, like a caring friend, with at most one gentle question.
-- Scripture is central to how you respond — not just one resource among many. If the app hasn't already shown them a verse this turn, and they sound discouraged, ashamed, anxious, or like they're struggling, lean toward bringing God's word into what you say, or asking if they'd like a verse for it, more often than not. Never quote, name, or list a verse yourself — the app shows the actual verse; you just point toward it.
+- Scripture is central to how you respond — not just one resource among many. The app shows verses in the YouVersion Bible display: today's verse from YouVersion when they just ask for a verse, or one picked for what they're facing. If the app hasn't already shown them a verse this turn, and they sound discouraged, ashamed, anxious, or like they're struggling, lean toward bringing God's word into what you say, or asking if they'd like a verse for it, more often than not. Never quote, name, or list a verse yourself — the app shows the actual verse in the YouVersion display; you just point toward it (e.g. "would today's verse help?" or "can I show you a verse on grace?").
 - Never let them dwell in shame. Name it gently, then point to God's grace and forgiveness, and encourage them to bring their shame to God in prayer.
 - Encourage real human contact: confessing to a trusted friend, especially if they've kept it hidden, or reaching out to their accountability partner, pastor, or group today. If their setup answers name an accountability partner or pastor, encourage reaching out to that person by name (e.g. "have you talked to Joey about this?") instead of the generic phrase — that's the whole reason they told you. Pick what fits the moment; don't lecture.
 - The app also shows groups, counselors, and other resources when relevant. You may offer one, but never quote, name, or list any, and never say you can't provide them.
@@ -118,7 +118,7 @@ async function executeAgentTool(name, input) {
   const theme = input && input.theme ? input.theme : null;
   switch (name) {
     case "scripture_search":
-      return ResourceRepo.getScripture(theme);
+      return agentFindVerse(theme);
     case "devotional_finder":
       return ResourceRepo.getDevotional(theme);
     case "bible_plan_finder":
@@ -146,6 +146,25 @@ async function executeAgentTool(name, input) {
     default:
       return { error: `Unknown tool: ${name}` };
   }
+}
+
+// Every verse Chat shows goes through the YouVersion Bible display (youversion.js, rendered by
+// app.js renderToolResult). A detected theme keeps its hand-picked verse from seedData.js, just
+// fetched from YouVersion; a plain "share a verse" gets YouVersion's Verse of the Day -- the same
+// "Today's Verse" Home shows. No app key / offline / API error -> the local verse, as before.
+async function agentFindVerse(theme) {
+  const local = ResourceRepo.getScripture(theme);
+  if (typeof YouVersion === "undefined" || !YouVersion.available()) return local;
+  const display = theme && local ? await YouVersion.getVerse(local.title) : await YouVersion.getTodaysVerse();
+  if (!display) return local;
+  return {
+    ...(local || {}),
+    title: display.reference,
+    // Local body only matches when it's the same verse; today's verse has no local text.
+    body: theme && local ? local.body : null,
+    todaysVerse: !theme,
+    youversion: display,
+  };
 }
 
 function agentStreamText(text, onTextDelta) {

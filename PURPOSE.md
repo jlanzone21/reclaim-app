@@ -1220,6 +1220,31 @@ reality:
       chat's `accountability_match` tool returns both contacts, and the
       AI's own context sentence names both partners.
 
+- [x] **Verses now come from the YouVersion Platform** (Nathaniel). Home's
+      verse card is now "Today's Verse": YouVersion's own Verse of the Day
+      (`getVOTD(dayOfYear)`, local time zone), rendered through their
+      Bible display (`getPassageDisplay` HTML inside the
+      `data-slot="yv-bible-renderer"` container + their stylesheets + the
+      version's copyright attribution, which the license requires be shown
+      with the text). Chat's `scripture_search` uses the same display: a
+      plain "share a verse" gets today's verse; a detected theme keeps its
+      hand-picked verse from `seedData.js`, just fetched from YouVersion by
+      reference (`referenceToPassageId`, e.g. "Psalm 139:23-24" ->
+      `PSA.139.23-24`). The AI's system prompt and per-turn note now tell it
+      verses are shown in the YouVersion display, so it offers "today's
+      verse" instead of quoting one.
+      - `@youversion/platform-core` pinned in `package.json`, bundled (with
+        zod) into `web/js/vendor/youversion-platform.js` by
+        `npm run vendor:youversion` -- same "plain script tags, no build
+        step" rule as web-llm.
+      - `web/js/youversion.js` holds the App Key (`APP_KEY`, from
+        platform.youversion.com) and the version list: NIV (111) first,
+        BSB (3034) as fallback. NIV is licensed for the current key (verified
+        live: today's verse and themed verses come back as NIV); BSB is
+        only used if YouVersion ever answers 403 for NIV. With no key, offline, or on an API error,
+        everything falls back to the local verse text, so no verse card is
+        ever empty.
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing

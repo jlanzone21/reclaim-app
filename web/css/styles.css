@@ -1336,6 +1336,66 @@ a.resource-contact:active {
   color: var(--navy-text-muted);
 }
 
+.home-verse-loading {
+  opacity: 0.7;
+}
+
+/* YouVersion Bible display (youversion.js). The passage HTML sits in YouVersion's
+   data-slot="yv-bible-renderer" container so their bible.css applies; these rules only size it and
+   let it take the surrounding card's colors (the Home card is navy, Chat cards follow the theme).
+   The attribution line is required by the YouVersion license -- keep it visible. */
+.yv-verse [data-slot="yv-bible-renderer"] {
+  --yv-reader-font-size: 16px;
+  --yv-reader-line-height: 1.55;
+  color: inherit;
+  background: transparent;
+}
+
+.yv-verse [data-slot="yv-bible-renderer"] * {
+  color: inherit;
+}
+
+.yv-verse-ref {
+  margin-top: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.yv-verse-attribution {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  opacity: 0.75;
+}
+
+.home-verse-card .yv-verse [data-slot="yv-bible-renderer"] {
+  --yv-reader-font-size: 17px;
+  font-style: italic;
+}
+
+.home-verse-card .yv-verse-ref {
+  color: var(--navy-text-muted);
+}
+
+.resource-item-yv .yv-verse {
+  margin-top: 4px;
+  padding-left: 10px;
+  border-left: 2px solid var(--accent);
+}
+
+.resource-item-yv .yv-verse-attribution {
+  color: var(--text-muted);
+}
+
+.resource-kicker {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
 /* Quick shortcut to the accountability partner, same tel: mechanism as the crisis modal and
    RiskAlertView -- hidden entirely (not just disabled) when no partner's been set, matching how
    the crisis modal and risk-alert overlay already handle that same "nothing configured" case. */

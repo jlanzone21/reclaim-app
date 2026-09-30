@@ -9,7 +9,8 @@ const RECLAIM_FALLBACK_REPLY =
 const clip = (text, n = RECLAIM_CLIP_CHARS) => (text.length > n ? `${text.slice(0, n)}…` : text);
 
 // The app, not the model, introduces each card: a small model asked to talk about specific resources misquotes or refuses them.
-function cardIntro(name, theme) {
+function cardIntro(name, theme, output) {
+  if (name === "scripture_search" && output && output.todaysVerse) return "Here's today's verse from YouVersion.";
   const about = theme && theme !== "in-the-moment" ? ` about ${theme}` : "";
   return AGENT_TOOL_DEFS.find((t) => t.name === name).intro.replace("{about}", about);
 }
@@ -82,6 +83,7 @@ class ReclaimAgent {
     let shown = false;
     try {
       let intro = "";
+      let shownVerse = false;
       const pick = agentPickResource(userText, previous);
       if (pick) {
         const input = pick.theme ? { theme: pick.theme } : { query: userText };
@@ -93,7 +95,8 @@ class ReclaimAgent {
           const id = `tool_${++this._idCounter}`;
           handlers.onToolCallStart({ id, name: pick.resource, input });
           handlers.onToolCallEnd({ id, output });
-          intro = cardIntro(pick.resource, pick.theme);
+          intro = cardIntro(pick.resource, pick.theme, output);
+          if (pick.resource === "scripture_search") shownVerse = true;
           revealer.push(intro);
         }
         shown = true;
@@ -109,9 +112,11 @@ class ReclaimAgent {
       };
 
       // Per-turn instructions go in the user message, not the system prompt, so the system prompt stays identical across turns.
-      const userContent = intro
-        ? `${clip(userText)}\n\n(The app has just shown them this and said "${intro}" Continue right after that line; don't repeat it.)`
-        : clip(userText);
+      const userContent = !intro
+        ? clip(userText)
+        : shownVerse
+          ? `${clip(userText)}\n\n(The app has just shown them a verse in the YouVersion Bible display and said "${intro}" Continue right after that line; don't repeat it, and don't quote or name the verse.)`
+          : `${clip(userText)}\n\n(The app has just shown them this and said "${intro}" Continue right after that line; don't repeat it.)`;
 
       let pending = "";
       const { raw, finishReason } = await LocalModel.streamChat(this._replyMessages(userContent), {
