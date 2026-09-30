@@ -1270,8 +1270,9 @@ reality:
         on Home's "Today's Verse" card instead.
       - Verified in a real browser with WebGPU (locked state, unlocked state
         via a stubbed `ready` status, no-WebGPU exception, blocked forced
-        submit, no console errors). The actual ~1 GB download-to-unlock path
-        and the Pixel 8a were not exercised.
+        submit, no console errors). The real ~1 GB download-to-unlock path
+        was then confirmed by Nathaniel on the Pixel 8a (debug build,
+        fresh install).
 
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
