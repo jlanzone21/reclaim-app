@@ -432,6 +432,15 @@
     const wrap = document.createElement("div");
 
     if (name === "scripture_search") {
+      // YouVersion Bible display (youversion.js) whenever it's available -- including the version's
+      // copyright attribution the YouVersion license requires -- else the local verse text.
+      if (output.youversion && typeof YouVersion !== "undefined") {
+        const card = el("div", "resource-item resource-item-yv");
+        if (output.todaysVerse) card.appendChild(el("div", "resource-kicker", "Today's Verse"));
+        card.appendChild(YouVersion.render(output.youversion));
+        wrap.appendChild(card);
+        return wrap;
+      }
       const card = el("div", "resource-item");
       card.appendChild(el("div", "resource-title", output.title));
       card.appendChild(el("blockquote", "resource-quote", output.body));

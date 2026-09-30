@@ -11,11 +11,13 @@
 const HomeView = (function () {
   let els = {};
   let initialized = false;
+  // Which day's verse is on screen (and whether it came from YouVersion), so switching back to Home
+  // doesn't refetch or flash -- it only re-renders once the day changes or YouVersion recovers.
+  let verseShownFor = null;
 
   function init() {
     els = {
-      verseText: document.getElementById("homeVerseText"),
-      verseRef: document.getElementById("homeVerseRef"),
+      verseBody: document.getElementById("homeVerseBody"),
       statRow: document.getElementById("homeStatRow"),
       callCards: document.getElementById("homeCallCards"),
     };
@@ -79,14 +81,38 @@ const HomeView = (function () {
     return btn;
   }
 
-  // Draws from the same local scripture set Chat's scripture tool uses (resourceRepo.js/
-  // seedData.js) -- no theme filter, so any of the seeded verses can land here. A real "verse of
-  // the day" (fixed per calendar day, or drawn from verses added later) is future work, not this
-  // pass -- this just wires the spot up to real content instead of leaving it empty.
-  function renderVerse() {
+  // "Today's Verse" is YouVersion's own Verse of the Day (youversion.js), rendered with the
+  // YouVersion Bible display and its required copyright attribution. With no app key, offline, or
+  // on an API error it falls back to a verse from the local scripture set (resourceRepo.js/
+  // seedData.js), so the card is never empty.
+  async function renderVerse() {
+    const day = new Date().toDateString();
+    if (verseShownFor === `yv:${day}`) return;
+
+    if (typeof YouVersion !== "undefined" && YouVersion.available()) {
+      if (!verseShownFor) els.verseBody.replaceChildren(verseLine("home-verse-text home-verse-loading", "Loading today's verse…"));
+      const display = await YouVersion.getTodaysVerse();
+      if (display) {
+        els.verseBody.replaceChildren(YouVersion.render(display));
+        verseShownFor = `yv:${day}`;
+        return;
+      }
+    }
+
+    if (verseShownFor === `local:${day}`) return;
     const verse = ResourceRepo.getScripture();
-    els.verseText.textContent = verse ? verse.body : "";
-    els.verseRef.textContent = verse ? verse.title : "";
+    els.verseBody.replaceChildren(
+      verseLine("home-verse-text", verse ? verse.body : ""),
+      verseLine("home-verse-ref", verse ? verse.title : "")
+    );
+    verseShownFor = `local:${day}`;
+  }
+
+  function verseLine(className, text) {
+    const node = document.createElement(className.startsWith("home-verse-text") ? "p" : "div");
+    node.className = className;
+    node.textContent = text;
+    return node;
   }
 
   function renderStats() {

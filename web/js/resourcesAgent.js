@@ -71,7 +71,11 @@ class ResourcesAgent {
       const match = await executeAgentTool("scripture_search", { theme });
       return {
         toolCalls: [{ name: "scripture_search", input: { theme }, output: match, delay: 700 }],
-        reply: `${match.title} — "${match.body}" This isn't a quick fix, but it's worth sitting with. Would a sermon on this, a devotional, or a small group to process it with be helpful?`,
+        // With the YouVersion display the card already shows the verse (and its required
+        // attribution), so the reply points to it instead of quoting a second copy.
+        reply: match.youversion
+          ? `${match.todaysVerse ? "That's today's verse" : "Here's a verse"} from YouVersion — ${match.title}. This isn't a quick fix, but it's worth sitting with. Would a sermon on this, a devotional, or a small group to process it with be helpful?`
+          : `${match.title} — "${match.body}" This isn't a quick fix, but it's worth sitting with. Would a sermon on this, a devotional, or a small group to process it with be helpful?`,
       };
     }
 
@@ -179,7 +183,9 @@ class ResourcesAgent {
       const match = await executeAgentTool("scripture_search", { theme: broaderTheme });
       return {
         toolCalls: [{ name: "scripture_search", input: { theme: broaderTheme }, output: match, delay: 700 }],
-        reply: `${match.title} — "${match.body}" Would a coping technique, a devotional, or a small group to process this with also help?`,
+        reply: match.youversion
+          ? `Here's a verse from YouVersion for that — ${match.title}. Would a coping technique, a devotional, or a small group to process this with also help?`
+          : `${match.title} — "${match.body}" Would a coping technique, a devotional, or a small group to process this with also help?`,
       };
     }
 

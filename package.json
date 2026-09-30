@@ -8,6 +8,7 @@
     "start": "electron .",
     "dist": "electron-builder",
     "vendor:webllm": "node scripts/vendor-webllm.mjs",
+    "vendor:youversion": "node scripts/vendor-youversion.mjs",
     "gen:icons": "node scripts/make-icons.mjs"
   },
   "devDependencies": {
@@ -32,6 +33,7 @@
   "dependencies": {
     "@capacitor/geolocation": "^8.2.2",
     "@mlc-ai/web-llm": "0.2.85",
+    "@youversion/platform-core": "2.15.0",
     "sql.js": "^1.14.2"
   }
 }
