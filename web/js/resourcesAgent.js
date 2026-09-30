@@ -123,8 +123,8 @@ class ResourcesAgent {
 
     if (/\b(accountability|partner|someone to check|check on me)\b/.test(lower)) {
       const output = await executeAgentTool("accountability_match", {});
-      const reply = output.hasContact
-        ? `Have you talked to ${output.name} about this? That's exactly what they're there for.`
+      const reply = output.contacts && output.contacts.length
+        ? `Have you talked to ${output.contacts.map((c) => c.name).join(" or ")} about this? That's exactly what they're there for.`
         : "Having someone who knows and regularly checks in with you changes the odds a lot. Add your accountability partner in Privacy so Reclaim can bring up their contact right when you need it.";
       return {
         toolCalls: [{ name: "accountability_match", input: { query: userText }, output, delay: 850 }],

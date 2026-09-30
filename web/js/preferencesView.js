@@ -1,5 +1,5 @@
 /**
- * The one-time setup form (accountability/pastor contacts, tempting times/triggers/locations,
+ * The one-time setup form (up to 2 accountability partners, pastor contact, tempting times/triggers/locations,
  * home location, trigger apps, notification intensity) — shown as the second step of first-launch
  * onboarding (chained from the welcome overlay's "I understand"), and reachable any time after
  * from Privacy's "Edit your preferences" so nothing here is a one-shot, especially the
@@ -28,6 +28,8 @@ const PreferencesView = (function () {
       overlay: document.getElementById("preferencesOverlay"),
       accountabilityName: document.getElementById("prefAccountabilityName"),
       accountabilityPhone: document.getElementById("prefAccountabilityPhone"),
+      accountabilityName2: document.getElementById("prefAccountabilityName2"),
+      accountabilityPhone2: document.getElementById("prefAccountabilityPhone2"),
       pastorName: document.getElementById("prefPastorName"),
       pastorPhone: document.getElementById("prefPastorPhone"),
       timeGrid: document.getElementById("prefTimeGrid"),
@@ -81,6 +83,8 @@ const PreferencesView = (function () {
   function fillForm(prefs) {
     els.accountabilityName.value = prefs.accountability_name || "";
     els.accountabilityPhone.value = prefs.accountability_phone || "";
+    els.accountabilityName2.value = prefs.accountability_name_2 || "";
+    els.accountabilityPhone2.value = prefs.accountability_phone_2 || "";
     els.pastorName.value = prefs.pastor_name || "";
     els.pastorPhone.value = prefs.pastor_phone || "";
     els.locations.value = prefs.tempting_locations || "";
@@ -191,6 +195,8 @@ const PreferencesView = (function () {
     const fields = {
       accountability_name: els.accountabilityName.value.trim(),
       accountability_phone: els.accountabilityPhone.value.trim(),
+      accountability_name_2: els.accountabilityName2.value.trim(),
+      accountability_phone_2: els.accountabilityPhone2.value.trim(),
       pastor_name: els.pastorName.value.trim(),
       pastor_phone: els.pastorPhone.value.trim(),
       tempting_times: Array.from(selectedTimes),
@@ -211,7 +217,8 @@ const PreferencesView = (function () {
   function renderSummary() {
     const prefs = UserPreferencesStore.get();
     const parts = [];
-    if (prefs.accountability_name) parts.push(`Accountability partner: ${prefs.accountability_name}`);
+    const partners = [prefs.accountability_name, prefs.accountability_name_2].filter(Boolean);
+    if (partners.length) parts.push(`Accountability partner${partners.length > 1 ? "s" : ""}: ${partners.join(", ")}`);
     if (prefs.tempting_times && prefs.tempting_times.length) parts.push(`Hardest times: ${prefs.tempting_times.join(", ")}`);
     parts.push(`Notifications: ${capitalize(prefs.notification_intensity)}`);
     els.summary.textContent = parts.length

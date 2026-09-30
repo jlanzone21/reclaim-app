@@ -131,11 +131,13 @@ async function executeAgentTool(name, input) {
       return { groups: await ResourceRepo.getSmallGroups(input && input.query) };
     case "accountability_match": {
       // Deterministic, not model-dependent: this is real personal data (or the deliberate
-      // absence of it), never a generic sample list -- see PURPOSE.md.
+      // absence of it), never a generic sample list -- see PURPOSE.md. Up to 2 partners.
       const prefs = UserPreferencesStore.get();
-      return prefs.accountability_name && prefs.accountability_phone
-        ? { hasContact: true, name: prefs.accountability_name, phone: prefs.accountability_phone }
-        : { hasContact: false };
+      const contacts = [
+        { name: prefs.accountability_name, phone: prefs.accountability_phone },
+        { name: prefs.accountability_name_2, phone: prefs.accountability_phone_2 },
+      ].filter((c) => c.name && c.phone);
+      return { contacts };
     }
     case "sermon_library":
       return { sermons: await ResourceRepo.getSermons() };

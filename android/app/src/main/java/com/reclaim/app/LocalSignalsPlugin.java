@@ -103,6 +103,8 @@ public class LocalSignalsPlugin extends Plugin {
     public void syncRiskContext(PluginCall call) {
         db().setMeta("accountability_name", call.getString("accountabilityName", ""));
         db().setMeta("accountability_phone", call.getString("accountabilityPhone", ""));
+        db().setMeta("accountability_name_2", call.getString("accountabilityName2", ""));
+        db().setMeta("accountability_phone_2", call.getString("accountabilityPhone2", ""));
         db().setMeta("tempting_times", jsonArrayOrEmpty(call, "temptingTimes"));
         db().setMeta("common_triggers", jsonArrayOrEmpty(call, "commonTriggers"));
         db().setMeta("notification_intensity", call.getString("intensity", "medium"));

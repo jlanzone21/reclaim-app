@@ -27,9 +27,10 @@ import androidx.core.content.ContextCompat;
  * Runs from BaselineSampleWorker at the same ~15-minute cadence as ForegroundAppMonitor, which
  * this reuses the session-detection shape of, but is a real feature, not that class's
  * verification tool. Two things happen when it fires: a notification with a suggested action
- * tiered by RiskScorer.Result.isHighRisk() -- high risk suggests "Call [name]" (opens the phone's
- * own dialer pre-filled, same tel:-only, on-device, user-confirms-the-call choice as the crisis
- * modal, never auto-dials or sends anything itself), anything lower suggests "Read a verse"
+ * tiered by RiskScorer.Result.isHighRisk() -- high risk suggests "Call [name]" (up to two, one
+ * per accountability partner who has a phone number set -- opens the phone's own dialer
+ * pre-filled, same tel:-only, on-device, user-confirms-the-call choice as the crisis modal, never
+ * auto-dials or sends anything itself), anything lower suggests "Read a verse"
  * instead (its own action/PendingIntent, ACTION_OPEN_VERSE -- opens straight to Chat with a
  * scripture request already sent, skipping the risk-alert detail popup entirely) -- and, on the
  * SECOND consecutive one
@@ -264,21 +265,17 @@ final class RiskNudgeMonitor {
 
         // Tiered suggested action -- user's own framing: a score that just cleared the bar
         // doesn't warrant the same ask as one well past it. High risk (see Result.isHighRisk)
-        // suggests actually calling the accountability partner; anything lower suggests a
-        // lighter-touch action instead. Falls back to the lighter action even at high risk if no
-        // partner's been set -- better than no suggested action at all.
-        String phone = db.getMeta("accountability_phone");
-        boolean hasPartner = phone != null && !phone.trim().isEmpty();
-        if (result.isHighRisk() && hasPartner) {
-            // ACTION_DIAL, not ACTION_CALL: opens the phone's own dialer pre-filled, doesn't place
-            // the call itself -- the same "opens native communication, never sends anything"
-            // choice as the crisis modal's tel: links, and needs no extra runtime permission.
-            Intent dial = new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + phone.trim()));
-            PendingIntent callIntent = PendingIntent.getActivity(
-                    ctx, 1, dial, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            String name = db.getMeta("accountability_name");
-            String label = "Call " + (name != null && !name.trim().isEmpty() ? name.trim() : "them");
-            builder.addAction(0, label, callIntent);
+        // suggests actually calling an accountability partner -- both, as separate actions, if
+        // both are set -- anything lower suggests a lighter-touch action instead. Falls back to
+        // the lighter action even at high risk if no partner's been set -- better than no
+        // suggested action at all.
+        String phone1 = db.getMeta("accountability_phone");
+        String phone2 = db.getMeta("accountability_phone_2");
+        boolean hasPhone1 = phone1 != null && !phone1.trim().isEmpty();
+        boolean hasPhone2 = phone2 != null && !phone2.trim().isEmpty();
+        if (result.isHighRisk() && (hasPhone1 || hasPhone2)) {
+            if (hasPhone1) addCallAction(ctx, builder, 1, phone1, db.getMeta("accountability_name"));
+            if (hasPhone2) addCallAction(ctx, builder, 3, phone2, db.getMeta("accountability_name_2"));
         } else {
             // Its own PendingIntent/extra, distinct from the body tap -- MainActivity routes
             // ACTION_OPEN_VERSE straight to Chat with a scripture request already sent, skipping
@@ -296,6 +293,19 @@ final class RiskNudgeMonitor {
 
         nm.notify(NOTIFICATION_ID, builder.build());
         Log.d(TAG, "posted risk nudge notification");
+    }
+
+    // ACTION_DIAL, not ACTION_CALL: opens the phone's own dialer pre-filled, doesn't place the
+    // call itself -- the same "opens native communication, never sends anything" choice as the
+    // crisis modal's tel: links, and needs no extra runtime permission. requestCode must be
+    // distinct per action added to the same notification (1 and 3 here -- 0 is the body tap, 2 is
+    // the verse action) or Android collapses them into the same PendingIntent.
+    private static void addCallAction(Context ctx, NotificationCompat.Builder builder, int requestCode, String phone, String name) {
+        Intent dial = new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + phone.trim()));
+        PendingIntent callIntent = PendingIntent.getActivity(
+                ctx, requestCode, dial, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        String label = "Call " + (name != null && !name.trim().isEmpty() ? name.trim() : "them");
+        builder.addAction(0, label, callIntent);
     }
 
     // Machine-readable factor names (not the plain-language reasons above) plus a timestamp, so

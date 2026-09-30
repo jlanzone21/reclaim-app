@@ -258,6 +258,13 @@
           detail: "Reach out — that's exactly what this relationship is for.",
         });
       }
+      if (prefs.accountability_phone_2) {
+        lines.push({
+          name: prefs.accountability_name_2 || "Your accountability partner",
+          phone: prefs.accountability_phone_2,
+          detail: "Reach out — that's exactly what this relationship is for.",
+        });
+      }
       if (prefs.pastor_phone) {
         lines.push({
           name: prefs.pastor_name || "Your pastor",
@@ -500,15 +507,19 @@
     }
 
     if (name === "accountability_match") {
-      const card = el("div", "resource-item");
-      if (output.hasContact) {
-        card.appendChild(el("div", "resource-title", output.name));
-        const call = document.createElement("a");
-        call.className = "resource-contact";
-        call.href = `tel:${output.phone.replace(/[^\d+]/g, "")}`;
-        call.textContent = `Call ${output.name}`;
-        card.appendChild(call);
+      if (output.contacts && output.contacts.length) {
+        output.contacts.forEach((c) => {
+          const card = el("div", "resource-item");
+          card.appendChild(el("div", "resource-title", c.name));
+          const call = document.createElement("a");
+          call.className = "resource-contact";
+          call.href = `tel:${c.phone.replace(/[^\d+]/g, "")}`;
+          call.textContent = `Call ${c.name}`;
+          card.appendChild(call);
+          wrap.appendChild(card);
+        });
       } else {
+        const card = el("div", "resource-item");
         card.appendChild(el("div", "resource-line", "You haven't added an accountability partner yet."));
         const addBtn = document.createElement("button");
         addBtn.type = "button";
@@ -517,8 +528,8 @@
         addBtn.textContent = "Add one now";
         addBtn.addEventListener("click", () => PreferencesView.open("edit"));
         card.appendChild(addBtn);
+        wrap.appendChild(card);
       }
-      wrap.appendChild(card);
       return wrap;
     }
 

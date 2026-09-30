@@ -63,6 +63,8 @@ const RiskProfile = (function () {
     LocalSignals.syncRiskContext({
       accountabilityName: prefs.accountability_name || "",
       accountabilityPhone: prefs.accountability_phone || "",
+      accountabilityName2: prefs.accountability_name_2 || "",
+      accountabilityPhone2: prefs.accountability_phone_2 || "",
       temptingTimes: prefs.tempting_times || [],
       commonTriggers: prefs.common_triggers || [],
       intensity: prefs.notification_intensity || "medium",

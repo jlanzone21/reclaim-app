@@ -1167,6 +1167,59 @@ reality:
       correctly did NOT appear, confirming the per-package scoping isn't
       leaking a match from one app into an unrelated session's score.
 
+- [x] **Up to 2 accountability partners, editable from Privacy's existing
+      "Edit your preferences."** That entry point already existed
+      (`preferencesView.js`'s doc comment already said "reachable any time
+      after from Privacy" -- this wasn't new access, just a second partner
+      slot added to it) -- user asked for a second partner, not a new
+      screen. Every place that read the single `accountability_name`/
+      `accountability_phone` pair now also checks `accountability_name_2`/
+      `accountability_phone_2`, filtering to whichever partner(s) actually
+      have a phone number set (0, 1, or 2):
+      - `db.js` -- two new columns, migrated in for existing installs via
+        `migrateColumns()` (same ALTER TABLE pattern as `home_lat`/
+        `home_lon`), not a seed-version bump (this is the user's own row,
+        not seeded content).
+      - `preferencesView.js`/`index.html` -- a second name/phone pair in
+        the same "Accountability partners" section (now plural), same
+        fill/persist/summary handling extended, not a separate section.
+      - `homeView.js`/`riskAlertView.js` -- both previously rendered a
+        single static button; both now render a dynamic list (0-2 cards),
+        same `.home-call-card`/`.modal-continue` styling, one per partner
+        with a phone set.
+      - `agentTools.js`'s `accountability_match` tool -- shape changed from
+        `{hasContact, name, phone}` to `{contacts: [...]}`; updated its two
+        renderers (`app.js`'s chat card, `resourcesAgent.js`'s Basic-mode
+        fallback reply -- the second one would have silently broken,
+        printing "undefined", if missed).
+      - `personalContext.js` -- the AI's per-turn context sentence now
+        names both partners when both are set ("Their accountability
+        partners are X and Y") instead of just the first.
+      - `riskProfile.js` -> `LocalSignalsPlugin.syncRiskContext` ->
+        `LocalSignalsDb` app_meta -- second partner mirrored the same way
+        the first already was, for `RiskNudgeMonitor` to read from a
+        background Worker.
+      - `RiskNudgeMonitor.java` -- the high-risk notification's "Call
+        [name]" action is now up to two separate actions (one per partner
+        with a phone set), each its own `PendingIntent`/request code (1
+        and 3 -- 0 is the body tap, 2 is the verse action), via a new
+        shared `addCallAction()` helper instead of duplicating the dial-
+        intent code.
+
+      Verified on-device, not simulated: set two real partners
+      (Joey/Sam) through the actual store, confirmed the edit overlay
+      pre-fills both fields, saved through the real Save button and
+      confirmed the Privacy summary correctly pluralized ("Accountability
+      partners: Joey, Sam"). Confirmed Home renders two real, distinct
+      call cards. Triggered a real high-risk notification and confirmed
+      via `dumpsys notification` two separate actions -- "Call Joey" and
+      "Call Sam" -- each with its own distinct `PendingIntent`. Confirmed
+      the in-app detail popup (`RiskAlertView.checkPending()`, the real
+      JS path, not a mock) renders both "Call Joey" and "Call Sam"
+      buttons together with the existing reasons list. Confirmed the
+      chat's `accountability_match` tool returns both contacts, and the
+      AI's own context sentence names both partners.
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing

@@ -19,7 +19,7 @@ const RiskAlertView = (function () {
       overlay: document.getElementById("riskAlertOverlay"),
       appLine: document.getElementById("riskAlertAppLine"),
       reasons: document.getElementById("riskAlertReasons"),
-      call: document.getElementById("riskAlertCall"),
+      callCards: document.getElementById("riskAlertCallCards"),
       chat: document.getElementById("riskAlertChat"),
       dismiss: document.getElementById("riskAlertDismiss"),
       dismissFill: document.getElementById("riskAlertDismissFill"),
@@ -51,25 +51,36 @@ const RiskAlertView = (function () {
       els.reasons.appendChild(li);
     });
 
+    els.callCards.innerHTML = "";
     const prefs = typeof UserPreferencesStore !== "undefined" ? UserPreferencesStore.get() : null;
-    if (prefs && prefs.accountability_phone) {
-      els.call.hidden = false;
-      els.call.textContent = "Call " + (prefs.accountability_name || "them");
-      // Same tel: mechanism as the crisis modal/accountability card -- a real anchor click,
-      // not a window.location assignment, since that's the one already proven to work here.
-      els.call.onclick = () => {
-        const a = document.createElement("a");
-        a.href = `tel:${prefs.accountability_phone.replace(/[^\d+]/g, "")}`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-      };
-    } else {
-      els.call.hidden = true;
+    if (prefs) {
+      [
+        { name: prefs.accountability_name, phone: prefs.accountability_phone },
+        { name: prefs.accountability_name_2, phone: prefs.accountability_phone_2 },
+      ]
+        .filter((p) => p.phone)
+        .forEach((p) => els.callCards.appendChild(buildCallButton(p)));
     }
 
     els.overlay.classList.add("visible");
     startDismissCountdown();
+  }
+
+  // Same tel: mechanism as the crisis modal/Home's accountability card -- a real anchor click,
+  // not a window.location assignment, since that's the one already proven to work here.
+  function buildCallButton(partner) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "modal-continue";
+    btn.textContent = "Call " + (partner.name || "them");
+    btn.onclick = () => {
+      const a = document.createElement("a");
+      a.href = `tel:${partner.phone.replace(/[^\d+]/g, "")}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    };
+    return btn;
   }
 
   function startDismissCountdown() {

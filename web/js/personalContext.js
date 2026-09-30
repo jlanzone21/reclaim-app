@@ -75,8 +75,11 @@ function buildUserPreferencesContext(prefs) {
   if (!prefs) return "";
   const parts = [];
 
-  if (prefs.accountability_name) {
-    parts.push(`Their accountability partner is ${prefs.accountability_name}${prefs.accountability_phone ? " — reachable directly from the app" : ""}.`);
+  const partnerNames = [prefs.accountability_name, prefs.accountability_name_2].filter(Boolean);
+  if (partnerNames.length === 1) {
+    parts.push(`Their accountability partner is ${partnerNames[0]}${prefs.accountability_phone ? " — reachable directly from the app" : ""}.`);
+  } else if (partnerNames.length > 1) {
+    parts.push(`Their accountability partners are ${partnerNames.join(" and ")} — both reachable directly from the app.`);
   }
   if (prefs.pastor_name) {
     parts.push(`Their pastor/mentor is ${prefs.pastor_name}.`);

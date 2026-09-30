@@ -60,6 +60,8 @@ const DB = (function () {
       id INTEGER PRIMARY KEY CHECK (id = 1),
       accountability_name TEXT,
       accountability_phone TEXT,
+      accountability_name_2 TEXT,
+      accountability_phone_2 TEXT,
       pastor_name TEXT,
       pastor_phone TEXT,
       tempting_times TEXT,
@@ -224,6 +226,9 @@ const DB = (function () {
     const prefCols = all("PRAGMA table_info(user_preferences)").map((c) => c.name);
     if (!prefCols.includes("home_lat")) run("ALTER TABLE user_preferences ADD COLUMN home_lat REAL");
     if (!prefCols.includes("home_lon")) run("ALTER TABLE user_preferences ADD COLUMN home_lon REAL");
+    // Second accountability partner -- up to 2 is now supported everywhere the first one is.
+    if (!prefCols.includes("accountability_name_2")) run("ALTER TABLE user_preferences ADD COLUMN accountability_name_2 TEXT");
+    if (!prefCols.includes("accountability_phone_2")) run("ALTER TABLE user_preferences ADD COLUMN accountability_phone_2 TEXT");
   }
 
   async function init() {

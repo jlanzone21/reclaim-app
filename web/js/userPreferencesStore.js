@@ -4,7 +4,8 @@
  * Privacy. Everything stays on-device.
  *
  *   {
- *     accountability_name, accountability_phone,   // optional; a place to fill in later matters
+ *     accountability_name, accountability_phone,     // optional; a place to fill in later matters
+ *     accountability_name_2, accountability_phone_2, // up to 2 partners -- both optional
  *     pastor_name, pastor_phone,                    // as much as the initial prompt
  *     tempting_times: string[],                     // subset of TEMPTING_TIME_BUCKETS
  *     common_triggers: string[],                    // subset of CONDITION_TAGS (constants.js)
@@ -30,6 +31,8 @@ const UserPreferencesStore = (function () {
   const DEFAULTS = {
     accountability_name: "",
     accountability_phone: "",
+    accountability_name_2: "",
+    accountability_phone_2: "",
     pastor_name: "",
     pastor_phone: "",
     tempting_times: [],
@@ -64,6 +67,8 @@ const UserPreferencesStore = (function () {
     const params = [
       next.accountability_name || null,
       next.accountability_phone || null,
+      next.accountability_name_2 || null,
+      next.accountability_phone_2 || null,
       next.pastor_name || null,
       next.pastor_phone || null,
       JSON.stringify(next.tempting_times || []),
@@ -80,6 +85,7 @@ const UserPreferencesStore = (function () {
       DB.run(
         `UPDATE user_preferences SET
            accountability_name = ?, accountability_phone = ?,
+           accountability_name_2 = ?, accountability_phone_2 = ?,
            pastor_name = ?, pastor_phone = ?,
            tempting_times = ?, common_triggers = ?, tempting_locations = ?,
            notification_intensity = ?, other_notes = ?,
@@ -91,11 +97,12 @@ const UserPreferencesStore = (function () {
     } else {
       DB.run(
         `INSERT INTO user_preferences
-           (id, accountability_name, accountability_phone, pastor_name, pastor_phone,
+           (id, accountability_name, accountability_phone, accountability_name_2, accountability_phone_2,
+            pastor_name, pastor_phone,
             tempting_times, common_triggers, tempting_locations,
             notification_intensity, other_notes, onboarding_completed_at, updated_at,
             home_lat, home_lon)
-         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         params
       );
     }
