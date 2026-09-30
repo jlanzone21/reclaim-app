@@ -146,6 +146,20 @@ public class LocalSignalsPlugin extends Plugin {
         call.resolve(result);
     }
 
+    // MainActivity.handleRiskIntent writes here when the notification's "Read a verse" action
+    // specifically (not a body tap) is what opened the app -- "1" or null, consumed once, cleared
+    // on read, same reasoning as getPendingNightlyAction. app.js checks this before
+    // getPendingRiskAlert on boot/resume so the auto-submitted scripture request wins over the
+    // detail popup (MainActivity already cleared pending_risk_alert itself for this same reason).
+    @PluginMethod
+    public void getPendingVerseRequest(PluginCall call) {
+        String flag = db().getMeta("pending_verse_request");
+        if (flag != null) db().setMeta("pending_verse_request", "");
+        JSObject result = new JSObject();
+        result.put("pending", "1".equals(flag));
+        call.resolve(result);
+    }
+
     // How long after a risk-nudge notification a check-in can still plausibly be a reaction to
     // it, for RiskScorer's adaptive-tuning loop below. Long enough to cover "later that day"
     // (including the nightly check-in prompt), short enough that an unrelated check-in from days

@@ -274,13 +274,20 @@ final class LocalSignalsDb extends SQLiteOpenHelper {
     // A launcher package varies by device/manufacturer (Pixel Launcher, One UI Home, Nova, ...),
     // so this resolves it dynamically via the HOME intent rather than hardcoding one -- the home
     // screen showing up as "foreground app" isn't a useful signal on any device, not just this one.
+    //
+    // resolveActivity(MATCH_DEFAULT_ONLY), not queryIntentActivities(MATCH_ALL): the latter lists
+    // every component that merely DECLARES a HOME intent filter, which on stock Android/Pixel
+    // includes com.android.settings/.FallbackHome (AOSP's safety-net home screen, used only when no
+    // real launcher is set) -- confirmed on-device this made isLauncherPackage(ctx,
+    // "com.android.settings") wrongly return true, silently excluding Settings from every session
+    // this powers (RiskNudgeMonitor's currentSession, topRecentApp) even though Settings was
+    // genuinely foreground. resolveActivity mirrors what the system actually launches for a HOME
+    // press -- the one real default, not every declared candidate.
     static boolean isLauncherPackage(Context ctx, String packageName) {
         PackageManager pm = ctx.getPackageManager();
         Intent homeIntent = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);
-        for (ResolveInfo info : pm.queryIntentActivities(homeIntent, PackageManager.MATCH_ALL)) {
-            if (info.activityInfo.packageName.equals(packageName)) return true;
-        }
-        return false;
+        ResolveInfo resolved = pm.resolveActivity(homeIntent, PackageManager.MATCH_DEFAULT_ONLY);
+        return resolved != null && resolved.activityInfo != null && packageName.equals(resolved.activityInfo.packageName);
     }
 
     // yyyy-MM-dd'T'HH:mm:ss.SSS'Z' by hand rather than java.time.Instant: that needs API 26+

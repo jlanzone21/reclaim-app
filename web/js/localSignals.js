@@ -84,6 +84,17 @@ const LocalSignals = (function () {
     return action || null;
   }
 
+  // MainActivity writes this when the notification's "Read a verse" action specifically (not a
+  // body tap) is what opened the app. Consumed once, same reasoning as getPendingNightlyAction --
+  // check this BEFORE getPendingRiskAlert on boot/resume, since MainActivity already cleared the
+  // risk alert itself for this case, so the auto-submitted scripture request should win, not a
+  // detail popup that's no longer pending anyway.
+  async function getPendingVerseRequest() {
+    if (!available()) return false;
+    const { pending } = await plugin().getPendingVerseRequest();
+    return !!pending;
+  }
+
   // RiskScorer's adaptive-tuning loop, both halves: correlates this check-in against whichever
   // risk-nudge notification most recently fired (if any, and if recent enough), AND against this
   // check-in's own tags (independent of any notification) -- see RiskScorer.java's class doc
@@ -147,6 +158,7 @@ const LocalSignals = (function () {
     syncRiskContext,
     getPendingRiskAlert,
     getPendingNightlyAction,
+    getPendingVerseRequest,
     recordCheckinOutcome,
     getNotificationStats,
     debugRunBackgroundCheck,

@@ -228,8 +228,40 @@ final class RiskScorer {
             userReasons.put("Several small things are lining up right now, which together matter more than any one alone.");
         }
 
+        // Protective, not a risk factor: recently having actually opened Reclaim itself is a good
+        // sign, not a neutral one -- someone who's actively engaging with recovery content is less
+        // likely to be mid-slip than the raw usage-pattern factors alone would suggest. Fixed, not
+        // part of factors[]/adjustWeights, same reasoning as the convergence bonus above: this is a
+        // deliberate design choice, not something a sparse per-user data set should be nudging.
+        // Subtracted, not a threshold change, so it still shows up in the log/reason trail.
+        int minutesSinceOpen = minutesSinceLastReclaimOpen(db);
+        if (minutesSinceOpen >= 0 && minutesSinceOpen <= RECENT_RECLAIM_WINDOW_MIN) {
+            points = Math.max(0, points - RECENT_RECLAIM_PROTECTION);
+            reason.append("recent-reclaim-use(-").append(RECENT_RECLAIM_PROTECTION).append(") ");
+        }
+
         int threshold = thresholdForIntensity(db.getMeta("notification_intensity"));
         return new Result(points, threshold, reason.toString().trim(), userReasons, factors);
+    }
+
+    private static final int RECENT_RECLAIM_WINDOW_MIN = 30;
+    private static final int RECENT_RECLAIM_PROTECTION = 25;
+
+    // minSdkVersion is 24 (android/variables.gradle) -- java.time.Instant.parse() needs API 26+,
+    // so this parses LocalSignalsDb.isoNow()'s own hand-formatted timestamp the same way that class
+    // writes it, via SimpleDateFormat, not java.time. Returns -1 if never set or unparseable --
+    // callers treat that as "unknown," never as "recently open."
+    private static int minutesSinceLastReclaimOpen(LocalSignalsDb db) {
+        String iso = db.getMeta("last_reclaim_open_at");
+        if (iso == null || iso.isEmpty()) return -1;
+        try {
+            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US);
+            sdf.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+            long openedAt = sdf.parse(iso).getTime();
+            return (int) ((System.currentTimeMillis() - openedAt) / 60000);
+        } catch (java.text.ParseException e) {
+            return -1;
+        }
     }
 
     private static Map<String, Integer> loadWeights(LocalSignalsDb db) {

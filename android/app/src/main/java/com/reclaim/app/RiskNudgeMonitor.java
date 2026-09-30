@@ -30,7 +30,9 @@ import androidx.core.content.ContextCompat;
  * tiered by RiskScorer.Result.isHighRisk() -- high risk suggests "Call [name]" (opens the phone's
  * own dialer pre-filled, same tel:-only, on-device, user-confirms-the-call choice as the crisis
  * modal, never auto-dials or sends anything itself), anything lower suggests "Read a verse"
- * instead (opens straight to Home, which already shows one) -- and, on the SECOND consecutive one
+ * instead (its own action/PendingIntent, ACTION_OPEN_VERSE -- opens straight to Chat with a
+ * scripture request already sent, skipping the risk-alert detail popup entirely) -- and, on the
+ * SECOND consecutive one
  * left unanswered (not the first -- see NotificationTracking), an attempt to actually interrupt via
  * setFullScreenIntent(), the same mechanism calls/alarms use. User's own framing, twice over: one
  * ignored nudge might just be bad timing, but two in a row is worth escalating for; and a minor
@@ -77,6 +79,12 @@ final class RiskNudgeMonitor {
     // safety-adjacent feature (calling an accountability partner) just to count a tap.
     static final String EXTRA_ACTION = "risk_action";
     static final String ACTION_OPEN = "open_risk_alert";
+
+    // Distinct from ACTION_OPEN: this is the "Read a verse" notification action specifically, not
+    // a body tap -- MainActivity routes this one straight to Chat with a scripture request already
+    // sent, skipping the usual risk-alert detail popup, so the button does what it actually says
+    // instead of just reopening the app onto the same generic screen a body tap would.
+    static final String ACTION_OPEN_VERSE = "open_verse_request";
 
     // Shorter than the nightly check-in's: this is about an in-the-moment risk window, not a
     // routine daily touchpoint -- stale well before half a day has passed.
@@ -148,12 +156,17 @@ final class RiskNudgeMonitor {
 
     // Same event walk as ForegroundAppMonitor.currentSession, plus: the launcher never counts as
     // a session at all -- going home doesn't just fail the threshold, it doesn't even start the
-    // clock, so a phone left on the home screen for 20 minutes never triggers this.
+    // clock, so a phone left on the home screen for 20 minutes never triggers this. Reclaim's own
+    // package is excluded the same way, and deliberately: being ON Reclaim is never itself
+    // something to flag someone for -- see RiskScorer's recent-reclaim-use protective factor,
+    // which is the positive side of this same idea (being on Reclaim RECENTLY actively lowers
+    // risk, not just "doesn't raise it").
     private static Session currentSession(Context ctx) {
         UsageStatsManager usm = (UsageStatsManager) ctx.getSystemService(Context.USAGE_STATS_SERVICE);
         if (usm == null) return null;
         long end = System.currentTimeMillis();
         UsageEvents events = usm.queryEvents(end - QUERY_WINDOW_MS, end);
+        String ownPackage = ctx.getPackageName();
 
         String currentPackage = null;
         long sessionStart = 0;
@@ -162,7 +175,7 @@ final class RiskNudgeMonitor {
             events.getNextEvent(event);
             if (event.getEventType() == UsageEvents.Event.MOVE_TO_FOREGROUND) {
                 String pkg = event.getPackageName();
-                if (pkg != null && LocalSignalsDb.isLauncherPackage(ctx, pkg)) {
+                if (pkg != null && (LocalSignalsDb.isLauncherPackage(ctx, pkg) || pkg.equals(ownPackage))) {
                     currentPackage = null;
                 } else {
                     currentPackage = pkg;
@@ -267,12 +280,18 @@ final class RiskNudgeMonitor {
             String label = "Call " + (name != null && !name.trim().isEmpty() ? name.trim() : "them");
             builder.addAction(0, label, callIntent);
         } else {
-            // Reuses the same PendingIntent as the body tap (not a new action/extra) -- Home is
-            // already the screen the app opens onto, and it already shows a real scripture card
-            // (see homeView.js), so this needs no new plumbing to be true today. A worship-music
+            // Its own PendingIntent/extra, distinct from the body tap -- MainActivity routes
+            // ACTION_OPEN_VERSE straight to Chat with a scripture request already sent, skipping
+            // the risk-alert detail popup entirely, so this button does what it says instead of
+            // just reopening the app onto the same generic screen a body tap would. A worship-music
             // suggestion was also asked for, but nothing in the app links to any yet -- not
             // building a button with nowhere real to go; add it once that content exists.
-            builder.addAction(0, "Read a verse", openAppIntent);
+            Intent openVerse = new Intent(ctx, MainActivity.class);
+            openVerse.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            openVerse.putExtra(EXTRA_ACTION, ACTION_OPEN_VERSE);
+            PendingIntent openVerseIntent = PendingIntent.getActivity(
+                    ctx, 2, openVerse, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            builder.addAction(0, "Read a verse", openVerseIntent);
         }
 
         nm.notify(NOTIFICATION_ID, builder.build());

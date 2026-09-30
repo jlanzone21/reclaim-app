@@ -140,6 +140,27 @@
     }
   }
 
+  // MainActivity.handleRiskIntent writes this when the risk-nudge notification's "Read a verse"
+  // action specifically (not a body tap or the "Find resources" button inside the popup) is what
+  // opened the app -- the whole point of that button is to skip the usual risk-alert detail popup
+  // and land straight in Chat with a scripture request already sent, so the button does what it
+  // says instead of just reopening the app onto the same screen a body tap would. Uses the exact
+  // same trigger text as the "Find a verse" suggestion chip (index.html) so agentPickResource
+  // routes it the identical, already-verified way. Must run (and be checked) before
+  // RiskAlertView.checkPending() -- MainActivity already cleared pending_risk_alert for this case,
+  // but ordering it first keeps that guarantee explicit here too, not just implicit in native.
+  async function checkPendingVerseRequest() {
+    if (typeof LocalSignals === "undefined" || !LocalSignals.available()) return false;
+    const pending = await LocalSignals.getPendingVerseRequest();
+    if (!pending) return false;
+    showView("chat");
+    input.value = "Can you share a Bible verse with me?";
+    autoResize();
+    updateSendState();
+    form.requestSubmit();
+    return true;
+  }
+
   // MainActivity is singleTask, so tapping a notification while the app is already alive in the
   // background just re-foregrounds the existing WebView instead of reloading it -- the DB.init()
   // boot call below never re-runs in that case, so neither pending-flag check would ever fire
@@ -147,10 +168,11 @@
   // app returns to foreground (cold boot included), so check both there too. Confirmed via real
   // device testing this was needed: without it, "Tell me more" tapped against an already-running
   // app silently left the flag unconsumed and never navigated to Check-In.
-  document.addEventListener("resume", () => {
+  document.addEventListener("resume", async () => {
     if (busy) return;
     checkPendingNightlyAction();
-    if (typeof RiskAlertView !== "undefined") RiskAlertView.checkPending();
+    const wentToVerse = await checkPendingVerseRequest();
+    if (!wentToVerse && typeof RiskAlertView !== "undefined") RiskAlertView.checkPending();
   });
 
   navItems.forEach((btn) => {
@@ -170,7 +192,6 @@
       HomeView.init();
       PreferencesView.init();
       RiskAlertView.init();
-      RiskAlertView.checkPending();
       checkPendingNightlyAction();
       DebugTestPanel.init(); // TEMPORARY -- see debugTestPanel.js
       // Covers data that predates RiskNudgeMonitor's native mirror, or check-ins logged before
@@ -181,6 +202,9 @@
       busy = false;
       input.placeholder = "Tell me what's going on…";
       updateSendState();
+      checkPendingVerseRequest().then((wentToVerse) => {
+        if (!wentToVerse) RiskAlertView.checkPending();
+      });
     })
     .catch((err) => {
       console.error("Failed to initialize local database", err);

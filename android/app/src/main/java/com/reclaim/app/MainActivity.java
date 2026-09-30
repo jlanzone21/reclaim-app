@@ -31,6 +31,17 @@ public class MainActivity extends BridgeActivity {
         handleNotificationIntent(intent);
     }
 
+    // Every time Reclaim is actually brought to the foreground, not just launched -- covers app
+    // switches back into an already-running task, not only cold starts. Feeds RiskScorer's
+    // recent-reclaim-use protective factor: being on Reclaim recently is a good sign, not neutral,
+    // so the scorer reads this back to ease off rather than treat this app's own use as risk input
+    // (see RiskNudgeMonitor.currentSession's exclusion of its own package, the other half of this).
+    @Override
+    public void onResume() {
+        super.onResume();
+        LocalSignalsDb.getInstance(this).setMeta("last_reclaim_open_at", LocalSignalsDb.isoNow());
+    }
+
     private void handleNotificationIntent(Intent intent) {
         if (intent == null) return;
         handleNightlyIntent(intent);
@@ -52,7 +63,9 @@ public class MainActivity extends BridgeActivity {
 
     private void handleRiskIntent(Intent intent) {
         String action = intent.getStringExtra(RiskNudgeMonitor.EXTRA_ACTION);
-        if (!RiskNudgeMonitor.ACTION_OPEN.equals(action)) return;
+        boolean isOpen = RiskNudgeMonitor.ACTION_OPEN.equals(action);
+        boolean isVerse = RiskNudgeMonitor.ACTION_OPEN_VERSE.equals(action);
+        if (!isOpen && !isVerse) return;
 
         // Explicit cancel, not just relying on setAutoCancel(true) -- confirmed on-device that
         // autoCancel doesn't reliably fire when this intent is invoked via the full-screen
@@ -61,7 +74,17 @@ public class MainActivity extends BridgeActivity {
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null) nm.cancel(RiskNudgeMonitor.NOTIFICATION_ID);
         NotificationTracking.recordResponded(this, NotificationTracking.TYPE_RISK);
-        // Nothing else to do here -- unlike the nightly path, the risk alert's own pending-flag
+
+        if (isVerse) {
+            LocalSignalsDb db = LocalSignalsDb.getInstance(this);
+            // Consume the risk alert's own pending-flag here too (not just left for
+            // RiskAlertView's boot/resume check) -- the whole point of this action is to skip the
+            // detail popup entirely and go straight to Chat, so it must never surface once this
+            // path has already handled the response.
+            db.setMeta("pending_risk_alert", "");
+            db.setMeta("pending_verse_request", "1");
+        }
+        // Nothing else to do for a plain open -- the risk alert's own pending-flag
         // (pending_risk_alert) is already written at post time and consumed by RiskAlertView on
         // boot/resume, not gated on this extra. This just records the response and consumes the
         // extra itself, same reasoning as the nightly path.

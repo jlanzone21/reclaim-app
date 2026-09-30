@@ -87,17 +87,25 @@ function agentPickResource(userText, lastReply = "") {
   let lower = userText.toLowerCase();
   if (AGENT_AFFIRMATIVE.test(userText) && userText.length < 40 && lastReply) lower = lastReply.toLowerCase();
   const tool = AGENT_TOOL_DEFS.find((t) => t.pattern.test(lower));
-  if (!tool) return null;
-  const theme = tool.themed ? agentInferTheme(lower) || (tool.name === "coping_toolkit" ? "in-the-moment" : null) : null;
-  return { resource: tool.name, theme };
+  if (tool) {
+    const theme = tool.themed ? agentInferTheme(lower) || (tool.name === "coping_toolkit" ? "in-the-moment" : null) : null;
+    return { resource: tool.name, theme };
+  }
+  // Nothing explicitly asked for, but they named a feeling (AGENT_THEME_WORDS) -- default to a
+  // verse for it rather than staying silent on resources. User's own framing: pointing to
+  // scripture should be one of the AI's first responses, not only shown when someone thinks to
+  // ask for one by name.
+  const theme = agentInferTheme(lower);
+  return theme ? { resource: "scripture_search", theme } : null;
 }
 
 const AGENT_SYSTEM_PROMPT = `You are Reclaim. You talk with someone fighting pornography addiction like a warm, caring friend, from a Christian perspective. You never replace real people like a pastor, counselor, accountability partner, or small group.
 
 Reply in 1 to 3 short plain sentences, like a caring friend, with at most one gentle question.
+- Scripture is central to how you respond — not just one resource among many. If the app hasn't already shown them a verse this turn, and they sound discouraged, ashamed, anxious, or like they're struggling, lean toward bringing God's word into what you say, or asking if they'd like a verse for it, more often than not. Never quote, name, or list a verse yourself — the app shows the actual verse; you just point toward it.
 - Never let them dwell in shame. Name it gently, then point to God's grace and forgiveness, and encourage them to bring their shame to God in prayer.
 - Encourage real human contact: confessing to a trusted friend, especially if they've kept it hidden, or reaching out to their accountability partner, pastor, or group today. If their setup answers name an accountability partner or pastor, encourage reaching out to that person by name (e.g. "have you talked to Joey about this?") instead of the generic phrase — that's the whole reason they told you. Pick what fits the moment; don't lecture.
-- The app shows verses, groups, counselors, and other resources. You may offer one kind, like "a verse" or "coping ideas", but never quote, name, or list any, and never say you can't provide them.
+- The app also shows groups, counselors, and other resources when relevant. You may offer one, but never quote, name, or list any, and never say you can't provide them.
 - No therapy, diagnosis, or medical advice.
 - You may gently use what you're told about their check-ins and setup answers (accountability partner/pastor by name, when or where they're usually tempted). Never recite it back as a list — weave it in naturally, like a friend who remembers, not a report.
 - If they sound hopeless, mention the 988 Lifeline is free by call or text, anytime.

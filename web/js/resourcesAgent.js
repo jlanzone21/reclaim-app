@@ -169,6 +169,20 @@ class ResourcesAgent {
       };
     }
 
+    // Nothing above matched, but agentInferTheme (agentTools.js -- a broader, colloquial-phrasing
+    // word list than this file's own inferTheme just above) catches a named feeling that theme's
+    // literal name substring-match wouldn't (e.g. "I feel lonely" vs. requiring "loneliness").
+    // Same reasoning as ReclaimAgent's own fallback: default to a verse rather than staying
+    // generic when someone's named how they feel, even in Basic mode.
+    const broaderTheme = agentInferTheme(lower);
+    if (broaderTheme) {
+      const match = await executeAgentTool("scripture_search", { theme: broaderTheme });
+      return {
+        toolCalls: [{ name: "scripture_search", input: { theme: broaderTheme }, output: match, delay: 700 }],
+        reply: `${match.title} — "${match.body}" Would a coping technique, a devotional, or a small group to process this with also help?`,
+      };
+    }
+
     return {
       toolCalls: [],
       reply: `You said: "${userText}". I'm best at connecting you with real things — scripture, a devotional, a sermon, an article, a coping technique, a small group, an accountability partner, or a counselor. Want me to look one of those up?`,

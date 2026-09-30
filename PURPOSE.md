@@ -959,6 +959,166 @@ reality:
       Home's call shortcut confirmed separately, in-browser: renders "Call
       Jake", builds the exact `tel:5551234567` href, and correctly hides
       when the preference is cleared.
+- [x] **Scripture library expanded from 16 to 62 verses, and both agent
+      modes now default to offering one whenever someone names a feeling**,
+      not only when they explicitly ask for "a verse." User asked for a
+      "long list" covering the themes `AGENT_THEME_WORDS` (agentTools.js)
+      can actually detect -- the previously-thinnest (loneliness, anxiety,
+      freedom, perseverance, triggers) had exactly 1 verse each; every one
+      of the 16 detectable themes now has real, multi-verse coverage.
+      `seedData.js`'s new entries checked against known NIV wording before
+      adding, same translation/style as the original 16; `CURRENT_SEED_VERSION`
+      bumped (db.js) so existing installs pick up the new set.
+
+      Behavior change, in both `agentPickResource` (agentTools.js, the
+      on-device-AI path) and `ResourcesAgent._planResponse`'s catch-all
+      (Basic-mode fallback): previously, a message with no tool keyword
+      match (e.g. "I've been feeling really lonely") got a generic reply
+      with no resource at all -- theme words only mattered for picking
+      *which* verse once some other explicit ask had already matched a
+      tool. Now, no explicit ask + a detected feeling defaults to
+      `scripture_search` for that theme. Along the way, swapped
+      `ResourcesAgent`'s own weaker `inferTheme` (required the literal
+      theme name as a substring, e.g. "loneliness" wouldn't match "I feel
+      lonely") for the shared `agentInferTheme` in its catch-all -- the
+      same "one shared source of truth instead of a second, weaker copy"
+      fix as the earlier `executeAgentTool` unification, applied to theme
+      detection too. Chat's empty-state suggestion row also gained a
+      "Find a verse" chip, first in the row.
+
+      Verified in-browser (after grafting the fresh seed/agent code past
+      the dev server's stale-cache issue, same root cause and fix as
+      earlier this session): 62 scripture rows load correctly, "I've just
+      been feeling really lonely lately" and "work has been so stressful
+      this week" each correctly resolved to `scripture_search` with the
+      right theme with no explicit ask, and `getScripture(theme)` returned
+      6-9 distinct real verses each for every previously-thin theme.
+      Confirmed live on-device too, through the real chat UI with the real
+      on-device model: "I have just been feeling really anxious about
+      everything lately" correctly surfaced the `Scripture Search` card
+      (`theme: anxiety`), a real verse (Psalm 55:22), and a warm,
+      on-topic AI reply built around it -- not simulated, the actual
+      running app.
+- [x] **Imported a real external content bundle** (`files.zip`: 511 scripture
+      refs, 511 journal prompts, 204 devotionals, 40 breathing exercises, 82
+      songs, 12 sermons, 17 podcasts, 5 support orgs, a 17-topic taxonomy) --
+      user asked to put it "in their proper spots" and make it accessible.
+      Not a blind import: inspected every file first, mapped what fit the
+      existing architecture, and surfaced the one real tradeoff (scripture
+      translation/licensing) rather than deciding it silently.
+
+      **Imported now:**
+      - 204 devotionals -> `seedData.js`, reflection + closing_prayer
+        combined into one body (original prose, no NIV-copyright issue --
+        that's specific to verse text, not commentary). Topic taxonomy
+        mapped onto existing tags where they overlap (loneliness, shame,
+        anxiety, etc.) plus new tags for themes the chat can't detect yet
+        (exhaustion, burnout, purity, forgiveness, prayer/worship,
+        spiritual-disciplines, healing, purpose) -- imported now, detection
+        wiring is a fast follow, not blocking the content being there.
+      - 40 breathing exercises -> `seedData.js` as `coping_mechanism` rows,
+        not a new type -- they're in-the-moment techniques, same as
+        everything else already there. Topics linked via the bundle's
+        `resource_topics.csv` join table (breathing exercises can serve
+        several topics, unlike devotionals' one-topic-per-row).
+      - 4 of 12 sermons -> Supabase (`sermon` count 4 -> 8): only the ones
+        with a real, direct, confirmed URL. Skipped 2 marked "confirm
+        speaker and link before publishing" in the bundle's own README
+        (uncertain attribution to a named public figure -- not worth
+        risking a misattributed sermon) and 6 with no URL at all (mostly
+        real, public-domain historical works -- Spurgeon, Lloyd-Jones,
+        Keller, Lewis, Edwards -- worth adding once a real link/edition is
+        sourced for each, not this pass).
+      - 2 of 5 support orgs -> Supabase (`small_group` count 36 -> 38):
+        Pure Desire Ministries' and Celebrate Recovery's *national*
+        group-finder pages, distinct from the specific local chapters
+        already seeded (confirmed via query before inserting, not assumed
+        -- no duplicates). Skipped AACC (already in the counseling_center
+        table -- confirmed by query, would've been a real duplicate), the
+        988 entry (the app already handles crisis lines separately and
+        deliberately, on purpose, not through the general resource
+        system), and "The Freedom Fight" (a discipleship curriculum with
+        no clean matching type).
+      - `CURRENT_SEED_VERSION` bumped (db.js, 7 -> 8) so existing installs
+        pick up the new devotionals/coping mechanisms.
+
+      **Explicitly not imported, needs a decision or real feature work:**
+      - **511 scripture refs -- skipped entirely, user's own call.** The
+        bundle ships references + original theme summaries but blank verse
+        text on purpose (NIV is Biblica/Zondervan copyrighted; the
+        bundle's own README says to fill it at runtime through a licensed
+        source). Asked the user how to handle it (write from memory
+        matching the existing 62 verses' practice, switch to a
+        public-domain translation, or import references-only) -- told to
+        skip it for now rather than pick one. Not touched at all.
+      - **Journal prompts (511), music (82), podcasts (17) -- no existing
+        type, tool, or UI for any of them.** These aren't a data import,
+        they're three new features (new `resources` type each, a new
+        `AGENT_TOOL_DEFS` entry + regex per type, new card rendering in
+        app.js, likely new suggestion chips). Flagged to the user rather
+        than either silently building three features they didn't ask for
+        yet or silently dropping two-thirds of the bundle without saying
+        so. Music in particular matches the "listen to worship music"
+        idea already deferred once this session (tiered risk-nudge
+        actions entry, above) -- but the bundle itself has no streaming
+        links yet either ("add streaming links after checking each
+        song"), so it's not fully actionable even once built.
+
+      Verified in-browser (fresh 214/52 devotional/coping counts, theme
+      queries returning real imported content, e.g. `getDevotional
+      ("purity")` correctly pulling from the new set; live Supabase query
+      confirming both new small_group rows present with no duplicates,
+      38 total) before building for on-device confirmation.
+
+- [x] **Risk-nudge notification routing fixed on all four fronts the user
+      asked for.** (1) "Talk about it" renamed to "Find resources"
+      (`index.html`, `riskAlertView.js` untouched -- still just navigates to
+      Chat). (2) The notification's own action button now does what its
+      label says instead of quietly reusing the body-tap intent: "Read a
+      verse" gets its own `PendingIntent`/extra (`ACTION_OPEN_VERSE`,
+      `RiskNudgeMonitor.java`), `MainActivity.handleRiskIntent` branches on
+      it to clear `pending_risk_alert` (so the detail popup never also
+      shows) and set a new `pending_verse_request` flag
+      (`LocalSignalsPlugin.getPendingVerseRequest`, `localSignals.js`);
+      `app.js`'s new `checkPendingVerseRequest()` (boot + `resume`, checked
+      before `RiskAlertView.checkPending()`) switches to Chat, fills the
+      composer with the same trigger text as the existing "Find a verse"
+      suggestion chip, and auto-submits. (3) Reclaim's own package excluded
+      from `RiskNudgeMonitor.currentSession()` the same way the launcher
+      already was -- being on Reclaim itself never counts as a risk
+      session. (4) Recent Reclaim use is now protective, not just neutral:
+      `MainActivity.onResume()` writes `last_reclaim_open_at`;
+      `RiskScorer` reads it back (via `SimpleDateFormat`, not
+      `java.time.Instant` -- `minSdkVersion` is 24, confirmed by grep
+      before writing this) and subtracts a fixed 25 points, floored at 0,
+      when Reclaim was opened within the last 30 minutes.
+
+      **Found and fixed a real pre-existing bug while verifying this.**
+      `LocalSignalsDb.isLauncherPackage()` used
+      `queryIntentActivities(HOME, MATCH_ALL)`, which lists every component
+      that merely *declares* a HOME intent filter -- on stock Android this
+      includes `com.android.settings/.FallbackHome` (AOSP's safety-net home
+      screen), so Settings was silently misclassified as "the launcher" and
+      excluded from every session this powers, not just the new exclusion.
+      Confirmed on-device via raw `UsageEvents` dumps before touching
+      anything. Fixed by switching to
+      `resolveActivity(HOME, MATCH_DEFAULT_ONLY)`, which resolves the one
+      real default home app instead of enumerating every HOME-capable
+      component. Pre-existing, unrelated to this session's change, but
+      surfaced directly by testing it and cheap/safe to fix in place.
+
+      Verified on-device, not simulated: built and installed twice (once
+      with temporary diagnostic logging to find the `isLauncherPackage` bug,
+      once clean). Confirmed via `dumpsys notification` that "Read a verse"
+      now carries its own distinct `PendingIntent` (previously identical to
+      the body tap's). Confirmed by *actually tapping* the real notification
+      action in the shade (not `am start`-simulated) that it lands directly
+      in Chat with a verse already answered, popup skipped. Confirmed via
+      `RiskNudgeMonitor` log output that foregrounding Reclaim itself
+      produces no session/score at all, while foregrounding another app
+      shortly after opening Reclaim produces a real session whose score
+      shows `recent-reclaim-use(-25)` and comes out floored at 0. Confirmed
+      the renamed "Find resources" button visually in the actual popup.
 
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
