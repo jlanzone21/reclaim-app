@@ -1481,6 +1481,81 @@ reality:
         post-interrupt drain error leaves `isReady()` `true`, so the common
         case is untouched.
 
+- [x] **Keyword list expanded and split into three severity tiers, instead of
+      one flat list where every match weighed the same -- and all three now
+      scale with notification_intensity.** User's own framing: some words
+      should always trigger a risk-nudge, others are only slightly
+      worrisome ("varied in risk"), and then: a higher notification setting
+      should mean higher points for each tier, not just the existing lower
+      trigger threshold.
+      - `TrackingAccessibilityService.java`: `KEYWORDS` (one `Map`) became
+        `KEYWORDS_SEVERE`/`KEYWORDS_MODERATE`/`KEYWORDS_MILD` (three), each
+        still a plain-substring match, no regex/NLP. SEVERE deliberately
+        holds only site names (pornhub, xvideos, onlyfans, ...) and
+        unambiguous compound phrases ("watch porn," "hire an escort") --
+        never a single ambiguous word, since an unconditional-trigger tier
+        can't afford false positives from a nude color swatch, an art
+        review, or a psychology article's "fetish." Those bare words
+        (nude, erotic, fetish, nsfw, xxx, hentai, escort, ...) stay
+        MODERATE; genuinely ambiguous ones (bare "nude," "risque," "18+,"
+        "thirst trap") are MILD.
+      - `keyword_matches` gained a `severity` column (native SQLite
+        migration, `DB_VERSION` 1 -> 2, `ALTER TABLE ... ADD COLUMN` --
+        existing rows keep their data, just `severity=NULL`).
+      - `RiskScorer.java`: SEVERE is a fixed, non-adaptive bonus (+150, not
+        in the weight-tuning system at all -- see its own comment) sized to
+        guarantee both `triggers()` and `isHighRisk()` even at the least
+        sensitive ("low") `notification_intensity` and its 0.8x multiplier
+        (150*0.8=120, still clears the 110 high-risk bar) -- "should always
+        trigger," literally. MODERATE keeps the pre-existing adaptive
+        `recentKeyword` factor (default boosted 35 -> 40, unrenamed on
+        purpose so existing `risk_weights`/`TAG_TO_FACTORS` stay
+        meaningful); MILD is its own smaller adaptive factor
+        (`recentKeywordMild`, boosted 12 -> 15). Each tier gets its own
+        recency window too (severe 30 min, moderate 15, mild 10) -- a
+        confirmed explicit match is worth flagging even if it's aged a
+        cycle, an ambiguous word only means much if it's genuinely current.
+        Takes only the single highest tier present, never stacks across
+        tiers. `keywordIntensityMultiplier` (0.8 low / 1.0 medium / 1.2
+        high) then scales whichever tier's points at the point of use --
+        compounds with the existing, separate `thresholdForIntensity`
+        (lower bar at high intensity) rather than duplicating it; no other
+        factor's weight is intensity-aware, only the three keyword tiers.
+      - **Found and fixed a real robustness bug while verifying the
+        intensity change, not present in the original single-tier
+        design.** The first implementation fetched each package's 20 most
+        recent keyword_matches (mixed severities) and scanned that page for
+        the highest tier present. Confirmed on-device that a flood of newer
+        MODERATE matches (the same repeated test typing this session
+        generated, each keystroke batch inserting several rows) can push an
+        older-but-still-within-its-30-minute-window SEVERE match off that
+        fixed-size page entirely -- silently defeating the "always
+        triggers" guarantee in exactly the real scenario it exists for
+        (e.g. browsing borderline content for a while, then hitting
+        something explicit). Fixed by replacing the one mixed-severity
+        fetch with three direct per-severity queries
+        (`LocalSignalsDb.mostRecentKeywordMatchAt(pkg, severity)`, `WHERE
+        package_name = ? AND severity = ?`) -- each asks directly for that
+        exact tier's own most recent match, so no amount of other-tier
+        activity in between can ever hide it. Re-verified the exact
+        failure scenario after the fix: the same aged (23+ min old) severe
+        match, now surrounded by 20+ newer moderate rows, was found
+        correctly (`recent-keyword-severe(+120)` at low intensity).
+      - Verified on-device, not simulated, real matches via the same safe
+        method used earlier (typed test text, never navigated/searched),
+        at all three notification_intensity settings: SEVERE (`pornhub`,
+        Chrome) at medium -> `recent-keyword-severe(+150)`, real
+        notification, high-risk "Call Joey" action (not "Read a verse")
+        after setting a real test accountability partner, confirming
+        `isHighRisk()` too. MODERATE (`fetish`/`erotica`, YouTube) ->
+        `+40` at medium, `+48` at high (40*1.2), `+32` at low (40*0.8) --
+        same real match, three different real scores, confirming the
+        intensity scaling itself, not just its formula. MILD (`risque`,
+        Google app) -> `+15` at medium, barely moves the score alone, as
+        intended. Also confirmed the native schema migration: all
+        pre-existing keyword_matches rows survived the `DB_VERSION` bump
+        with `severity=NULL`, nothing lost.
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing

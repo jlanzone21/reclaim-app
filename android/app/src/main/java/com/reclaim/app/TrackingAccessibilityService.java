@@ -28,9 +28,10 @@ import java.util.Map;
  * only (LocalSignalsDb.isAllowlisted), maybeCaptureText() walks the same AccessibilityNodeInfo
  * tree screen readers use, joins the visible text, and stores it verbatim in page_captures --
  * raw text is kept on-device by explicit user choice (see PURPOSE.md), not discarded after
- * matching. Every match against KEYWORDS gets one keyword_matches row pointing back at that
- * capture. Non-allowlisted apps never reach this path -- they still get the identity-only
- * app-open event above, nothing else.
+ * matching. Every match against KEYWORDS_SEVERE/MODERATE/MILD gets one keyword_matches row
+ * pointing back at that capture, tagged with which tier matched -- RiskScorer weighs each tier
+ * very differently (see its own comments). Non-allowlisted apps never reach this path -- they
+ * still get the identity-only app-open event above, nothing else.
  *
  * This file was edited by hand rather than by Claude Code directly for both Phase 4 and Phase 5 --
  * see PURPOSE.md's "Decisions worth remembering" for why.
@@ -58,31 +59,84 @@ public class TrackingAccessibilityService extends AccessibilityService {
         ADDRESS_BAR_IDS.put("com.brave.browser", "com.brave.browser:id/url_bar");
     }
 
-    // Starter keyword list (plan says: hardcoded for now, editable list is a fast follow, not a
-    // blocker to shipping the pipeline). Matched as a lowercase substring against captured text.
-    // Category is stored alongside each match so Insights/future UI can group by kind later.
-    private static final Map<String, String> KEYWORDS = new HashMap<>();
+    // Three severity tiers, not one flat list -- user's own framing: some words should always
+    // trigger a risk-nudge, others are only slightly worrisome. RiskScorer weighs each tier very
+    // differently (see its own comments): SEVERE is a fixed bonus sized to guarantee a
+    // notification outright, MODERATE/MILD are ordinary adaptive-tunable factors, smaller for MILD.
+    // Matched as a lowercase substring against captured text (same as before -- no regex/NLP).
+    // Category is stored alongside each match so Insights/future UI can group by kind later;
+    // severity is the separate axis that drives scoring weight.
+    //
+    // Deliberately kept out of SEVERE: single ambiguous words ("nude", "erotic", "fetish", "xxx",
+    // "nsfw") that have plausible innocent uses (a nude color swatch, an art review, a psychology
+    // article, a violence content-warning) -- an unconditional-trigger tier should only hold
+    // phrases/site names that are essentially never seen outside actual porn-seeking. Those stay
+    // MODERATE or MILD instead, where they still move the score without guaranteeing a nudge off
+    // one ambiguous word alone.
+    private static final Map<String, String> KEYWORDS_SEVERE = new HashMap<>();
     static {
-        KEYWORDS.put("porn", "explicit_content");
-        KEYWORDS.put("pornography", "explicit_content");
-        KEYWORDS.put("xxx", "explicit_content");
-        KEYWORDS.put("nsfw", "explicit_content");
-        KEYWORDS.put("nude", "explicit_content");
-        KEYWORDS.put("nudes", "explicit_content");
-        KEYWORDS.put("hentai", "explicit_content");
-        KEYWORDS.put("erotic", "explicit_content");
-        KEYWORDS.put("erotica", "explicit_content");
-        KEYWORDS.put("fetish", "explicit_content");
-        KEYWORDS.put("adult video", "explicit_content");
-        KEYWORDS.put("adult film", "explicit_content");
-        KEYWORDS.put("sexting", "explicit_content");
-        KEYWORDS.put("onlyfans", "adult_site");
-        KEYWORDS.put("pornhub", "adult_site");
-        KEYWORDS.put("xvideos", "adult_site");
-        KEYWORDS.put("xhamster", "adult_site");
-        KEYWORDS.put("chaturbate", "adult_site");
-        KEYWORDS.put("escort", "adult_site");
-        KEYWORDS.put("strip club", "adult_site");
+        // Major site names -- seeing one of these on your own screen is specific enough on its own.
+        KEYWORDS_SEVERE.put("pornhub", "adult_site");
+        KEYWORDS_SEVERE.put("xvideos", "adult_site");
+        KEYWORDS_SEVERE.put("xhamster", "adult_site");
+        KEYWORDS_SEVERE.put("xnxx", "adult_site");
+        KEYWORDS_SEVERE.put("redtube", "adult_site");
+        KEYWORDS_SEVERE.put("youporn", "adult_site");
+        KEYWORDS_SEVERE.put("brazzers", "adult_site");
+        KEYWORDS_SEVERE.put("spankbang", "adult_site");
+        KEYWORDS_SEVERE.put("chaturbate", "adult_site");
+        KEYWORDS_SEVERE.put("onlyfans", "adult_site");
+        KEYWORDS_SEVERE.put("stripchat", "adult_site");
+        KEYWORDS_SEVERE.put("livejasmin", "adult_site");
+        // Explicit, unambiguous search/intent phrases.
+        KEYWORDS_SEVERE.put("watch porn", "explicit_content");
+        KEYWORDS_SEVERE.put("free porn", "explicit_content");
+        KEYWORDS_SEVERE.put("porn videos", "explicit_content");
+        KEYWORDS_SEVERE.put("hardcore porn", "explicit_content");
+        KEYWORDS_SEVERE.put("porn site", "explicit_content");
+        // Solicitation -- its own real-world risk beyond pornography specifically.
+        KEYWORDS_SEVERE.put("hire an escort", "adult_site");
+        KEYWORDS_SEVERE.put("book an escort", "adult_site");
+        KEYWORDS_SEVERE.put("escort service", "adult_site");
+    }
+
+    private static final Map<String, String> KEYWORDS_MODERATE = new HashMap<>();
+    static {
+        KEYWORDS_MODERATE.put("porn", "explicit_content");
+        KEYWORDS_MODERATE.put("pornography", "explicit_content");
+        KEYWORDS_MODERATE.put("xxx", "explicit_content");
+        KEYWORDS_MODERATE.put("nsfw", "explicit_content");
+        KEYWORDS_MODERATE.put("nudes", "explicit_content"); // plural -- someone asking/sending, less ambiguous than singular
+        KEYWORDS_MODERATE.put("nude video", "explicit_content");
+        KEYWORDS_MODERATE.put("nude photos", "explicit_content");
+        KEYWORDS_MODERATE.put("naked pics", "explicit_content");
+        KEYWORDS_MODERATE.put("naked photos", "explicit_content");
+        KEYWORDS_MODERATE.put("send nudes", "explicit_content");
+        KEYWORDS_MODERATE.put("hentai", "explicit_content");
+        KEYWORDS_MODERATE.put("erotic", "explicit_content");
+        KEYWORDS_MODERATE.put("erotica", "explicit_content");
+        KEYWORDS_MODERATE.put("fetish", "explicit_content");
+        KEYWORDS_MODERATE.put("sexting", "explicit_content");
+        KEYWORDS_MODERATE.put("adult video", "explicit_content");
+        KEYWORDS_MODERATE.put("adult film", "explicit_content");
+        KEYWORDS_MODERATE.put("cam girl", "adult_site");
+        KEYWORDS_MODERATE.put("live cam", "adult_site");
+        KEYWORDS_MODERATE.put("strip club", "adult_site");
+        KEYWORDS_MODERATE.put("escort", "adult_site"); // bare word -- "police escort" etc. makes this moderate, not severe
+    }
+
+    private static final Map<String, String> KEYWORDS_MILD = new HashMap<>();
+    static {
+        KEYWORDS_MILD.put("nude", "explicit_content"); // bare word -- color/fashion/art false positives are real, hence mild
+        KEYWORDS_MILD.put("sexy pics", "explicit_content");
+        KEYWORDS_MILD.put("hot pics", "explicit_content");
+        KEYWORDS_MILD.put("thirst trap", "explicit_content");
+        KEYWORDS_MILD.put("risque", "explicit_content");
+        KEYWORDS_MILD.put("18+", "explicit_content");
+        KEYWORDS_MILD.put("lingerie pics", "explicit_content");
+        KEYWORDS_MILD.put("swimsuit pics", "explicit_content");
+        KEYWORDS_MILD.put("hookup app", "adult_site");
+        KEYWORDS_MILD.put("cam site", "adult_site");
     }
 
     @Override
@@ -140,7 +194,7 @@ public class TrackingAccessibilityService extends AccessibilityService {
     // Allowlist-gated: returns immediately for any app the user hasn't explicitly added. Walks
     // the node tree for visible text, skips if it's identical to the last capture (avoids writing
     // duplicate rows when a content-changed event fires without anything actually changing),
-    // stores the raw text, then checks it against KEYWORDS.
+    // stores the raw text, then checks it against the severity-tiered keyword lists.
     private void maybeCaptureText(String packageName) {
         if (!LocalSignalsDb.getInstance(this).isAllowlisted(packageName)) return;
 
@@ -181,9 +235,15 @@ public class TrackingAccessibilityService extends AccessibilityService {
     private void checkKeywords(String packageName, String text, long captureId, String occurredAt) {
         String lower = text.toLowerCase(Locale.US);
         LocalSignalsDb db = LocalSignalsDb.getInstance(this);
-        for (Map.Entry<String, String> entry : KEYWORDS.entrySet()) {
+        checkKeywordTier(db, KEYWORDS_SEVERE, "severe", packageName, lower, captureId, occurredAt);
+        checkKeywordTier(db, KEYWORDS_MODERATE, "moderate", packageName, lower, captureId, occurredAt);
+        checkKeywordTier(db, KEYWORDS_MILD, "mild", packageName, lower, captureId, occurredAt);
+    }
+
+    private void checkKeywordTier(LocalSignalsDb db, Map<String, String> tier, String severity, String packageName, String lower, long captureId, String occurredAt) {
+        for (Map.Entry<String, String> entry : tier.entrySet()) {
             if (lower.contains(entry.getKey())) {
-                db.insertKeywordMatch(packageName, entry.getKey(), entry.getValue(), captureId, occurredAt);
+                db.insertKeywordMatch(packageName, entry.getKey(), entry.getValue(), severity, captureId, occurredAt);
             }
         }
     }
