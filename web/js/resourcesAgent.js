@@ -199,7 +199,7 @@ class ResourcesAgent {
 const CRISIS_PATTERNS = [
   /suicid/i,
   /kill (myself|me)\b/i,
-  /end(ing)? (my|it all|it|this)\b/i,
+  /\bend(ing)? (my|it all|it|this)\b/i,
   /don'?t want to (live|be alive|exist|wake up)/i,
   /want(ed)? to die/i,
   /wish(ed)? i (was|were) (dead|never born)/i,
@@ -214,6 +214,20 @@ const CRISIS_PATTERNS = [
   /no way out/i,
   /take my (own )?life/i,
   /ending my life/i,
+  /\boverdos(e|ed|ing)\b/i,
+  /\b(took|taken|swallowed) (too many|a bunch of|a lot of|all (of )?my) (pills|tablets|meds|medication)\b/i,
+  /\b(cut|cutting) myself\b(?! (?:off|some|loose|slack|a\b|shaving|cooking|chopping|slicing|on\b|with\b|by accident))/i, // not "cut myself off from..." / "cut myself shaving"
+  /\bjump(ing)? off (a|the|my) (bridge|building|roof|balcony|cliff|overpass)\b/i,
+  /\b(no ?one|nobody) (would|will) (even )?(miss|care|notice) (me|if i)\b/i,
+  /\b(i'?m|i am|am) (just )?a burden to (everyone|everybody|my (family|wife|husband|kids|friends)|others)\b/i,
+  /\b(tired|sick) of (being alive|living)\b(?! (?:in|with|like|a|the|my|this|under|out|off)\b)/i, // not "sick of living in secret / like this" (about the addiction)
+  /\bdone with (life|living)\b/i,
+  /\blife (isn'?t|is not|ain'?t) worth (living|it)\b/i,
+  /\bnothing (left )?to live for\b/i,
+  /\bwant (it all|everything) to end\b/i,
+  /\bkilling myself\b/i, // "kill myself" was covered but not "killing myself" ("killing me" stays out: it is an idiom)
+  /\b(easiest|quickest|painless|best) way to (die(?! (?:my|your|his|her|their|the|a)\b)|kill myself|end (it|my life))\b/i, // not "way to die (dye) your hair"
+  /\bno reason to live\b|\b(no|any|don'?t see (a|any)) reason to (keep living|go on)\b/i,
 ];
 
 function wait(ms) {
