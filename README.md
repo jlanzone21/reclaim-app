@@ -55,8 +55,9 @@ Android builds ship.
 - UI, Check-In, and Insights are complete (`web/`).
 - Chat uses Reclaim's own AI, running entirely on the user's device after a
   one-time ~1 GB download they opt into, personalized from their own
-  check-ins. Devices that can't run it (or haven't downloaded it yet) get a
-  scripted guide instead ("Basic mode"). Verified on the website in
+  check-ins. Chat won't take input until that download finishes; only devices
+  that can't run it at all (no WebGPU) get a scripted guide instead ("Basic
+  mode"). Verified on the website in
   desktop Chrome, in the Electron desktop app, and in the Android app on a
   Pixel 8a — see "The AI agent".
 - Crisis detection (`CRISIS_PATTERNS`, shared by all agents) is a simple
@@ -388,9 +389,18 @@ await agent.send(userText, {
 
 - **`ReclaimAgent`** (`web/js/reclaimAgent.js`) — the agent the app uses.
   For each message:
-  1. The crisis check runs first (below).
-  2. **A keyword match** (`agentPickResource`, using each tool's `pattern`
-     in `agentTools.js`) picks at most one resource card. A card appears only
+  1. The crisis check runs first (below). Right after it, `FixedAnswers.match`
+     (`fixedAnswers.js`) gives a **fixed, reviewed reply** (no model, no card) to
+     questions about the app or privacy ("is this private?", "does it track me?",
+     "delete my data", "why download the AI?") and to requests to find or excuse
+     porn or to hide activity / get around a filter. The model used to answer
+     these and made things up. Where the project has no information (price,
+     iPhone, who built it) the answer says so. Basic mode uses the same layer.
+  2. **Weighted keyword scoring** (`agentPickResource`, using each tool's
+     `signals` -- `[pattern, weight]` pairs -- in `agentTools.js`; highest
+     score wins if it reaches `AGENT_MIN_SCORE`, negative weights cancel
+     false alarms like "are you a counselor?") picks at most one resource
+     card. A card appears only
      when someone asks for one ("a verse about shame", "groups near me"),
      says yes to one the last reply offered, or mentions an urge happening
      now. Someone sharing a slip or a feeling gets a reply, not a card they
@@ -401,11 +411,17 @@ await agent.send(userText, {
      `intro` on each tool). The coping toolkit shows **three** ideas at
      most — in the middle of an urge, a long list overwhelms more than it
      helps.
-  4. The model writes 1–3 sentences (`AGENT_SYSTEM_PROMPT`). Its rules: don't
-     let the person dwell in shame; point them to God's grace and to
-     bringing shame to God in prayer; encourage real human contact and
-     confessing to a trusted friend; never quote, name, or list a resource
-     itself. It's told only the *category* of card shown.
+  4. **If a card was shown, that intro sentence is the whole reply** -- the
+     model isn't called. Otherwise the model writes 1-2 sentences
+     (`AGENT_SYSTEM_PROMPT`). It is an "AI resource finder", not a chat
+     companion: it doesn't answer questions or give advice, explanations, or
+     theology (the earlier replies were too unreliable -- see
+     `llm-prompt-tests/`), it says in one sentence that it can only help find
+     resources and names a kind that fits, it points hurting people to a real
+     person, and it never quotes, names, or lists a resource. The prompt has
+     no literal example sentences on purpose: the small model copies any
+     example as its default reply ("Would today's verse help?" was in 44% of
+     replies before it was removed).
   5. The reply **streams one sentence at a time**, and each sentence is
      checked before it's shown (`RECLAIM_UNSAFE_SENTENCE`): anything with a
      Bible reference, a quoted passage, a phone number, or a link is
@@ -413,7 +429,8 @@ await agent.send(userText, {
      (a real one: "I hope you are feeling deeply overwhelmed by that
      shame"), agreeing they're worthless or disgusting, diagnosing,
      downplaying porn or a slip, or offering the app in place of real people
-     ("reach me here"). After three good sentences, generation stops early.
+     ("reach me here"), or offering a verse ("would today's verse help?").
+     After two good sentences, generation stops early.
 
   Off-topic requests are handled by the model itself (the system prompt
   tells it to say kindly that it's only here for life, faith, and recovery).
@@ -481,7 +498,8 @@ Markdown the model slips in.
   Face and the compiled GPU code from GitHub, then live in browser storage
   (Cache Storage, or IndexedDB where that's unavailable).
 - **Nothing downloads without a tap.** The chat view offers it; the badge in
-  the header (Basic mode / Downloading 42% / Reclaim AI) opens the same
+  the header (Download needed / Downloading 42% / Reclaim AI; "Basic mode" on
+  devices that can't run it) opens the same
   panel, including a plain-language reason when a device can't run it. Once
   downloaded, it loads automatically on later visits.
 - **Why Qwen3.5 2B:** Qwen3 1.7B was tested first with the same prompts and

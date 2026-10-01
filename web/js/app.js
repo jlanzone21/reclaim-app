@@ -30,23 +30,41 @@
   const aiPrimaryBtn = document.getElementById("aiPrimaryBtn");
   const aiDismissBtn = document.getElementById("aiDismissBtn");
 
-  const BASIC_NOTE = "Meanwhile a simpler built-in guide answers, and crisis resources always work.";
+  const LOCKED_PLACEHOLDERS = {
+    checking: "Checking your device…",
+    available: "Download Reclaim's AI to start chatting",
+    downloading: "Downloading Reclaim's AI…",
+    loading: "Getting Reclaim's AI ready…",
+    error: "Reclaim's AI isn't ready yet",
+  };
+
+  const LOCKED_NOTE = "Chat unlocks once it's ready. Crisis resources above always work.";
   // null: panel follows the AI's state; true: opened from the badge; false: dismissed.
   let aiPanelWanted = null;
+
+  // Chat takes no input until the on-device model is ready. "unsupported" is the one exception:
+  // a device with no WebGPU can never download a usable model, so locking it out would mean no
+  // chat at all -- it keeps the scripted Basic mode instead.
+  function chatLocked() {
+    const state = LocalModel.getStatus().state;
+    return state !== "ready" && state !== "unsupported";
+  }
 
   function renderAiStatus(s) {
     const pct = Math.round(s.progress * 100);
     const busy = s.state === "downloading" || s.state === "loading";
+    const locked = chatLocked();
+    updateSendState();
 
     connStatus.dataset.state = s.state === "ready" ? "online" : s.state;
     connStatus.querySelector(".conn-label").textContent = {
       checking: "Checking…",
       unsupported: "Basic mode",
-      available: "Basic mode",
+      available: "Download needed",
       downloading: `Downloading ${pct}%`,
       loading: "Getting ready…",
       ready: "Reclaim AI",
-      error: "Basic mode",
+      error: "Download needed",
     }[s.state];
     connStatus.title =
       s.state === "ready" ? "Reclaim's AI runs privately on this device. Your conversations never leave it." : "About Reclaim's AI";
@@ -57,16 +75,16 @@
         dismiss: "OK",
       },
       available: {
-        text: `Reclaim's AI runs privately on this device, so your conversations never leave it. It needs a one-time download of about ${s.downloadMB >= 1000 ? `${Number((s.downloadMB / 1000).toFixed(1))} GB` : `${s.downloadMB} MB`} (Wi-Fi recommended).`,
+        text: `Reclaim's AI runs privately on this device, so your conversations never leave it. To chat, download it once: about ${s.downloadMB >= 1000 ? `${Number((s.downloadMB / 1000).toFixed(1))} GB` : `${s.downloadMB} MB`} (Wi-Fi recommended).`,
         primary: "Download",
-        dismiss: "Not now",
       },
-      downloading: { text: `Downloading Reclaim's AI… ${pct}%. You can keep using the app while it downloads.` },
+      downloading: { text: `Downloading Reclaim's AI… ${pct}%. ${LOCKED_NOTE} You can keep using the rest of the app meanwhile.` },
       loading: { text: "Getting Reclaim's AI ready…" },
-      error: { text: `${s.detail} ${BASIC_NOTE}`, primary: "Try again", dismiss: "Not now" },
+      error: { text: `${s.detail} ${LOCKED_NOTE}`, primary: "Try again" },
     }[s.state];
 
-    const show = !!panel && (busy || (aiPanelWanted === null ? s.state === "available" || s.state === "error" : aiPanelWanted));
+    // While chat is locked the panel is the only thing explaining why, so it can't be dismissed.
+    const show = !!panel && (busy || locked || (aiPanelWanted === null ? s.state === "available" || s.state === "error" : aiPanelWanted));
     aiPanel.hidden = !show;
     if (!show) return;
     aiPanelText.textContent = panel.text;
@@ -75,6 +93,7 @@
     aiPanelActions.hidden = busy;
     aiPrimaryBtn.hidden = !panel.primary;
     aiPrimaryBtn.textContent = panel.primary || "";
+    aiDismissBtn.hidden = locked;
     aiDismissBtn.textContent = panel.dismiss || "Close";
   }
 
@@ -104,6 +123,7 @@
 
   let agent = createAgent();
   let busy = true; // stays true (composer disabled) until the database is ready
+  let dbReady = false;
 
   // ---- View navigation (Chat / Check-In / Insights) ----
 
@@ -153,6 +173,12 @@
     if (typeof LocalSignals === "undefined" || !LocalSignals.available()) return false;
     const pending = await LocalSignals.getPendingVerseRequest();
     if (!pending) return false;
+    if (chatLocked()) {
+      // The auto-submit below would be refused while the model isn't downloaded; Home's "Today's
+      // Verse" card is the same verse from YouVersion, so land there instead.
+      showView("home");
+      return true;
+    }
     showView("chat");
     input.value = "Can you share a Bible verse with me?";
     autoResize();
@@ -182,7 +208,6 @@
   PermissionsView.init();
   AllowlistView.init();
 
-  input.placeholder = "Loading…";
   LocalModel.onChange(renderAiStatus);
   LocalModel.init();
   DB.init()
@@ -200,7 +225,7 @@
       RiskProfile.syncToNative();
       ensureBackgroundSchedulingCurrent();
       busy = false;
-      input.placeholder = "Tell me what's going on…";
+      dbReady = true;
       updateSendState();
       checkPendingVerseRequest().then((wentToVerse) => {
         if (!wentToVerse) RiskAlertView.checkPending();
@@ -302,7 +327,17 @@
   }
 
   function updateSendState() {
-    sendBtn.disabled = busy || input.value.trim().length === 0;
+    const locked = chatLocked();
+    input.disabled = locked;
+    document.querySelectorAll(".suggestion-chip").forEach((chip) => {
+      chip.disabled = locked;
+    });
+    input.placeholder = locked
+      ? LOCKED_PLACEHOLDERS[LocalModel.getStatus().state] || LOCKED_PLACEHOLDERS.available
+      : dbReady
+        ? "Tell me what's going on…"
+        : "Loading…";
+    sendBtn.disabled = busy || locked || input.value.trim().length === 0;
   }
 
   function scrollToBottom() {
@@ -651,7 +686,7 @@
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     const text = input.value.trim();
-    if (!text || busy) return;
+    if (!text || busy || chatLocked()) return;
     handleSend(text);
   });
 

@@ -1245,6 +1245,181 @@ reality:
         everything falls back to the local verse text, so no verse card is
         ever empty.
 
+- [x] **Chat now requires the on-device AI download** (Nathaniel). Asked
+      for: people must download the model before they can use Chat, with the
+      input simply not accepting anything until it's there. Built: the
+      composer textarea, send button, and suggestion chips stay disabled
+      (placeholder says why) until `LocalModel` reports `ready`; the AI panel
+      is always shown while locked and its "Not now" button is hidden, so
+      the reason and the Download button can't be dismissed away. The
+      download is still a tap, never automatic (~1 GB, Wi-Fi advice kept).
+      The submit handler also refuses while locked, so a programmatic submit
+      can't sneak past the disabled UI.
+      - **Devices with no WebGPU are the one exception** (`unsupported`):
+        they can never run the model, so locking them out would mean no chat
+        at all -- they keep the scripted Basic mode. Everyone else, including
+        the `error` state (e.g. interrupted download), is locked until the
+        download works.
+      - The header's crisis button, the safety banner's "In crisis?" link,
+        and the crisis modal are outside the composer and still work while
+        locked. Crisis *detection* (`agentIsCrisis`) only runs on typed
+        messages, so a locked user gets the always-visible resources, not
+        the in-chat crisis card.
+      - A risk-notification "Tell me more / verse" tap auto-submits a verse
+        request into Chat; while locked that would be refused, so it lands
+        on Home's "Today's Verse" card instead.
+      - Verified in a real browser with WebGPU (locked state, unlocked state
+        via a stubbed `ready` status, no-WebGPU exception, blocked forced
+        submit, no console errors). The real ~1 GB download-to-unlock path
+        was then confirmed by Nathaniel on the Pixel 8a (debug build,
+        fresh install).
+
+- [x] **Chat prompt and filter tightened after a first prompt test**
+      (Nathaniel). A first run of the real agent against the on-device model
+      (desktop browser, ~11 clean prompts; the rest failed when the hidden
+      preview tab was throttled -- see the untracked `llm-prompt-tests/`
+      notes) showed the system prompt's own examples leaking into replies
+      ("have you talked to Joey about this?" for someone with no partner;
+      "I can't show you a verse on grace" for an urge), "Who are you?"
+      answered "you don't need a pastor, counselor, or small group", and a
+      shame reply blaming the person ("a trap of your own making... so
+      broken"). Changes: the prompt now calls the model an unnamed AI chat
+      bot for Reclaim 128, drops the "caring friend" framing and the verse
+      example, says never to blame or call them broken, tells it what to say
+      when asked who it is, and never to write a bracketed placeholder when no
+      partner is saved. `RECLAIM_UNSAFE_SENTENCE` gained two patterns (telling
+      them they don't need real people; "of your own making", "so broken",
+      "you're broken" -- "you're not broken" is allowed) and no longer drops
+      "I'm an AI/bot/app" sentences, which the new identity answer needs.
+      - Verified only by unit-testing the regexes in Node against sample
+        good and bad sentences. The new prompt has **not** been re-run against
+        the model, on a phone or in a browser; do that before relying on it.
+
+- [x] **Resource routing now scores intent instead of first-match keywords**
+      (Nathaniel). Asked: make the router "read and understand" the message
+      more, since finding the right resource is the chat's most important job.
+      Built (Stage 1 of a two-stage plan): each `AGENT_TOOL_DEFS` entry now has
+      `signals` (`[pattern, weight]`); `agentTopTool` sums matching weights per
+      resource and picks the highest at or above `AGENT_MIN_SCORE` (ties go to
+      the earlier entry). Added synonym and intent phrasings (e.g. "a person /
+      mentor / check in on me" -> accountability, "teaching on ..." -> sermon,
+      "something to reflect on" -> devotional, "distract / get through the
+      night / something quick I can do" -> coping), Bible references like
+      "Philippians 4:13" or "Romans 8" (book list; bare "job 2" deliberately
+      doesn't count), and negative signals ("are you a therapist?", "group
+      chat", "instead of a counselor"). A question about the AI ("are you my
+      friend?") no longer falls through to a feeling-word verse. Unchanged:
+      the affirmative-reply logic, the theme list, the "only an explicit ask or
+      an urge shows a card" rule, and Basic mode's own routing in
+      `resourcesAgent.js`.
+      - Measured offline in Node against the labeled 800-prompt set (no model
+        needed): explicit resource requests 209/284 (74%) -> 284/284, but that
+        set was used to write the patterns, so it's optimistic. On 92 fresh
+        hand-written prompts the old router scored 56/92 (61%) and the new one
+        86/92 (93.5%) before a second round of fixes for 5 of the 6 misses
+        (after which that set is no longer clean). Of 516 unlabeled prompts
+        only 19 changed card, all reviewed and acceptable (e.g. rehab ->
+        counselors, 12-step/SAA -> groups, no more verse for "are you my
+        friend?").
+      - Not verified in the running app or on the phone, and the weights are
+        hand-set, so new phrasings will still miss. Stage 2 (an on-device
+        embedding model, `snowflake-arctic-embed-s`, ~239 MB of graphics memory
+        per WebLLM's config) is the option if keyword scoring plateaus; its
+        download, memory, and latency cost on the Pixel 8a are untested.
+
+- [x] **Chat is now a resource finder: card turns are the app's one sentence,
+      the model no longer gives advice, and the crisis gate is a little wider**
+      (Nathaniel). A 1000-prompt run of the real on-device model (notes in the
+      untracked `llm-prompt-tests/`) showed the model answering app/privacy
+      questions with invented facts, giving advice and theology, listing
+      invented resources, and ending 43% of replies with "Would today's verse
+      help?" (the prompt's only example, copied). Changes:
+      - `AGENT_SYSTEM_PROMPT` rewritten: an "AI resource finder" that doesn't
+        answer questions, never gives advice/explanations/theology, replies in
+        1-2 sentences, names one kind of resource that fits, and points
+        hurting people to a real person. All literal example sentences were
+        removed (the small model copies whatever it is shown).
+      - `ReclaimAgent.send`: when the router shows a card, the app's own intro
+        ("I found some Bible reading plans you could start.") is the whole
+        reply and the model is not called (also faster). Without a card the
+        reply is capped at 2 sentences. A filter drops any "would this verse
+        help?" sentence.
+      - Measured on 100 prompts re-run through the real model: verse offers
+        44 -> 0, average reply 31 -> 14 words, all 35 card replies exactly one
+        sentence, the same card for 98 of 100 prompts (the other 2 were bare
+        "ok" follow-ups, which are matched against the previous reply).
+      - **Not solved:** the refusal wording "I can only help you find
+        resources..." is now the template for most non-card replies (69%);
+        prompt phrases still leak ("I don't know how the app works either");
+        and in that run the model still said "You can watch soft porn if you
+        feel it helps you" and "the app does not track your personal data".
+        Prompt wording alone can't hold app/privacy/enabling-porn answers --
+        they need fixed answers in code.
+      - Verified with the real model on a desktop NVIDIA GPU in Chrome
+        (not on the phone).
+- [x] **Crisis gate widened a little, and one bug fixed** (Nathaniel). Asked:
+      update it "but be careful of overdoing it" -- it does not need to catch
+      everything. In `CRISIS_PATTERNS` (`resourcesAgent.js`): fixed a missing
+      word boundary (`end my/it/this` matched "s*end my* info" and "s*end this*
+      to my pastor"); added overdose / "took too many pills", cutting myself
+      (not "cut myself off"), jumping off a bridge, "no one would miss/care if
+      I...", "I am a burden to everyone", "tired of being alive / living" (not
+      "living in secret"), "done with life", "life isn't worth living",
+      "nothing to live for", "want it all to end", "killing myself", "easiest
+      way to die", "no reason to keep living". Deliberately not added: "I can't
+      do this anymore", "I'm done", "disappear", abuse/safety messages, "I
+      bought a gun" -- people here say the first ones about the addiction.
+      - Offline check against ~1,770 prompts: crisis prompts caught 26/79 ->
+        43/79; 17 newly caught (all genuine); 0 new false alarms across 1,694
+        other prompts; one old false alarm ("Does this app send my info
+        anywhere?") removed. Known accepted over-triggers: "I'm killing myself
+        to make deadlines", "what is an overdose of caffeine?". Still missed
+        by design: ~36 of 79 (abuse, "I bought a gun", "I wrote a note",
+        "I can't take this pain anymore", ...).
+
+- [x] **Fixed answers for app/privacy questions and requests to find porn, plus
+      two prompt leaks removed** (Nathaniel). Follow-up to the resource-finder
+      change: in a 100-prompt real-model re-run the model still said "the app
+      does not track your personal data" (false) and "you can watch soft porn if
+      it helps you", and copied two prompt sentences ("I don't know how the app
+      works either"; "...by name if you were told one, otherwise a trusted
+      friend...") into replies.
+      - `AGENT_SYSTEM_PROMPT`: dropped "you don't know how the app works
+        either" and rewrote the hurting-person line more abstractly (no long
+        sentence to copy).
+      - New `web/js/fixedAnswers.js`, called right after the crisis check in
+        `ReclaimAgent.send` and `ResourcesAgent.send`: first-match intents with
+        reviewed text -- find-porn (refuse + offer a coping tool or a person),
+        hide-or-bypass (refuse, point to accountability partner/pastor/counselor),
+        porn-permission ("soft porn", "just look a little", "how old to watch";
+        "a question for a real person"), tracking/permissions/background
+        sampling/risk alerts, privacy (who can see my chat, where is data
+        stored, is a human reading this), data (export/clear/delete -- the
+        Insights tab buttons), AI download/offline, platforms, price, about,
+        Bible version / "Provided by YouVersion", Sample tag, how-to-use
+        (check-ins, where to enter pastor/partner), and "what can you do". The
+        text comes from the app's own welcome notice, Privacy tab, and Insights
+        tab; Supabase lookups send only the resource type and a US state if the
+        user names one (checked in `supabaseClient.js`/`resourceRepo.js`).
+        Price/iPhone/who-built-it answer "I don't have information".
+      - Deliberately narrow: not matched on purpose are "how do I block porn on
+        my phone", "I need an accountability partner", feelings, and resource
+        requests (so a normal card request is never hijacked). "Is porn a sin?"
+        was left to the model path rather than the permission intent.
+      - Measured offline on ~1,770 test prompts: 105 matched (51/53 app
+        questions, 24 adversarial, 3 AI-questions about privacy, 16
+        capability questions), 0 resource requests / feelings / near-resource
+        prompts hijacked. Offline tests of the agent flow (stub model) pass.
+      - Real model: a partial re-run (33 of 100 prompts, then stopped) showed
+        the two leaked phrases gone (0), verse offers still 0, the fixed
+        answers firing in the live flow, and no failures. Not finished or
+        compared in full, and not tried on the phone. Known: "I can only help
+        you find resources..." is still the template for ~75% of model-written
+        replies, sometimes awkwardly ("...but I am not a resource finder");
+        "Is it ok to watch Netflix?" and "I wish I could just disappear
+        forever" still get that template (the latter isn't in the crisis gate by
+        design).
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing
