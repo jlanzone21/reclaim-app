@@ -8,12 +8,16 @@
   const clearBtn = document.getElementById("clearBtn");
   const crisisBtn = document.getElementById("crisisBtn");
   const bannerCrisisLink = document.getElementById("bannerCrisisLink");
+  const instructionsBtn = document.getElementById("instructionsBtn");
 
   const welcomeOverlay = document.getElementById("welcomeOverlay");
   const welcomeContinue = document.getElementById("welcomeContinue");
   const crisisOverlay = document.getElementById("crisisOverlay");
   const crisisClose = document.getElementById("crisisClose");
   const crisisModalList = document.getElementById("crisisModalList");
+  const instructionsOverlay = document.getElementById("instructionsOverlay");
+  const instructionsClose = document.getElementById("instructionsClose");
+  const instructionsGoToPrivacyBtn = document.getElementById("instructionsGoToPrivacyBtn");
 
   const tplUser = document.getElementById("tpl-message-user");
   const tplAgent = document.getElementById("tpl-message-agent");
@@ -316,6 +320,16 @@
   crisisBtn.addEventListener("click", openCrisisModal);
   bannerCrisisLink.addEventListener("click", openCrisisModal);
   crisisClose.addEventListener("click", () => crisisOverlay.classList.remove("visible"));
+
+  instructionsBtn.addEventListener("click", () => instructionsOverlay.classList.add("visible"));
+  instructionsClose.addEventListener("click", () => instructionsOverlay.classList.remove("visible"));
+  instructionsGoToPrivacyBtn.addEventListener("click", () => {
+    instructionsOverlay.classList.remove("visible");
+    // No exposed cross-module navigation API -- same reasoning RiskAlertView's "Find resources"
+    // button and PreferencesView's "Add one now" button already used.
+    const privacyNav = document.querySelector('.nav-item[data-view="privacy"]');
+    if (privacyNav) privacyNav.click();
+  });
 
   showWelcomeIfNeeded();
 

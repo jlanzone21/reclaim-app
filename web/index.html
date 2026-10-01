@@ -49,9 +49,14 @@
       <section class="view view-home" data-view-panel="home">
         <div class="view-topbar">
           <h2>Home</h2>
-          <button type="button" class="home-crisis-btn" id="crisisBtn" title="In crisis? Get help now" aria-label="In crisis? Get help now">
-            <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M12 2 1 21h22L12 2Zm0 4.7 7.5 12.8h-15L12 6.7ZM11 10v5h2v-5h-2Zm0 6.5v2h2v-2h-2Z"/></svg>
-          </button>
+          <div class="view-topbar-actions">
+            <button type="button" class="home-help-btn" id="instructionsBtn" title="How Reclaim works" aria-label="How Reclaim works">
+              <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 15a1.15 1.15 0 1 1 0 2.3A1.15 1.15 0 0 1 12 17Zm.1-10.5c1.7 0 3 1.2 3 2.8 0 1.2-.7 1.9-1.5 2.5-.8.6-1.1.9-1.1 1.7v.3h-1.8v-.4c0-1.3.6-1.9 1.5-2.6.7-.5 1.1-.9 1.1-1.5 0-.7-.6-1.2-1.4-1.2-.8 0-1.4.5-1.5 1.3l-1.9-.2c.2-1.6 1.5-2.7 3.6-2.7Z"/></svg>
+            </button>
+            <button type="button" class="home-crisis-btn" id="crisisBtn" title="In crisis? Get help now" aria-label="In crisis? Get help now">
+              <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M12 2 1 21h22L12 2Zm0 4.7 7.5 12.8h-15L12 6.7ZM11 10v5h2v-5h-2Zm0 6.5v2h2v-2h-2Z"/></svg>
+            </button>
+          </div>
         </div>
         <div class="view-scroll">
           <div class="content-column">
@@ -329,6 +334,48 @@
       </ul>
       <p class="modal-crisis">If you are in crisis or thinking about suicide, call or text <strong>988</strong> right now, or call 911.</p>
       <button type="button" class="modal-continue" id="welcomeContinue">I understand — continue</button>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="instructionsOverlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="instructionsTitle">
+      <h2 id="instructionsTitle">How Reclaim works</h2>
+      <p>Everything here runs on this device — see Privacy for the full detail on what's stored and why.</p>
+
+      <div class="field-label" style="margin-top:0;">The five tabs</div>
+      <ul class="modal-list">
+        <li><strong>Chat</strong> — talk through what's going on; the AI can point you to a Bible verse, a devotional, a small group, a counselor, or your accountability partner.</li>
+        <li><strong>Check-In</strong> — log a moment, resisted or slipped, with what was going on.</li>
+        <li><strong>Home</strong> — a verse, one-tap call shortcuts for your accountability partner(s), and this page.</li>
+        <li><strong>Insights</strong> — your own check-in trends and (once granted) on-device activity, over time.</li>
+        <li><strong>Privacy</strong> — turn any permission on or off, manage which apps get read for patterns, and edit your setup answers any time.</li>
+      </ul>
+
+      <div class="field-label">Turning on permissions</div>
+      <p style="margin-bottom:8px;">
+        Every permission is optional and off by default — Reclaim works with none of them granted, just
+        without the pattern-noticing that powers risk check-in notifications. Grant only what you're
+        comfortable with, any time, from Privacy.
+      </p>
+      <p style="margin-bottom:8px;">
+        For most of them, tapping <strong>Grant</strong> shows the normal "Allow?" prompt right there.
+        Three of them — <strong>App usage</strong>, <strong>Notification access</strong>, and
+        <strong>Accessibility</strong> — are more sensitive, so Android requires turning them on from a
+        system settings list instead of an in-app switch. Tapping Grant for those takes you straight to
+        the right list; from there, find <strong>Reclaim</strong> in it and turn it on yourself, then
+        come back to the app.
+      </p>
+      <button type="button" class="secondary-btn" id="instructionsGoToPrivacyBtn" style="width:100%; margin-bottom:8px;">Go to Privacy</button>
+
+      <div class="field-label">Once permissions are on</div>
+      <ul class="modal-list">
+        <li>Roughly every 15 minutes, while your phone is unlocked and in use, Reclaim records one small local snapshot from whichever permissions you've granted.</li>
+        <li>Only apps you've explicitly added to your allowlist (Privacy) ever have their on-screen text read and checked for flagged words — every other app is noticed by name only.</li>
+        <li>If enough signals line up, Reclaim sends a check-in notification — a lighter suggestion (like reading a verse) for a lower score, or a direct "Call [name]" action to an accountability partner for a high one.</li>
+        <li>Being on Reclaim itself, or having opened it recently, actually lowers that score rather than counting against you.</li>
+      </ul>
+
+      <button type="button" class="secondary-btn" id="instructionsClose" style="width:100%;">Close</button>
     </div>
   </div>
 

@@ -1420,6 +1420,67 @@ reality:
         forever" still get that template (the latter isn't in the crisis gate by
         design).
 
+- [x] **"How Reclaim works" instructions page, reachable from Home.** User
+      asked for a place to explain how to enable permissions and how the app
+      works, from Home. A new help button next to Home's crisis button opens
+      an overlay covering the five tabs, how to turn on each permission
+      (including the three -- App usage, Notification access, Accessibility
+      -- that need a system settings list, not just an in-app switch, since
+      that's the non-obvious part), and what happens once permissions are
+      on (background sampling cadence, allowlist-only text reading, tiered
+      risk-nudge notifications, recent-Reclaim-use being protective). A "Go
+      to Privacy" button closes the overlay and navigates there directly.
+      Verified on-device: real fresh install, overlay renders and scrolls
+      correctly, "Go to Privacy" closes it and switches views.
+
+- [x] **Fixed a real bug: on-device AI silently broken forever after one GPU
+      crash, Electron/desktop specifically.** User reported the AI replying
+      with "(Something went wrong before I finished — please try again.)"
+      on every single message once it happened once. Reproduced the actual
+      failure via the user's own devtools console (not guessed): Windows'
+      GPU driver watchdog killed the graphics device mid-generation
+      (`DXGI_ERROR_DEVICE_HUNG`, a TDR timeout -- hardware/driver behavior,
+      not an app bug, and more visible on Electron's D3D12/Dawn WebGPU
+      backend than Android's). WebGPU logs that device-loss as its own
+      console warning, not a catchable exception -- what `localModel.js`'s
+      `streamChat()` actually saw was the engine's next call throwing
+      "Object has already been disposed." The real bug: nothing ever told
+      `LocalModel` the engine had died, so `isReady()` kept reporting `true`
+      forever and every later message hit the same dead engine, identically
+      silently, with no path back except a full app reload.
+      - `streamChat()` now catches that failure the same way `start()`'s
+        own catch block already did -- reset `engine = null` and
+        `set("error", friendlyError(err))` -- so `LocalModel.isReady()`
+        correctly flips to `false` afterward instead of staying stuck on
+        `true` forever. Landed the same week as (just above) Chat's own
+        requires-the-AI lock (`chatLocked()`, `app.js`): since that lock
+        reads this same state and only exempts `unsupported` devices, this
+        fix is what makes it actually engage after a runtime crash -- the
+        composer correctly re-locks and the existing "Try again" panel
+        shows, instead of staying wrongly unlocked forever and silently
+        eating every later message into a dead engine (the original bug).
+        `ReclaimAgent`'s own `isReady()` check (a defensive fallback to
+        Basic mode) still exists underneath but is rarely reached now that
+        the composer itself gates first. "Try again" re-creates the engine
+        from the already-cached model weights -- no re-download.
+      - Deliberately NOT triggered by `interruptGenerate()`'s own drain --
+        that's the normal, frequent way a reply ends once enough sentences
+        are kept (most turns, via `onDelta` returning `false`), not a
+        failure; verified a benign throw during that drain correctly leaves
+        the engine marked ready, only a real mid-generation failure resets
+        it.
+      - `friendlyError()`'s GPU-problem pattern widened to also match
+        "disposed" (not just "device lost"), since that's the message that
+        actually reaches catchable code in practice.
+      - Verified without a real GPU crash or a 1GB model download: grafted
+        the live edited file into a running browser tab (this session's
+        established workaround for the dev server's missing
+        Cache-Control), injected a fake engine whose stream throws the
+        exact real error, and confirmed `isReady()` flips to `false` with
+        the right status/message. Confirmed separately that a fake
+        post-interrupt drain error leaves `isReady()` `true`, so the common
+        case is untouched.
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing
