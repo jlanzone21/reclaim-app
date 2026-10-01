@@ -1327,6 +1327,56 @@ reality:
         per WebLLM's config) is the option if keyword scoring plateaus; its
         download, memory, and latency cost on the Pixel 8a are untested.
 
+- [x] **Chat is now a resource finder: card turns are the app's one sentence,
+      the model no longer gives advice, and the crisis gate is a little wider**
+      (Nathaniel). A 1000-prompt run of the real on-device model (notes in the
+      untracked `llm-prompt-tests/`) showed the model answering app/privacy
+      questions with invented facts, giving advice and theology, listing
+      invented resources, and ending 43% of replies with "Would today's verse
+      help?" (the prompt's only example, copied). Changes:
+      - `AGENT_SYSTEM_PROMPT` rewritten: an "AI resource finder" that doesn't
+        answer questions, never gives advice/explanations/theology, replies in
+        1-2 sentences, names one kind of resource that fits, and points
+        hurting people to a real person. All literal example sentences were
+        removed (the small model copies whatever it is shown).
+      - `ReclaimAgent.send`: when the router shows a card, the app's own intro
+        ("I found some Bible reading plans you could start.") is the whole
+        reply and the model is not called (also faster). Without a card the
+        reply is capped at 2 sentences. A filter drops any "would this verse
+        help?" sentence.
+      - Measured on 100 prompts re-run through the real model: verse offers
+        44 -> 0, average reply 31 -> 14 words, all 35 card replies exactly one
+        sentence, the same card for 98 of 100 prompts (the other 2 were bare
+        "ok" follow-ups, which are matched against the previous reply).
+      - **Not solved:** the refusal wording "I can only help you find
+        resources..." is now the template for most non-card replies (69%);
+        prompt phrases still leak ("I don't know how the app works either");
+        and in that run the model still said "You can watch soft porn if you
+        feel it helps you" and "the app does not track your personal data".
+        Prompt wording alone can't hold app/privacy/enabling-porn answers --
+        they need fixed answers in code.
+      - Verified with the real model on a desktop NVIDIA GPU in Chrome
+        (not on the phone).
+- [x] **Crisis gate widened a little, and one bug fixed** (Nathaniel). Asked:
+      update it "but be careful of overdoing it" -- it does not need to catch
+      everything. In `CRISIS_PATTERNS` (`resourcesAgent.js`): fixed a missing
+      word boundary (`end my/it/this` matched "s*end my* info" and "s*end this*
+      to my pastor"); added overdose / "took too many pills", cutting myself
+      (not "cut myself off"), jumping off a bridge, "no one would miss/care if
+      I...", "I am a burden to everyone", "tired of being alive / living" (not
+      "living in secret"), "done with life", "life isn't worth living",
+      "nothing to live for", "want it all to end", "killing myself", "easiest
+      way to die", "no reason to keep living". Deliberately not added: "I can't
+      do this anymore", "I'm done", "disappear", abuse/safety messages, "I
+      bought a gun" -- people here say the first ones about the addiction.
+      - Offline check against ~1,770 prompts: crisis prompts caught 26/79 ->
+        43/79; 17 newly caught (all genuine); 0 new false alarms across 1,694
+        other prompts; one old false alarm ("Does this app send my info
+        anywhere?") removed. Known accepted over-triggers: "I'm killing myself
+        to make deadlines", "what is an overdose of caffeine?". Still missed
+        by design: ~36 of 79 (abuse, "I bought a gun", "I wrote a note",
+        "I can't take this pain anymore", ...).
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing

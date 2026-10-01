@@ -29,6 +29,7 @@ const RECLAIM_UNSAFE_SENTENCE = [
   /\bof your own making\b|(?<!not )\bso broken\b|\byou(?:'re| are)\s+(?!not\b|never\b)broken\b/i, // blames them or labels them broken ("you're not broken" is fine)
   /\byou (?:have|might have|may have|probably have|are suffering from)\s+(?:a |an )?(?:\w+\s+)?(?:disorder|depression|ocd|adhd|ptsd|bipolar)\b/i, // diagnosis
   /\b(?:not a big deal|no big deal|everyone does it|just this once)\b|\b(?:porn|watching it|looking at it) is (?:fine|okay|ok|normal|healthy|harmless)\b/i, // downplaying
+  /\bwould (?:today'?s|that|this|a|the) verse\b|\bverse (?:would )?(?:help|speak)\b|\bhelp(?:s)? you (?:feel|find)\b[^.!?]*\bverse\b/i, // offering a verse (the app shows them; the model must not)
   /\b(?:reach|call|text|contact|message) me\b|\bi(?:'m| am) always (?:here|available)\b/i, // the app standing in for real people
   /\bI (?:cannot|can't|can not|am unable to|am not able to) (?:share|provide|give(?! up)|offer|recommend|quote|find|show)\b/i, // refusing what the app just showed
   /^I(?:'m| am) (?:just |only |not )?an? (?:[\w-]+ )?(?:friend|assistant|program|model|companion|guide|counselor|therapist|pastor|christian|dictionary|bible|book|search engine)\b/i, // describing itself ("I am a Christian friend, not a Bible book")
@@ -85,25 +86,30 @@ class ReclaimAgent {
     let shown = false;
     try {
       let intro = "";
-      let shownVerse = false;
       const pick = agentPickResource(userText, previous);
       if (pick) {
         const input = pick.theme ? { theme: pick.theme } : { query: userText };
         const output = await executeAgentTool(pick.resource, input);
         if (output && output.groups === null) {
           // Supabase unreachable (small_group_finder only) -- say so instead of showing an empty card.
-          revealer.push("I couldn't reach the group directory right now — try again once you're online.");
+          intro = "I couldn't reach the group directory right now — try again once you're online.";
+          revealer.push(intro);
         } else {
           const id = `tool_${++this._idCounter}`;
           handlers.onToolCallStart({ id, name: pick.resource, input });
           handlers.onToolCallEnd({ id, output });
           intro = cardIntro(pick.resource, pick.theme, output);
-          if (pick.resource === "scripture_search") shownVerse = true;
           revealer.push(intro);
         }
-        shown = true;
+        // The app's one-sentence intro ("I found some Bible reading plans you could start.") is the whole reply when
+        // resources are shown. The model used to add more, and its extra sentences were where the unreliable advice, theology,
+        // invented resources and stray verse offers came from (see llm-prompt-tests). It also saves a model call.
+        await revealer.done();
+        this.recentShown = [...this.recentShown, intro].slice(-3);
+        handlers.onDone();
+        return;
       }
-      const maxSentences = intro ? 2 : 3;
+      const maxSentences = 2;
 
       const accept = (sentence) => {
         const s = sentence.trim();
@@ -114,11 +120,7 @@ class ReclaimAgent {
       };
 
       // Per-turn instructions go in the user message, not the system prompt, so the system prompt stays identical across turns.
-      const userContent = !intro
-        ? clip(userText)
-        : shownVerse
-          ? `${clip(userText)}\n\n(The app has just shown them a verse in the YouVersion Bible display and said "${intro}" Continue right after that line; don't repeat it, and don't quote or name the verse.)`
-          : `${clip(userText)}\n\n(The app has just shown them this and said "${intro}" Continue right after that line; don't repeat it.)`;
+      const userContent = clip(userText);
 
       let pending = "";
       const { raw, finishReason } = await LocalModel.streamChat(this._replyMessages(userContent), {

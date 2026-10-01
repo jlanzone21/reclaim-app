@@ -213,10 +213,14 @@ Main JS modules (`web/js/`):
   temperature 0.3, thinking off. (4B was tried on-device and reverted.)
 - Flow per message: crisis gate → **keyword routing** picks at most one
   resource card (no model call — a model-based pick took ~16 s on a Pixel 8a)
-  → app renders the card and writes its intro line → model writes 1–3
-  sentences → each sentence is filtered (`RECLAIM_UNSAFE_SENTENCE`: Bible
-  references, quoted passages, phone numbers, links, and known tone failures
-  are dropped).
+  → app renders the card and writes its one-sentence intro, and **that is the
+  whole reply (no model call)**; with no card the model writes 1–2 sentences
+  as a resource finder that doesn't answer questions or give advice/theology
+  → each sentence is filtered (`RECLAIM_UNSAFE_SENTENCE`: Bible references,
+  quoted passages, phone numbers, links, verse offers, and known tone failures
+  are dropped). Don't put example sentences in `AGENT_SYSTEM_PROMPT`: the
+  small model copies them as its default reply. `CRISIS_PATTERNS` lives in
+  `resourcesAgent.js` (shared with Basic mode via `agentIsCrisis`).
 - **The model must never quote, name, or list a verse or resource** — small
   models invent scripture and organizations. The app shows the real thing;
   the model only points toward it.
