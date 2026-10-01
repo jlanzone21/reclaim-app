@@ -390,8 +390,11 @@ await agent.send(userText, {
 - **`ReclaimAgent`** (`web/js/reclaimAgent.js`) — the agent the app uses.
   For each message:
   1. The crisis check runs first (below).
-  2. **A keyword match** (`agentPickResource`, using each tool's `pattern`
-     in `agentTools.js`) picks at most one resource card. A card appears only
+  2. **Weighted keyword scoring** (`agentPickResource`, using each tool's
+     `signals` -- `[pattern, weight]` pairs -- in `agentTools.js`; highest
+     score wins if it reaches `AGENT_MIN_SCORE`, negative weights cancel
+     false alarms like "are you a counselor?") picks at most one resource
+     card. A card appears only
      when someone asks for one ("a verse about shame", "groups near me"),
      says yes to one the last reply offered, or mentions an urge happening
      now. Someone sharing a slip or a feeling gets a reply, not a card they

@@ -1,57 +1,132 @@
 // Resource tools, prompts, and the crisis check shared by ReclaimAgent (on-device AI) and ResourcesAgent (Basic mode).
 // Tool names and output shapes match ResourcesAgent's, so app.js renders both agents' results the same way.
 
-// `pattern` picks the card by keyword instead of asking the model, which cost ~16 s per message on a phone.
-// Checked in order, first match wins. Only an explicit ask or an urge happening now shows a card:
+// Resources are picked by weighted keyword scoring, not by asking the model (a model-based pick cost ~16 s per message on a
+// phone). Each resource has `signals`: [pattern, weight] pairs run against the lowercased message. Weights add up once per
+// matching pattern: 4-5 = an explicit ask for that thing, 3 = a clear phrasing of it, 1-2 = supporting hints. Negative weights
+// cancel false alarms ("are you a counselor?" is a question about the AI, not a request for one). The highest score wins if it
+// reaches AGENT_MIN_SCORE; ties go to the earlier entry. Only an explicit ask or an urge happening now shows a card:
 // someone sharing a slip or a feeling gets a reply, not a resource they didn't ask for.
+const AGENT_MIN_SCORE = 3;
+
+// Books whose names can't be mistaken for a word or a name, so "romans 8" alone counts as a reference.
+const AGENT_BOOK_UNIQUE = "genesis|exodus|leviticus|deuteronomy|joshua|psalms?|proverbs|ecclesiastes|isaiah|jeremiah|lamentations|ezekiel|matthew|romans|corinthians|galatians|ephesians|philippians|colossians|thessalonians|hebrews|revelation";
+const AGENT_BOOK_ANY = `${AGENT_BOOK_UNIQUE}|numbers|judges|ruth|samuel|kings|chronicles|ezra|nehemiah|esther|job|song of solomon|daniel|hosea|joel|amos|obadiah|jonah|micah|nahum|habakkuk|zephaniah|haggai|zechariah|malachi|mark|luke|john|acts|timothy|titus|philemon|james|peter|jude`;
+
 const AGENT_TOOL_DEFS = [
   {
     name: "bible_plan_finder",
     intro: "I found some Bible reading plans you could start.",
-    pattern: /\b(bible|reading|devotional) plans?\b/,
+    signals: [
+      [/\b(bible|reading|devotional|study|scripture) plans?\b/, 5],
+      [/\bplans? (for|to|on|about) (read\w*|study\w*|go(ing)? through)\b/, 4],
+      [/\b(\d+|seven|ten|fourteen|thirty|forty)[ -]?days?( bible| reading)? plan\b|\bplan for \d+ days?\b/, 4],
+      [/\bread (through |the )?(the )?bible\b|\bread(ing)? the bible daily\b|\bwhere (do|should) i start (reading|with the bible)\b/, 3],
+      [/\bwhat (should|do) i read (this|next|today|tomorrow)\b/, 3],
+      [/\bbible study\b/, 3],
+      [/\b(do you have|got|any|is there) (a |an )?(\w+ )?plans?\b/, 2],
+      [/\bplan\b/, 1],
+    ],
   },
   {
     name: "scripture_search",
     intro: "I found a verse{about} for you.",
-    pattern: /\b(verses?|scriptures?|passages?|psalms?)\b/,
     themed: true,
+    signals: [
+      [/\b(verses?|scriptures?|passages?|psalms?)\b/, 3],
+      [new RegExp(`\\b(?:[1-3]\\s?)?(?:${AGENT_BOOK_ANY})\\s\\d{1,3}:\\d{1,3}`), 4],
+      [new RegExp(`\\b(?:[1-3]\\s?)?(?:${AGENT_BOOK_UNIQUE})\\s(?:chapter\\s)?\\d{1,3}\\b`), 4],
+      [/\bwhat does (the bible|god|scripture|jesus|paul) say\b|\b(the bible|god|scripture|jesus) (says?|said) (about|on)\b/, 3],
+      [/\b(quote|recite|write out|read me|share|show me) (me )?(a |the |some )?(bible|scripture|word of god)\b/, 3],
+      [/\bbible\b/, 1],
+    ],
   },
   {
     name: "devotional_finder",
     intro: "I found a short devotional{about} for you.",
-    pattern: /\bdevotionals?\b/,
     themed: true,
+    signals: [
+      [/\bdevotions?\b|\bdevotionals?\b/, 4],
+      [/\b(something|anything|a thought|a reading) to (reflect|meditate|ponder) (on|upon)\b|\breflect on\b|\bsomething to reflect\b/, 3],
+      [/\bquiet time\b|\b(morning|evening|daily|short) (reading|reflection|meditation)\b/, 3],
+      [/\bsomething to read (this|tonight|today|in the)\b/, 3],
+    ],
   },
   {
     name: "sermon_library",
     intro: "I found some sermons you might find helpful.",
-    pattern: /\b(sermons?|preach\w*)\b/,
+    signals: [
+      [/\b(sermons?|preach\w*|homil\w*)\b/, 4],
+      [/\b(teaching|teachings|message|messages|talk|lesson) (on|about)\b/, 3],
+      [/\b(good|any|some) (teaching|preaching|messages?)\b/, 3],
+      [/\b(listen|watch|hear)\b.*\b(pastor|preacher|message|teaching)\b|\b(pastor|preacher) (talk|teach|speak|preach)\w*/, 3],
+    ],
   },
   {
     name: "article_finder",
     intro: "I found some articles that might help.",
-    pattern: /\b(articles?|something to read|read (more )?about)\b/,
+    signals: [
+      [/\b(articles?|blogs?|blog posts?)\b/, 4],
+      [/\bpodcasts? (about|on|for)\b/, 3],
+      [/\bpodcasts?\b/, 1],
+      [/\b(books?|reading|resources?|information|info|something to read) (on|about|for)\b|\bread (more )?(about|on)\b|\bsomething to read\b/, 3],
+      [/\bresources? for (wives|husbands|spouses|parents|teens|women|men|pastors|families)\b/, 4],
+      [/\b(anything|something|stuff) (on|about) (how|why)\b/, 3],
+      [/\bhow (does|do|did|the) (the )?(brain|porn|addiction)\b.*\b(work|addict\w*|affect\w*)\b/, 3],
+    ],
   },
   {
     name: "counseling_directory",
     intro: "I found some counselors you could reach out to.",
-    pattern: /\b(counsel\w*|therap\w*|professional help)\b/,
+    signals: [
+      [/\b(counsel\w*|therap\w*|psycholog\w*|psychiatr\w*)\b/, 3],
+      [/\b(find|need|want|see|get|seek|looking for|recommend|refer|talk to|know (of )?any|near me)\b.*\b(counsel\w*|therap\w*)\b/, 2],
+      [/\bprofessional (help|support)\b|\btreatment\b|\brehab\b|\brecovery program\b/, 3],
+      [/\b(see|talk to|speak (to|with)|meet with) (a |an )?(professional|specialist|doctor)\b/, 3],
+      // Questions about the AI, not requests for a counselor.
+      [/\bare you (a |an |my |the )?(counsel\w*|therap\w*)\b|\binstead of (a |my )?(counsel\w*|therap\w*)\b|\b(replace|substitute for) (a |my )?(counsel\w*|therap\w*)\b/, -6],
+    ],
   },
   {
     name: "small_group_finder",
     intro: "I found some recovery groups you could look into.",
-    pattern: /\bgroups?\b|\bcommunity\b/,
+    signals: [
+      [/\bgroups?\b/, 3],
+      [/\bgroup (chat|text|message|project|photo|fitness|call|order)\b/, -4],
+      [/\b(support|recovery|men'?s|women'?s|online|small|church|bible study|accountability) groups?\b/, 2],
+      [/\b(celebrate recovery|12[- ]step|twelve[- ]step|\bsaa\b|\bna meeting|support meeting|meeting near)\b/, 4],
+      [/\bcommunity\b|\bfellowship\b/, 2],
+      [/\bcommunity of (believers|guys|men|women|christians|people)\b|\bfellow believers\b/, 3],
+      [/\b(people|guys|men|women|others) who (get it|understand|struggle|are going through)\b/, 3],
+      [/\b(join|find|looking for) (a |an |some )?(community|fellowship|support)\b/, 2],
+    ],
   },
   {
     name: "accountability_match",
     intro: "Let's look at your accountability partner.",
-    pattern: /\baccountab\w*/,
+    signals: [
+      [/\baccountab\w*/, 4],
+      [/\bcheck(ing)? in (on|with) me\b|\bhold me (accountable|responsible)\b|\bkeep me (honest|on track|accountable)\b|\bwalk with me\b/, 4],
+      [/\b(a |some )?(mentor|spiritual director)\b/, 3],
+      [/\bwho (should|can|could|do) i tell\b|\bneed (a |some )?(person|someone|somebody) (to talk to|to tell|to lean on|real)\b|\bneed a (real )?person\b/, 3],
+      [/\bsomeone (to |who can )?(talk|check|help|support|walk|pray)\b/, 2],
+    ],
   },
   {
     name: "coping_toolkit",
     intro: "Here are a few things that can help right now.",
-    pattern: /\b(urges?|crav\w*|tempt\w*|coping|in the moment|about to (look|watch|give in|relapse|slip|act out)|want to (look|watch))\b/,
     themed: true,
+    signals: [
+      [/\b(urges?|crav\w*|tempt\w*|coping|in the moment)\b/, 3],
+      [/\babout to (look|watch|give in|relapse|slip|act out)\b|\b(want|going) to (look|watch)\b/, 4],
+      [/\bsomething (else )?to do (instead|right now|now)\b|\bsomething (quick|simple|small|easy) (i can |to )?do\b|\bdistract\w*/, 4],
+      [/\bget through (the|this|tonight|the night|the day|the urge|the moment)\b|\bride (it|this) out\b/, 3],
+      [/\b(breathing|grounding) (exercise|technique)s?\b|\bcalm (down|myself)\b/, 4],
+      [/\bcoping (skills?|techniques?|tips?|strateg\w*)\b/, 4],
+      [/\bplan for when (i|it)\b|\bwhat (do|should) i do (when|if|right now)\b/, 4],
+      [/\b(healthy|better|other|good) (things|ways|alternatives|outlets)\b|\bthings to do instead\b/, 3],
+      [/\bhow (do|can|should) i (stop|resist|fight|beat|break|get past)\b.*\b(urge|craving|temptation|cycle|habit)\b|\bbreak the cycle\b|\bresist\b/, 3],
+    ],
   },
 ];
 
@@ -82,11 +157,30 @@ function agentInferTheme(lower) {
   return hit ? hit[0] : null;
 }
 
+// Sum of the weights of every signal that matches. A separate function (not inlined in agentPickResource) so the router
+// can be tested offline against labeled prompts without running the model.
+function agentScoreTool(tool, lower) {
+  return tool.signals.reduce((sum, [re, weight]) => sum + (re.test(lower) ? weight : 0), 0);
+}
+
+function agentTopTool(lower) {
+  let best = null;
+  let bestScore = 0;
+  for (const tool of AGENT_TOOL_DEFS) {
+    const score = agentScoreTool(tool, lower);
+    if (score > bestScore) {
+      best = tool;
+      bestScore = score;
+    }
+  }
+  return bestScore >= AGENT_MIN_SCORE ? best : null;
+}
+
 // A short "yes" answers whatever the last reply offered ("Would a verse on grace help?"), so it's matched against that reply instead.
 function agentPickResource(userText, lastReply = "") {
   let lower = userText.toLowerCase();
   if (AGENT_AFFIRMATIVE.test(userText) && userText.length < 40 && lastReply) lower = lastReply.toLowerCase();
-  const tool = AGENT_TOOL_DEFS.find((t) => t.pattern.test(lower));
+  const tool = agentTopTool(lower);
   if (tool) {
     const theme = tool.themed ? agentInferTheme(lower) || (tool.name === "coping_toolkit" ? "in-the-moment" : null) : null;
     return { resource: tool.name, theme };
@@ -95,6 +189,7 @@ function agentPickResource(userText, lastReply = "") {
   // verse for it rather than staying silent on resources. User's own framing: pointing to
   // scripture should be one of the AI's first responses, not only shown when someone thinks to
   // ask for one by name.
+  if (/\bare you\b/.test(lower)) return null;
   const theme = agentInferTheme(lower);
   return theme ? { resource: "scripture_search", theme } : null;
 }

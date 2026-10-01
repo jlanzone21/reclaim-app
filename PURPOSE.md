@@ -1295,6 +1295,38 @@ reality:
         good and bad sentences. The new prompt has **not** been re-run against
         the model, on a phone or in a browser; do that before relying on it.
 
+- [x] **Resource routing now scores intent instead of first-match keywords**
+      (Nathaniel). Asked: make the router "read and understand" the message
+      more, since finding the right resource is the chat's most important job.
+      Built (Stage 1 of a two-stage plan): each `AGENT_TOOL_DEFS` entry now has
+      `signals` (`[pattern, weight]`); `agentTopTool` sums matching weights per
+      resource and picks the highest at or above `AGENT_MIN_SCORE` (ties go to
+      the earlier entry). Added synonym and intent phrasings (e.g. "a person /
+      mentor / check in on me" -> accountability, "teaching on ..." -> sermon,
+      "something to reflect on" -> devotional, "distract / get through the
+      night / something quick I can do" -> coping), Bible references like
+      "Philippians 4:13" or "Romans 8" (book list; bare "job 2" deliberately
+      doesn't count), and negative signals ("are you a therapist?", "group
+      chat", "instead of a counselor"). A question about the AI ("are you my
+      friend?") no longer falls through to a feeling-word verse. Unchanged:
+      the affirmative-reply logic, the theme list, the "only an explicit ask or
+      an urge shows a card" rule, and Basic mode's own routing in
+      `resourcesAgent.js`.
+      - Measured offline in Node against the labeled 800-prompt set (no model
+        needed): explicit resource requests 209/284 (74%) -> 284/284, but that
+        set was used to write the patterns, so it's optimistic. On 92 fresh
+        hand-written prompts the old router scored 56/92 (61%) and the new one
+        86/92 (93.5%) before a second round of fixes for 5 of the 6 misses
+        (after which that set is no longer clean). Of 516 unlabeled prompts
+        only 19 changed card, all reviewed and acceptable (e.g. rehab ->
+        counselors, 12-step/SAA -> groups, no more verse for "are you my
+        friend?").
+      - Not verified in the running app or on the phone, and the weights are
+        hand-set, so new phrasings will still miss. Stage 2 (an on-device
+        embedding model, `snowflake-arctic-embed-s`, ~239 MB of graphics memory
+        per WebLLM's config) is the option if keyword scoring plateaus; its
+        download, memory, and latency cost on the Pixel 8a are untested.
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing
