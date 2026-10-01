@@ -75,6 +75,16 @@ class ReclaimAgent {
       return;
     }
 
+    // Reviewed, fixed answers for app/privacy questions and requests to find or excuse porn: the model must not answer these
+    // (see fixedAnswers.js). Not added to recentShown, so a later "yes" doesn't match words in the fixed text.
+    const fixed = typeof FixedAnswers !== "undefined" ? FixedAnswers.match(userText) : null;
+    if (fixed) {
+      await agentStreamText(fixed.reply, handlers.onTextDelta);
+      this.recentShown = [...this.recentShown, ""].slice(-3);
+      handlers.onDone();
+      return;
+    }
+
     if (!LocalModel.isReady()) {
       await this.fallback.send(userText, handlers);
       return;

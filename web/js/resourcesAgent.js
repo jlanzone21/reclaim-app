@@ -30,6 +30,14 @@ class ResourcesAgent {
       return;
     }
 
+    const fixed = typeof FixedAnswers !== "undefined" ? FixedAnswers.match(userText) : null;
+    if (fixed) {
+      await wait(200);
+      await this._streamText(fixed.reply, handlers.onTextDelta);
+      handlers.onDone();
+      return;
+    }
+
     const plan = await this._planResponse(userText);
 
     for (const step of plan.toolCalls) {

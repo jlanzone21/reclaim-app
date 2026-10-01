@@ -163,6 +163,10 @@ Main JS modules (`web/js/`):
 - `agentTools.js` — shared tools, keyword routing (`AGENT_TOOL_DEFS`,
   `AGENT_THEME_WORDS`, `agentPickResource`), `AGENT_SYSTEM_PROMPT`,
   `executeAgentTool` (single source of truth for tool output), crisis check.
+- `fixedAnswers.js` — reviewed, fixed replies for app/privacy questions and
+  requests to find or excuse porn; runs right after the crisis check, before
+  card routing or any model call, in both agents. Add an intent there instead of
+  trusting the model with a factual claim about the app.
 - `reclaimAgent.js` — the on-device AI agent. `resourcesAgent.js` — "Basic
   mode" scripted fallback (no model). `localModel.js` — WebLLM loading.
 - `personalContext.js` — builds the per-turn context sentences from
@@ -211,7 +215,7 @@ Main JS modules (`web/js/`):
 - Model: **Qwen3.5-2B** (`Qwen3.5-2B-q4f16_1-MLC`, ~1 GB) via WebLLM +
   WebGPU, downloaded only after the user taps to opt in. 4k context,
   temperature 0.3, thinking off. (4B was tried on-device and reverted.)
-- Flow per message: crisis gate → **keyword routing** picks at most one
+- Flow per message: crisis gate → **fixed answers** (`fixedAnswers.js`) → **keyword routing** picks at most one
   resource card (no model call — a model-based pick took ~16 s on a Pixel 8a)
   → app renders the card and writes its one-sentence intro, and **that is the
   whole reply (no model call)**; with no card the model writes 1–2 sentences

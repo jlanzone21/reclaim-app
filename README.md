@@ -389,7 +389,13 @@ await agent.send(userText, {
 
 - **`ReclaimAgent`** (`web/js/reclaimAgent.js`) — the agent the app uses.
   For each message:
-  1. The crisis check runs first (below).
+  1. The crisis check runs first (below). Right after it, `FixedAnswers.match`
+     (`fixedAnswers.js`) gives a **fixed, reviewed reply** (no model, no card) to
+     questions about the app or privacy ("is this private?", "does it track me?",
+     "delete my data", "why download the AI?") and to requests to find or excuse
+     porn or to hide activity / get around a filter. The model used to answer
+     these and made things up. Where the project has no information (price,
+     iPhone, who built it) the answer says so. Basic mode uses the same layer.
   2. **Weighted keyword scoring** (`agentPickResource`, using each tool's
      `signals` -- `[pattern, weight]` pairs -- in `agentTools.js`; highest
      score wins if it reaches `AGENT_MIN_SCORE`, negative weights cancel
