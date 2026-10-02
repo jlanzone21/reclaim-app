@@ -87,8 +87,12 @@ const CheckInStore = (function () {
   // Tags feed the tag-correlation half (see RiskScorer's class doc comment) -- native no-ops
   // harmlessly for whichever half doesn't apply (no recent notification, no mapped tags, etc).
   function recordOutcome(record) {
-    if (typeof LocalSignals === "undefined" || !LocalSignals.available()) return;
-    LocalSignals.recordCheckinOutcome(record.type, Date.now(), record.tags).catch(() => {});
+    if (typeof LocalSignals !== "undefined" && LocalSignals.available()) {
+      LocalSignals.recordCheckinOutcome(record.type, Date.now(), record.tags).catch(() => {});
+    }
+    if (typeof WebTracker !== "undefined" && WebTracker.available()) {
+      WebTracker.recordCheckinOutcome(record.type, Date.now(), record.tags);
+    }
   }
 
   function exportJson() {

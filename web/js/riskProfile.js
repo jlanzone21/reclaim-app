@@ -56,11 +56,15 @@ const RiskProfile = (function () {
   // Fire-and-forget, called after anything that changes the inputs (a new check-in, a saved
   // preference) and once at boot to cover data that already existed before this exists.
   function syncToNative() {
-    if (typeof LocalSignals === "undefined" || !LocalSignals.available()) return;
+    const native = typeof LocalSignals !== "undefined" && LocalSignals.available();
+    const extension = typeof WebTracker !== "undefined" && WebTracker.available();
+    if (!native && !extension) return;
     if (typeof UserPreferencesStore === "undefined" || typeof CheckInStore === "undefined") return;
     const prefs = UserPreferencesStore.get();
     const profile = build(CheckInStore.list());
-    LocalSignals.syncRiskContext({
+    // Same payload for both: on Android it's mirrored into LocalSignalsDb for the background
+    // Worker; in a browser it goes to the extension's local storage for its background scorer.
+    const payload = {
       accountabilityName: prefs.accountability_name || "",
       accountabilityPhone: prefs.accountability_phone || "",
       accountabilityName2: prefs.accountability_name_2 || "",
@@ -70,7 +74,9 @@ const RiskProfile = (function () {
       intensity: prefs.notification_intensity || "medium",
       topSlipTags: profile.topTags,
       riskyTimeBuckets: profile.riskyTimeBuckets,
-    }).catch(() => {});
+    };
+    if (native) LocalSignals.syncRiskContext(payload).catch(() => {});
+    if (extension) WebTracker.syncRiskContext(payload);
   }
 
   return { build, bucketFor, syncToNative };

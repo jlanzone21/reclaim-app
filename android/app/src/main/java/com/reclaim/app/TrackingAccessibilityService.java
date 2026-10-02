@@ -88,6 +88,16 @@ public class TrackingAccessibilityService extends AccessibilityService {
         KEYWORDS_SEVERE.put("onlyfans", "adult_site");
         KEYWORDS_SEVERE.put("stripchat", "adult_site");
         KEYWORDS_SEVERE.put("livejasmin", "adult_site");
+        // Added with the web extension's expanded list: more specific adult-site names.
+        KEYWORDS_SEVERE.put("bongacams", "adult_site");
+        KEYWORDS_SEVERE.put("myfreecams", "adult_site");
+        KEYWORDS_SEVERE.put("camsoda", "adult_site");
+        KEYWORDS_SEVERE.put("fansly", "adult_site");
+        KEYWORDS_SEVERE.put("eporner", "adult_site");
+        KEYWORDS_SEVERE.put("tube8", "adult_site");
+        KEYWORDS_SEVERE.put("nhentai", "adult_site");
+        KEYWORDS_SEVERE.put("fapello", "adult_site");
+        KEYWORDS_SEVERE.put("thothub", "adult_site");
         // Explicit, unambiguous search/intent phrases.
         KEYWORDS_SEVERE.put("watch porn", "explicit_content");
         KEYWORDS_SEVERE.put("free porn", "explicit_content");
@@ -123,6 +133,28 @@ public class TrackingAccessibilityService extends AccessibilityService {
         KEYWORDS_MODERATE.put("live cam", "adult_site");
         KEYWORDS_MODERATE.put("strip club", "adult_site");
         KEYWORDS_MODERATE.put("escort", "adult_site"); // bare word -- "police escort" etc. makes this moderate, not severe
+        // Added with the web extension's expanded list. Substring matching here, so words that sit
+        // inside ordinary words/names are NOT added (milf: "Milford", orgy: "Georgy", erome:
+        // "Jerome", motherless: "motherless children"); the web version can, with whole-word matching.
+        KEYWORDS_MODERATE.put("sex tape", "explicit_content");
+        KEYWORDS_MODERATE.put("sex video", "explicit_content");
+        KEYWORDS_MODERATE.put("sex cam", "explicit_content");
+        KEYWORDS_MODERATE.put("sex chat", "explicit_content");
+        KEYWORDS_MODERATE.put("blowjob", "explicit_content");
+        KEYWORDS_MODERATE.put("handjob", "explicit_content");
+        KEYWORDS_MODERATE.put("cumshot", "explicit_content");
+        KEYWORDS_MODERATE.put("creampie", "explicit_content");
+        KEYWORDS_MODERATE.put("gangbang", "explicit_content");
+        KEYWORDS_MODERATE.put("threesome", "explicit_content");
+        KEYWORDS_MODERATE.put("camgirl", "explicit_content");
+        KEYWORDS_MODERATE.put("leaked nudes", "explicit_content");
+        KEYWORDS_MODERATE.put("rule34", "explicit_content");
+        KEYWORDS_MODERATE.put("rule 34", "explicit_content");
+        KEYWORDS_MODERATE.put("ashley madison", "adult_site");
+        KEYWORDS_MODERATE.put("ashleymadison", "adult_site");
+        KEYWORDS_MODERATE.put("adultfriendfinder", "adult_site");
+        KEYWORDS_MODERATE.put("call girl", "adult_site");
+        KEYWORDS_MODERATE.put("brothel", "adult_site");
     }
 
     private static final Map<String, String> KEYWORDS_MILD = new HashMap<>();
@@ -137,6 +169,13 @@ public class TrackingAccessibilityService extends AccessibilityService {
         KEYWORDS_MILD.put("swimsuit pics", "explicit_content");
         KEYWORDS_MILD.put("hookup app", "adult_site");
         KEYWORDS_MILD.put("cam site", "adult_site");
+        // Added with the web extension's expanded list: common outside pornography too.
+        KEYWORDS_MILD.put("hardcore", "explicit_content");
+        KEYWORDS_MILD.put("softcore", "explicit_content");
+        KEYWORDS_MILD.put("masturbat", "explicit_content"); // masturbate / masturbation / masturbating
+        KEYWORDS_MILD.put("naked", "explicit_content");
+        KEYWORDS_MILD.put("topless", "explicit_content");
+        KEYWORDS_MILD.put("lewd", "explicit_content");
     }
 
     @Override

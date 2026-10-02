@@ -132,6 +132,8 @@ capacitor.config.ts  Capacitor (appId com.reclaim.app, webDir web).
 android/             Capacitor Android project + native Java plugins.
 scripts/             vendor-webllm.mjs, vendor-youversion.mjs,
                      export-seed-sql.mjs, import-small-groups.mjs, make-icons.mjs
+extension/           Local-only Chrome/Edge extension: web-version site tracking,
+                     risk scoring (port of RiskScorer) and notifications. See README.
 supabase/            migrations/ (applied), seed.sql, checkins_design.sql (NOT applied)
 wrangler.jsonc       Cloudflare static-assets deploy of ./web (reclaim128.org).
 branding/, build/    Logo and Electron icons.

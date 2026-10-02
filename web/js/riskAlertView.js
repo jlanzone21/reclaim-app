@@ -104,5 +104,7 @@ const RiskAlertView = (function () {
     clearTimeout(dismissTimer);
   }
 
-  return { init, checkPending };
+  // render is exposed for the web version, where the alert comes from WebTracker.takePending()
+  // (app.js) rather than the native bridge checkPending() reads.
+  return { init, checkPending, render };
 })();

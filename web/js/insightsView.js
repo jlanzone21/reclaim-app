@@ -163,7 +163,40 @@ const InsightsView = (function () {
   // all until the Privacy tab's permissions are granted -- an empty list here is the honest,
   // correct state until then, not a bug.
 
+  // Web version: the browser extension's local data, in the same three panels. No equivalent of
+  // Android's periodic background samples exists in a browser, so that panel says so.
+  async function renderWebActivity() {
+    const { sessions, matches } = await WebTracker.getActivity(8);
+    els.eventsList.previousElementSibling.textContent = "Recent site visits";
+    els.matchesList.previousElementSibling.textContent = "Recent keyword matches";
+    renderActivityList(els.usageList, [], "Not available in a browser");
+    renderActivityList(
+      els.eventsList,
+      sessions.map((s) => {
+        const mins = Math.max(1, Math.round((s.end - s.start) / 60000));
+        return {
+          when: new Date(s.start).toISOString(),
+          main: s.domain,
+          detail: s.open ? `${mins}m so far` : `${mins}m`,
+        };
+      }),
+      "No site visits yet — turn on browser tracking in Privacy"
+    );
+    renderActivityList(
+      els.matchesList,
+      matches.map((m) => ({ when: new Date(m.at).toISOString(), main: m.domain, detail: m.keyword })),
+      "No keyword matches yet"
+    );
+  }
+
   async function renderRecentActivity() {
+    // Nothing to show (and nothing to confirm) unless something is collecting: hide the whole
+    // on-device section on a plain browser rather than a wall of "not available" panels.
+    document.getElementById("onDeviceTrackingSection").hidden = !LocalSignals.available() && !WebTracker.available();
+    if (!LocalSignals.available() && WebTracker.available()) {
+      await renderWebActivity();
+      return;
+    }
     if (!LocalSignals.available()) {
       renderActivityList(els.usageList, [], "Not available on this platform");
       renderActivityList(els.eventsList, [], "Not available on this platform");
@@ -239,11 +272,12 @@ const InsightsView = (function () {
   // exactly what counts as a response. A bespoke small renderer, not renderActivityList, since
   // there's no per-row timestamp here, just two running totals.
   async function renderNotificationStats() {
-    if (!LocalSignals.available()) {
+    const web = !LocalSignals.available() && WebTracker.available();
+    if (!LocalSignals.available() && !web) {
       renderStatsList([], "Not available on this platform");
       return;
     }
-    const stats = await LocalSignals.getNotificationStats();
+    const stats = web ? await WebTracker.getNotificationStats() : await LocalSignals.getNotificationStats();
     const rows = [
       ["Nightly check-in", stats.nightly],
       ["Risk check-in", stats.risk],
