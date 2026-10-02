@@ -20,16 +20,55 @@ const HomeView = (function () {
       verseBody: document.getElementById("homeVerseBody"),
       statRow: document.getElementById("homeStatRow"),
       callCards: document.getElementById("homeCallCards"),
+      permReminder: document.getElementById("homePermReminder"),
     };
     initialized = true;
+    // Coming back from the system settings screen after granting something should clear the
+    // reminder without needing to switch tabs.
+    document.addEventListener("visibilitychange", () => {
+      const panel = document.querySelector('[data-view-panel="home"]');
+      if (!document.hidden && panel && !panel.hidden) renderPermissionReminder();
+    });
     refresh();
   }
 
   function refresh() {
     if (!initialized) return init();
+    renderPermissionReminder();
     renderVerse();
     renderAccountabilityShortcut();
     renderStats();
+  }
+
+  // Reminder to finish granting permissions (all of them, or just the remaining ones). Tapping it
+  // opens the Privacy tab where the Grant buttons live. Renders nothing when everything's granted
+  // or there's nothing grantable (web/desktop).
+  async function renderPermissionReminder() {
+    if (typeof PermissionsView === "undefined") return;
+    const missing = await PermissionsView.missing();
+    els.permReminder.innerHTML = "";
+    if (!missing.length) return;
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "home-perm-card";
+
+    const text = document.createElement("span");
+    text.className = "home-call-text";
+    const label = document.createElement("span");
+    label.className = "home-call-label";
+    label.textContent = missing.length === 1 ? "1 permission still needs to be enabled" : `${missing.length} permissions still need to be enabled`;
+    const sub = document.createElement("span");
+    sub.className = "home-call-sub";
+    sub.textContent = `Reclaim works best with all of them on — still off: ${missing.join(", ")}. Tap to finish.`;
+    text.append(label, sub);
+    btn.appendChild(text);
+
+    btn.onclick = () => {
+      const privacyNav = document.querySelector('.nav-item[data-view="privacy"]');
+      if (privacyNav) privacyNav.click();
+    };
+    els.permReminder.appendChild(btn);
   }
 
   // Same tel: mechanism as the crisis modal and RiskAlertView -- a real anchor click, not a
