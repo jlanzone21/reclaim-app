@@ -20,8 +20,12 @@ android {
         applicationId "com.reclaim.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // Bump both on every Firebase App Distribution upload -- a build with an unchanged
+        // versionCode gets treated as "already existing" (not a new release), and Firebase
+        // doesn't reliably send invite emails for that, including to testers added since the
+        // last real release. See PURPOSE.md.
+        versionCode 2
+        versionName "1.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
