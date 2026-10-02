@@ -1,5 +1,5 @@
 /**
- * The one-time setup form (up to 2 accountability partners, pastor contact, tempting times/triggers/locations,
+ * The one-time setup form (up to 2 accountability partners, pastor contact, tempting times/triggers,
  * home location, trigger apps, notification intensity) — shown as the second step of first-launch
  * onboarding (chained from the welcome overlay's "I understand"), and reachable any time after
  * from Privacy's "Edit your preferences" so nothing here is a one-shot, especially the
@@ -34,7 +34,6 @@ const PreferencesView = (function () {
       pastorPhone: document.getElementById("prefPastorPhone"),
       timeGrid: document.getElementById("prefTimeGrid"),
       triggerGrid: document.getElementById("prefTriggerGrid"),
-      locations: document.getElementById("prefLocations"),
       homeStatus: document.getElementById("prefHomeStatus"),
       saveHomeBtn: document.getElementById("prefSaveHomeBtn"),
       clearHomeBtn: document.getElementById("prefClearHomeBtn"),
@@ -87,7 +86,6 @@ const PreferencesView = (function () {
     els.accountabilityPhone2.value = prefs.accountability_phone_2 || "";
     els.pastorName.value = prefs.pastor_name || "";
     els.pastorPhone.value = prefs.pastor_phone || "";
-    els.locations.value = prefs.tempting_locations || "";
     els.otherNotes.value = prefs.other_notes || "";
     homeLat = prefs.home_lat ?? null;
     homeLon = prefs.home_lon ?? null;
@@ -201,7 +199,6 @@ const PreferencesView = (function () {
       pastor_phone: els.pastorPhone.value.trim(),
       tempting_times: Array.from(selectedTimes),
       common_triggers: Array.from(selectedTriggers),
-      tempting_locations: els.locations.value.trim(),
       notification_intensity: selectedIntensity,
       other_notes: els.otherNotes.value.trim(),
       home_lat: homeLat,

@@ -102,7 +102,7 @@ reality:
       partner + pastor name/phone (optional, explicitly revisitable —
       skipping now doesn't lose the chance), tempting times of day, common
       trigger situations (reuses `CONDITION_TAGS`, the same vocabulary
-      check-ins already use), tempting locations (free text), trigger apps
+      check-ins already use), trigger apps
       (reuses the real monitoring allowlist rather than a separate
       self-reported list — naming an app here IS adding it to what gets
       read), and notification intensity (Low/Medium/High — will scale the
@@ -1555,6 +1555,47 @@ reality:
         intended. Also confirmed the native schema migration: all
         pre-existing keyword_matches rows survived the `DB_VERSION` bump
         with `severity=NULL`, nothing lost.
+
+- [x] **"Where does it usually happen?" free-text field removed from
+      onboarding/preferences.** User's own framing: being at home should
+      just count as higher risk automatically, not rely on someone
+      self-reporting it in a text box once at setup. Removed the field
+      (UI, pre-fill, save, and the AI-context sentence it fed) from
+      `web/index.html`/`preferencesView.js`/`personalContext.js`; the
+      underlying `tempting_locations` DB column is deliberately left in
+      place as harmless unused legacy, same precedent as `sleep_hours`.
+      The actual home-based risk factor (mirroring `home_lat`/`home_lon`
+      into `LocalSignalsDb`, a new adaptive RiskScorer factor reusing the
+      same Haversine Home/Away thresholds Insights already uses) is a
+      separate, not-yet-started follow-up, not part of this change.
+
+- [x] **Severe/moderate keyword matches now trigger the risk-nudge check
+      immediately, instead of waiting for the next ~15-minute tick.** Text
+      capture + keyword matching (`TrackingAccessibilityService`) was
+      already real-time (`TYPE_WINDOW_CONTENT_CHANGED`, ~200ms OS debounce
+      via `accessibility_service_config.xml`'s `notificationTimeout`), but
+      `RiskNudgeMonitor.checkAndNotify()` -- the part that actually scores
+      and decides whether to notify -- was only ever called from
+      `BaselineSampleWorker`'s `PeriodicWorkRequest`, which can't be
+      scheduled tighter than WorkManager's own enforced 15-minute floor. A
+      severe match could sit unseen for up to 15 minutes. `checkKeywords`
+      (`TrackingAccessibilityService.java`) now calls
+      `RiskNudgeMonitor.checkAndNotify(this)` directly right after a SEVERE
+      or MODERATE match is recorded (mild stays on the regular cycle --
+      that tier is the genuinely ambiguous one, not worth an immediate
+      interrupt). Safe to call this often: `checkAndNotify`'s own dedup is
+      keyed by session start time, not call frequency, so the extra call
+      only ever means noticing sooner, never an extra notification for the
+      same session. This is part of the file Claude Code already wrote
+      directly (allowlist text capture + keyword matching), not the two
+      files edited by hand for Phase 4.
+      - Verified on-device, not simulated: typed a severe-tier test string
+        ("pornhubtestmatch") into Chrome's address bar (allowlisted,
+        never navigated/searched) and watched logcat -- a real high-risk
+        notification ("Got a second to check in? -- Call Joey") posted
+        within about 2 seconds (`score=180 threshold=60 [trigger-app(+30)
+        recent-keyword-severe(+150)]`), not after waiting on the next
+        15-minute `BaselineSampleWorker` tick.
 
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
