@@ -433,14 +433,35 @@
 
       <div class="field-label" style="margin-top:0;">Accountability partners</div>
       <p style="margin:0 0 8px; font-size:12.5px; color:var(--text-muted);">Optional, but worth adding when you're ready — up to 2, and you'll always find this in Privacy.</p>
-      <input type="text" id="prefAccountabilityName" class="field-input" placeholder="Name" style="margin-bottom:8px;" />
-      <input type="tel" id="prefAccountabilityPhone" class="field-input" placeholder="Phone number" style="margin-bottom:8px;" />
-      <input type="text" id="prefAccountabilityName2" class="field-input" placeholder="Second partner's name (optional)" style="margin-bottom:8px;" />
-      <input type="tel" id="prefAccountabilityPhone2" class="field-input" placeholder="Second partner's phone number" />
+      <!-- Contact slots stay hidden until the person taps the Add button (preferencesView.js
+           shows them one at a time, and auto-shows any that already have a saved value). -->
+      <div class="contact-slot" data-slot="partner1" hidden>
+        <input type="text" id="prefAccountabilityName" class="field-input" placeholder="Name" />
+        <input type="tel" id="prefAccountabilityPhone" class="field-input" placeholder="Phone number" />
+        <button type="button" class="contact-remove" aria-label="Remove accountability partner">Remove</button>
+      </div>
+      <div class="contact-slot" data-slot="partner2" hidden>
+        <input type="text" id="prefAccountabilityName2" class="field-input" placeholder="Name" />
+        <input type="tel" id="prefAccountabilityPhone2" class="field-input" placeholder="Phone number" />
+        <button type="button" class="contact-remove" aria-label="Remove accountability partner">Remove</button>
+      </div>
+      <button type="button" class="contact-add-btn" data-add-group="partners">+ Add an accountability partner</button>
 
-      <div class="field-label">Pastor or mentor</div>
-      <input type="text" id="prefPastorName" class="field-input" placeholder="Name" style="margin-bottom:8px;" />
-      <input type="tel" id="prefPastorPhone" class="field-input" placeholder="Phone number" />
+      <div class="field-label">Pastor</div>
+      <div class="contact-slot" data-slot="pastor" hidden>
+        <input type="text" id="prefPastorName" class="field-input" placeholder="Name" />
+        <input type="tel" id="prefPastorPhone" class="field-input" placeholder="Phone number" />
+        <button type="button" class="contact-remove" aria-label="Remove pastor">Remove</button>
+      </div>
+      <button type="button" class="contact-add-btn" data-add-group="pastor">+ Add a pastor</button>
+
+      <div class="field-label">Mentor</div>
+      <div class="contact-slot" data-slot="mentor" hidden>
+        <input type="text" id="prefMentorName" class="field-input" placeholder="Name" />
+        <input type="tel" id="prefMentorPhone" class="field-input" placeholder="Phone number" />
+        <button type="button" class="contact-remove" aria-label="Remove mentor">Remove</button>
+      </div>
+      <button type="button" class="contact-add-btn" data-add-group="mentor">+ Add a mentor</button>
 
       <div class="field-label">When are you usually tempted?</div>
       <div class="tag-grid" id="prefTimeGrid"></div>

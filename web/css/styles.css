@@ -1440,6 +1440,52 @@ a.resource-contact:active {
   border-color: var(--success);
 }
 
+/* Onboarding/preferences contact slots (accountability partners, pastor, mentor): hidden until
+   added with a dashed "+ Add" button, so the form isn't a wall of empty fields. */
+.contact-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  margin-bottom: 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.contact-slot[hidden] {
+  display: none;
+}
+
+.contact-remove {
+  align-self: flex-end;
+  padding: 2px 4px;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12.5px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.contact-add-btn {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--accent);
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.contact-add-btn[hidden] {
+  display: none;
+}
+
 /* Reminder to finish granting permissions -- same shape as the call card, accent-colored so it
    reads as "something to do" rather than a shortcut. Rendered only while permissions remain. */
 .home-perm-card {

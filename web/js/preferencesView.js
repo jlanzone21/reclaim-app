@@ -1,5 +1,5 @@
 /**
- * The one-time setup form (up to 2 accountability partners, pastor contact, tempting times/triggers/locations,
+ * The one-time setup form (up to 2 accountability partners, pastor and mentor contacts, tempting times/triggers/locations,
  * home location, trigger apps, notification intensity) — shown as the second step of first-launch
  * onboarding (chained from the welcome overlay's "I understand"), and reachable any time after
  * from Privacy's "Edit your preferences" so nothing here is a one-shot, especially the
@@ -32,6 +32,8 @@ const PreferencesView = (function () {
       accountabilityPhone2: document.getElementById("prefAccountabilityPhone2"),
       pastorName: document.getElementById("prefPastorName"),
       pastorPhone: document.getElementById("prefPastorPhone"),
+      mentorName: document.getElementById("prefMentorName"),
+      mentorPhone: document.getElementById("prefMentorPhone"),
       timeGrid: document.getElementById("prefTimeGrid"),
       triggerGrid: document.getElementById("prefTriggerGrid"),
       locations: document.getElementById("prefLocations"),
@@ -52,6 +54,7 @@ const PreferencesView = (function () {
     renderChipGrid(els.triggerGrid, CONDITION_TAGS, selectedTriggers);
     wireIntensityScale();
     wireHomeLocation();
+    wireContactSlots();
 
     els.save.addEventListener("click", () => { persist(true); close(); });
     els.skip.addEventListener("click", () => close());
@@ -87,6 +90,9 @@ const PreferencesView = (function () {
     els.accountabilityPhone2.value = prefs.accountability_phone_2 || "";
     els.pastorName.value = prefs.pastor_name || "";
     els.pastorPhone.value = prefs.pastor_phone || "";
+    els.mentorName.value = prefs.mentor_name || "";
+    els.mentorPhone.value = prefs.mentor_phone || "";
+    syncContactSlots(true);
     els.locations.value = prefs.tempting_locations || "";
     els.otherNotes.value = prefs.other_notes || "";
     homeLat = prefs.home_lat ?? null;
@@ -101,6 +107,51 @@ const PreferencesView = (function () {
     selectedIntensity = prefs.notification_intensity || "medium";
     Array.from(els.intensityScale.querySelectorAll(".scale-btn")).forEach((btn) => {
       btn.classList.toggle("selected", btn.dataset.value === selectedIntensity);
+    });
+  }
+
+  // Contact slots (partners, pastor, mentor) start hidden and are added one at a time with a "+ Add"
+  // button, rather than showing six empty fields up front. Each group maps to its slots in order;
+  // the storage is still the fixed name/phone columns, so a slot is "in use" when it's visible.
+  const SLOT_GROUPS = { partners: ["partner1", "partner2"], pastor: ["pastor"], mentor: ["mentor"] };
+
+  function slotEl(slot) {
+    return els.overlay.querySelector(`.contact-slot[data-slot="${slot}"]`);
+  }
+
+  function slotInputs(slot) {
+    return Array.from(slotEl(slot).querySelectorAll("input"));
+  }
+
+  // fromSaved: show every slot that already has a value (used when the form opens). Otherwise just
+  // refresh each Add button -- hidden once every slot in its group is showing.
+  function syncContactSlots(fromSaved) {
+    Object.entries(SLOT_GROUPS).forEach(([group, slots]) => {
+      slots.forEach((slot) => {
+        const el = slotEl(slot);
+        if (fromSaved) el.hidden = !slotInputs(slot).some((i) => i.value.trim());
+      });
+      const addBtn = els.overlay.querySelector(`[data-add-group="${group}"]`);
+      addBtn.hidden = slots.every((slot) => !slotEl(slot).hidden);
+    });
+  }
+
+  function wireContactSlots() {
+    Object.entries(SLOT_GROUPS).forEach(([group, slots]) => {
+      els.overlay.querySelector(`[data-add-group="${group}"]`).addEventListener("click", () => {
+        const next = slots.find((slot) => slotEl(slot).hidden);
+        if (!next) return;
+        slotEl(next).hidden = false;
+        slotInputs(next)[0].focus();
+        syncContactSlots(false);
+      });
+    });
+    els.overlay.querySelectorAll(".contact-slot").forEach((el) => {
+      el.querySelector(".contact-remove").addEventListener("click", () => {
+        el.querySelectorAll("input").forEach((i) => (i.value = ""));
+        el.hidden = true;
+        syncContactSlots(false);
+      });
     });
   }
 
@@ -192,13 +243,20 @@ const PreferencesView = (function () {
 
   function persist(markOnboardingDone) {
     const prefs = UserPreferencesStore.get();
+    // If the first partner was removed but the second kept, the second moves up -- other code
+    // treats slot 1 as the primary partner (e.g. the notification's call action).
+    let p1 = [els.accountabilityName.value.trim(), els.accountabilityPhone.value.trim()];
+    let p2 = [els.accountabilityName2.value.trim(), els.accountabilityPhone2.value.trim()];
+    if (!p1[0] && !p1[1]) [p1, p2] = [p2, ["", ""]];
     const fields = {
-      accountability_name: els.accountabilityName.value.trim(),
-      accountability_phone: els.accountabilityPhone.value.trim(),
-      accountability_name_2: els.accountabilityName2.value.trim(),
-      accountability_phone_2: els.accountabilityPhone2.value.trim(),
+      accountability_name: p1[0],
+      accountability_phone: p1[1],
+      accountability_name_2: p2[0],
+      accountability_phone_2: p2[1],
       pastor_name: els.pastorName.value.trim(),
       pastor_phone: els.pastorPhone.value.trim(),
+      mentor_name: els.mentorName.value.trim(),
+      mentor_phone: els.mentorPhone.value.trim(),
       tempting_times: Array.from(selectedTimes),
       common_triggers: Array.from(selectedTriggers),
       tempting_locations: els.locations.value.trim(),

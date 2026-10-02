@@ -64,6 +64,8 @@ const DB = (function () {
       accountability_phone_2 TEXT,
       pastor_name TEXT,
       pastor_phone TEXT,
+      mentor_name TEXT,
+      mentor_phone TEXT,
       tempting_times TEXT,
       common_triggers TEXT,
       tempting_locations TEXT,
@@ -226,6 +228,9 @@ const DB = (function () {
     const prefCols = all("PRAGMA table_info(user_preferences)").map((c) => c.name);
     if (!prefCols.includes("home_lat")) run("ALTER TABLE user_preferences ADD COLUMN home_lat REAL");
     if (!prefCols.includes("home_lon")) run("ALTER TABLE user_preferences ADD COLUMN home_lon REAL");
+    // Mentor, separate from the pastor (the form used to have one combined "pastor or mentor" slot).
+    if (!prefCols.includes("mentor_name")) run("ALTER TABLE user_preferences ADD COLUMN mentor_name TEXT");
+    if (!prefCols.includes("mentor_phone")) run("ALTER TABLE user_preferences ADD COLUMN mentor_phone TEXT");
     // Second accountability partner -- up to 2 is now supported everywhere the first one is.
     if (!prefCols.includes("accountability_name_2")) run("ALTER TABLE user_preferences ADD COLUMN accountability_name_2 TEXT");
     if (!prefCols.includes("accountability_phone_2")) run("ALTER TABLE user_preferences ADD COLUMN accountability_phone_2 TEXT");

@@ -82,7 +82,10 @@ function buildUserPreferencesContext(prefs) {
     parts.push(`Their accountability partners are ${partnerNames.join(" and ")} — both reachable directly from the app.`);
   }
   if (prefs.pastor_name) {
-    parts.push(`Their pastor/mentor is ${prefs.pastor_name}.`);
+    parts.push(`Their pastor is ${prefs.pastor_name}.`);
+  }
+  if (prefs.mentor_name) {
+    parts.push(`Their mentor is ${prefs.mentor_name}.`);
   }
   if (prefs.tempting_times && prefs.tempting_times.length) {
     parts.push(`They say they're most tempted in the ${prefs.tempting_times.join(", ").toLowerCase()}.`);
