@@ -72,7 +72,8 @@ const DB = (function () {
       onboarding_completed_at TEXT,
       updated_at TEXT,
       home_lat REAL,
-      home_lon REAL
+      home_lon REAL,
+      gender TEXT
     );
 
     -- One row per topic from bible_verses_for_100_circumstances.csv (user-provided). refs is a
@@ -243,6 +244,7 @@ const DB = (function () {
     // Second accountability partner -- up to 2 is now supported everywhere the first one is.
     if (!prefCols.includes("accountability_name_2")) run("ALTER TABLE user_preferences ADD COLUMN accountability_name_2 TEXT");
     if (!prefCols.includes("accountability_phone_2")) run("ALTER TABLE user_preferences ADD COLUMN accountability_phone_2 TEXT");
+    if (!prefCols.includes("gender")) run("ALTER TABLE user_preferences ADD COLUMN gender TEXT");
   }
 
   async function init() {

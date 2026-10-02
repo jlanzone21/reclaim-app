@@ -1720,6 +1720,45 @@ reality:
       Gettysburg (110 mi) -> Southern Maryland (132 mi), correct ascending
       geographic order.
 
+- [x] **Gender question added to onboarding/preferences; accountability
+      partner and pastor/mentor sections redesigned around a "+ Add"
+      button** instead of showing empty name/phone inputs up front.
+      - `web/index.html`: a new "Gender" field (Male/Female, same
+        `.scale-picker`/`.scale-btn` component the notification-intensity
+        picker already uses) sits between the pastor section and "When
+        are you usually tempted?". The accountability-partner and pastor
+        sections each became a `.allowlist-list` (same component the
+        allowlist manager uses) of saved-person rows plus a dashed,
+        orange "+ Add ..." button with a circular plus badge
+        (`.add-person-btn`/`.add-person-plus`, new in `styles.css`);
+        clicking it reveals a small inline name/phone form
+        (`.person-form`) instead of static always-visible inputs.
+      - `preferencesView.js` was restructured around JS-managed state
+        (`partners: [{name, phone}]`, up to 2; `pastor: {name, phone} |
+        null`; `selectedGender`) instead of reading/writing individual
+        input elements directly. `wireGenderScale` lets the selected
+        option be clicked again to deselect -- gender has no default,
+        unlike intensity.
+      - `db.js` gained a `gender TEXT` column on `user_preferences`
+        (`migrateColumns`, no seed-version bump needed -- this is a
+        column migration, not seed content). `userPreferencesStore.js`'s
+        `DEFAULTS`/params/`UPDATE`/`INSERT` all gained `gender`.
+      - **Found and fixed a real bug during verification**: `.add-person-
+        btn[hidden] { display: none; }` was missing, so `.add-person-
+        btn`'s own `display: flex` (a class selector) beat the `[hidden]`
+        attribute's default `display: none` at equal specificity --
+        the "+" button stayed visible even after being hidden. Confirmed
+        the fix via computed style (`display: none` after adding a
+        person) once added.
+      - Verified end-to-end in the browser, not just read: added a
+        partner and a pastor through the real "+" flow, selected Male,
+        saved, and confirmed `UserPreferencesStore.get()` round-tripped
+        every field correctly; reopened the form and confirmed both
+        people pre-fill as rows with both "+" buttons correctly hidden
+        (2/2 partners, pastor filled) and Male still selected; removed a
+        partner via its × and confirmed the "+" button reappeared and the
+        removed partner's fields cleared to null on save.
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing

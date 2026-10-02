@@ -1753,6 +1753,51 @@ a.resource-contact:active {
   padding: 10px 0;
 }
 
+/* ---- Preferences: accountability partner / pastor "add a person" rows ---- */
+
+.add-person-btn[hidden] {
+  display: none;
+}
+
+.add-person-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.add-person-btn:hover {
+  border-color: var(--accent);
+  background: var(--bg-inset);
+}
+
+.add-person-plus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.person-form {
+  margin-top: 8px;
+}
+
 .allowlist-picker-list {
   display: flex;
   flex-direction: column;

@@ -430,14 +430,34 @@
 
       <div class="field-label" style="margin-top:0;">Accountability partners</div>
       <p style="margin:0 0 8px; font-size:12.5px; color:var(--text-muted);">Optional, but worth adding when you're ready — up to 2, and you'll always find this in Privacy.</p>
-      <input type="text" id="prefAccountabilityName" class="field-input" placeholder="Name" style="margin-bottom:8px;" />
-      <input type="tel" id="prefAccountabilityPhone" class="field-input" placeholder="Phone number" style="margin-bottom:8px;" />
-      <input type="text" id="prefAccountabilityName2" class="field-input" placeholder="Second partner's name (optional)" style="margin-bottom:8px;" />
-      <input type="tel" id="prefAccountabilityPhone2" class="field-input" placeholder="Second partner's phone number" />
+      <div id="prefPartnersList" class="allowlist-list" style="margin-bottom:8px;"></div>
+      <button type="button" class="add-person-btn" id="prefAddPartnerBtn"><span class="add-person-plus">+</span> Add accountability partner</button>
+      <div id="prefPartnerForm" class="person-form" hidden>
+        <input type="text" id="prefPartnerFormName" class="field-input" placeholder="Name" style="margin-bottom:8px;" />
+        <input type="tel" id="prefPartnerFormPhone" class="field-input" placeholder="Phone number" style="margin-bottom:8px;" />
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="modal-continue" id="prefPartnerFormSave" style="flex:1;">Add</button>
+          <button type="button" class="secondary-btn" id="prefPartnerFormCancel" style="flex:0 0 auto;">Cancel</button>
+        </div>
+      </div>
 
       <div class="field-label">Pastor or mentor</div>
-      <input type="text" id="prefPastorName" class="field-input" placeholder="Name" style="margin-bottom:8px;" />
-      <input type="tel" id="prefPastorPhone" class="field-input" placeholder="Phone number" />
+      <div id="prefPastorList" class="allowlist-list" style="margin-bottom:8px;"></div>
+      <button type="button" class="add-person-btn" id="prefAddPastorBtn"><span class="add-person-plus">+</span> Add pastor or mentor</button>
+      <div id="prefPastorForm" class="person-form" hidden>
+        <input type="text" id="prefPastorFormName" class="field-input" placeholder="Name" style="margin-bottom:8px;" />
+        <input type="tel" id="prefPastorFormPhone" class="field-input" placeholder="Phone number" style="margin-bottom:8px;" />
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="modal-continue" id="prefPastorFormSave" style="flex:1;">Add</button>
+          <button type="button" class="secondary-btn" id="prefPastorFormCancel" style="flex:0 0 auto;">Cancel</button>
+        </div>
+      </div>
+
+      <div class="field-label">Gender</div>
+      <div class="scale-picker" id="prefGenderScale">
+        <button type="button" class="scale-btn" data-value="male">Male</button>
+        <button type="button" class="scale-btn" data-value="female">Female</button>
+      </div>
 
       <div class="field-label">When are you usually tempted?</div>
       <div class="tag-grid" id="prefTimeGrid"></div>
