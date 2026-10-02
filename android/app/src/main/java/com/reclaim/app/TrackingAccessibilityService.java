@@ -83,6 +83,56 @@ public class TrackingAccessibilityService extends AccessibilityService {
         KEYWORDS.put("chaturbate", "adult_site");
         KEYWORDS.put("escort", "adult_site");
         KEYWORDS.put("strip club", "adult_site");
+
+        // Expanded to match the web extension's list (extension/lib/shared.js). Matching here is a
+        // plain substring, so words the web list can safely include are left out or already covered:
+        //  - porno / pornographic / pornstar / "porn star" / "escorts" / "camgirls" / "cam girls" /
+        //    "sex videos" / "call girls" are already caught as substrings of entries above or below.
+        //  - milf ("Milford"), orgy ("Georgy"), erome ("Jerome") and motherless ("motherless
+        //    children") are NOT added: they sit inside ordinary words and names, which the web
+        //    version avoids with whole-word matching but a substring match cannot.
+        KEYWORDS.put("sex tape", "explicit_content");
+        KEYWORDS.put("sex video", "explicit_content");
+        KEYWORDS.put("sex cam", "explicit_content");
+        KEYWORDS.put("sex chat", "explicit_content");
+        KEYWORDS.put("hardcore", "explicit_content");
+        KEYWORDS.put("softcore", "explicit_content");
+        KEYWORDS.put("blowjob", "explicit_content");
+        KEYWORDS.put("handjob", "explicit_content");
+        KEYWORDS.put("cumshot", "explicit_content");
+        KEYWORDS.put("creampie", "explicit_content");
+        KEYWORDS.put("gangbang", "explicit_content");
+        KEYWORDS.put("threesome", "explicit_content");
+        KEYWORDS.put("masturbat", "explicit_content"); // masturbate / masturbation / masturbating
+        KEYWORDS.put("camgirl", "explicit_content");
+        KEYWORDS.put("cam girl", "explicit_content");
+        KEYWORDS.put("leaked nudes", "explicit_content");
+        KEYWORDS.put("naked", "explicit_content");
+        KEYWORDS.put("topless", "explicit_content");
+        KEYWORDS.put("lewd", "explicit_content");
+        KEYWORDS.put("rule34", "explicit_content");
+        KEYWORDS.put("rule 34", "explicit_content");
+        KEYWORDS.put("redtube", "adult_site");
+        KEYWORDS.put("youporn", "adult_site");
+        KEYWORDS.put("xnxx", "adult_site");
+        KEYWORDS.put("spankbang", "adult_site");
+        KEYWORDS.put("brazzers", "adult_site");
+        KEYWORDS.put("stripchat", "adult_site");
+        KEYWORDS.put("bongacams", "adult_site");
+        KEYWORDS.put("livejasmin", "adult_site");
+        KEYWORDS.put("myfreecams", "adult_site");
+        KEYWORDS.put("camsoda", "adult_site");
+        KEYWORDS.put("fansly", "adult_site");
+        KEYWORDS.put("eporner", "adult_site");
+        KEYWORDS.put("tube8", "adult_site");
+        KEYWORDS.put("nhentai", "adult_site");
+        KEYWORDS.put("fapello", "adult_site");
+        KEYWORDS.put("thothub", "adult_site");
+        KEYWORDS.put("ashley madison", "adult_site");
+        KEYWORDS.put("ashleymadison", "adult_site");
+        KEYWORDS.put("adultfriendfinder", "adult_site");
+        KEYWORDS.put("call girl", "adult_site");
+        KEYWORDS.put("brothel", "adult_site");
     }
 
     @Override

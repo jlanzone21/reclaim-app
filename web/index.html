@@ -7,6 +7,10 @@
   <link rel="icon" type="image/png" sizes="192x192" href="assets/icon-192.png" />
   <link rel="apple-touch-icon" href="assets/icon-192.png" />
   <link rel="stylesheet" href="css/styles.css" />
+  <script>
+    // Marks the Android (Capacitor) app so features that only exist there can be hidden on the web.
+    if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) document.documentElement.classList.add("is-native");
+  </script>
 </head>
 <body>
   <div class="shell">
@@ -230,6 +234,7 @@
               <button type="button" class="danger-btn" id="clearDataBtn">Clear all check-in data</button>
             </div>
 
+            <div id="onDeviceTrackingSection">
             <p class="view-subtitle" style="margin-top: 26px;">On-device tracking (see the Privacy tab) — everything below is read straight from what's actually been collected on this device, so it doubles as confirmation that tracking is working.</p>
 
             <div class="panel">
@@ -237,7 +242,7 @@
               <div id="notificationStatsList" class="activity-list"></div>
             </div>
 
-            <div class="panel">
+            <div class="panel native-only">
               <div class="panel-title">Recent background samples</div>
               <div id="activityUsageList" class="activity-list"></div>
             </div>
@@ -251,6 +256,7 @@
               <div class="panel-title">Recent keyword matches</div>
               <div id="activityMatchesList" class="activity-list"></div>
             </div>
+            </div>
           </div>
         </div>
       </section>
@@ -262,13 +268,48 @@
         </div>
         <div class="view-scroll">
           <div class="content-column">
-            <p class="view-subtitle">
+            <p class="view-subtitle web-only">
+              Reclaim can quietly notice patterns around your own recovery while you browse, entirely on this device, through the optional browser extension below. Nothing is ever sent anywhere. Reclaim works without it.
+            </p>
+            <p class="view-subtitle native-only">
               Reclaim can quietly notice patterns around your own recovery — which apps you use, roughly where you are, whether an app session runs long — entirely on this device. Nothing below is ever sent anywhere; see PURPOSE.md in the repo for the full privacy design. Grant only what you're comfortable with — Reclaim works with any combination, including none of it.
             </p>
 
-            <div class="perm-list" id="permList"></div>
+            <div class="perm-list native-only" id="permList"></div>
 
-            <div class="panel">
+            <div class="panel" id="browserTrackingPanel" hidden>
+              <div class="panel-title">Browser tracking</div>
+              <p class="view-subtitle" id="browserTrackingIntro" style="margin-bottom:14px"></p>
+              <div id="browserTrackingSetup" hidden>
+                <p class="view-subtitle" style="margin-bottom:14px">
+                  Install the Reclaim browser extension to let the web version notice risky browsing patterns and check in with you — the same idea as the Android app, for your computer. Everything stays inside this browser. Nothing is sent anywhere, and the extension makes no network requests at all.
+                </p>
+                <p class="view-subtitle" style="margin-bottom:14px">
+                  For now it's installed by hand: in Chrome or Edge open <strong>chrome://extensions</strong>, turn on <strong>Developer mode</strong>, choose <strong>Load unpacked</strong>, and pick the <strong>extension</strong> folder from the Reclaim project. Then reload this page.
+                </p>
+              </div>
+              <div id="browserTrackingControls" hidden>
+                <p class="view-subtitle" style="margin-bottom:10px">
+                  When this is on, the extension notes which <strong>site</strong> you're on and for how long (never the page address beyond the site name), and checks page text for a short list of words — keeping only <em>which</em> word matched, never the text. It never reads webmail, banking, health or messaging pages. Notifications are always generic; the detail only shows here, once Reclaim is open.
+                </p>
+                <button type="button" class="primary-btn" id="browserTrackingToggle">Turn on browser tracking</button>
+
+                <div class="panel-title" style="margin-top:22px">Sites that raise your risk score</div>
+                <p class="view-subtitle" style="margin-bottom:10px">Just being on these (and staying a while) counts toward a check-in. Like the app list on Android.</p>
+                <div class="allowlist-list" id="triggerSiteList"></div>
+                <form class="site-add-row" id="triggerSiteForm"><input type="text" id="triggerSiteInput" placeholder="example.com" autocomplete="off" aria-label="Add a trigger site" /><button type="submit" class="secondary-btn">Add</button></form>
+
+                <div class="panel-title" style="margin-top:22px">Sites whose text is never scanned</div>
+                <p class="view-subtitle" style="margin-bottom:10px">Your own opt-outs, on top of the built-in ones (email, messaging, banking, health). You can also do this from the extension's icon on any page.</p>
+                <div class="allowlist-list" id="optOutSiteList"></div>
+                <form class="site-add-row" id="optOutSiteForm"><input type="text" id="optOutSiteInput" placeholder="example.com" autocomplete="off" aria-label="Add a site to skip" /><button type="submit" class="secondary-btn">Add</button></form>
+
+                <p class="view-subtitle" id="browserTrackingError" style="margin-top:10px;color:var(--danger, #b3261e)" hidden></p>
+                <button type="button" class="secondary-btn" id="browserTrackingClear" style="width:100%;margin-top:18px">Delete my browsing data</button>
+              </div>
+            </div>
+
+            <div class="panel native-only">
               <div class="panel-title">Background sampling</div>
               <p class="view-subtitle" style="margin-bottom:14px">
                 Roughly every 15 minutes, while your phone is unlocked and in use, Reclaim records one small local snapshot from whichever permissions above you've granted — never while your phone is asleep or locked.
@@ -276,7 +317,7 @@
               <button type="button" class="primary-btn" id="trackingToggleBtn">Turn on background sampling</button>
             </div>
 
-            <div class="panel">
+            <div class="panel native-only">
               <div class="panel-title">Apps Reclaim can read for patterns</div>
               <p class="view-subtitle" style="margin-bottom:14px">
                 Only apps on this list have their on-screen text read and checked for keywords, and only once you've granted Accessibility above. Every other app you open is noticed by name only — never its content. Add or remove apps any time.
@@ -298,7 +339,7 @@
                  real user should ever see — remove this whole panel, debugTestPanel.js, its CSS
                  (.debug-panel etc. in styles.css), and the native TEMPORARY block it calls into
                  before shipping. See PURPOSE.md. -->
-            <div class="panel debug-panel" id="debugTestPanel">
+            <div class="panel debug-panel native-only" id="debugTestPanel">
               <div class="panel-title">⚠ Testing tools — temporary, remove before release</div>
               <p class="view-subtitle" style="margin-bottom:14px">
                 For checking that background features actually work while we're building them, without waiting on real conditions or the ~15-minute schedule.
@@ -360,6 +401,7 @@
       <div class="field-label">Where does it usually happen?</div>
       <input type="text" id="prefLocations" class="field-input" placeholder="e.g. alone in my room, late at night at work" />
 
+      <div class="native-only">
       <div class="field-label">Home location</div>
       <p style="margin:0 0 8px; font-size:12.5px; color:var(--text-muted);">
         Save where you are right now as "home" so Insights can tell you were safely home instead of
@@ -371,10 +413,13 @@
         <button type="button" class="secondary-btn" id="prefSaveHomeBtn" style="flex:1;">Save current location as home</button>
         <button type="button" class="secondary-btn" id="prefClearHomeBtn" style="flex:0 0 auto;" hidden>Clear</button>
       </div>
+      </div>
 
+      <div class="native-only">
       <div class="field-label">Apps that are a slipping point</div>
       <p style="margin:0 0 8px; font-size:12.5px; color:var(--text-muted);" id="prefAllowlistSummary">Loading…</p>
       <p style="margin:0; font-size:12.5px; color:var(--text-muted);">These are the same apps Reclaim reads for keywords (see Privacy) — we've already added the common ones below; add or remove any time from Privacy.</p>
+      </div>
 
       <div class="field-label">How often should Reclaim reach out?</div>
       <div class="scale-picker" id="prefIntensityScale">
@@ -509,9 +554,11 @@
   <script src="js/nearbyDevices.js"></script>
   <script src="js/nativeNotify.js"></script>
   <script src="js/localSignals.js"></script>
+  <script src="js/webTracker.js"></script>
   <script src="js/backgroundSampler.js"></script>
   <script src="js/permissionsView.js"></script>
   <script src="js/allowlistView.js"></script>
+  <script src="js/browserTrackingView.js"></script>
   <script src="js/preferencesView.js"></script>
   <script src="js/riskAlertView.js"></script>
   <script src="js/homeView.js"></script>

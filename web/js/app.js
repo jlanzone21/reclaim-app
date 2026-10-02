@@ -127,6 +127,9 @@
 
   // ---- View navigation (Chat / Check-In / Insights) ----
 
+  // index.html's <head> sets this too; repeated here in case Capacitor's bridge wasn't injected yet then.
+  if (window.Capacitor?.isNativePlatform?.()) document.documentElement.classList.add("is-native");
+
   const navItems = Array.from(document.querySelectorAll(".nav-item"));
   const viewPanels = Array.from(document.querySelectorAll("[data-view-panel]"));
 
@@ -141,6 +144,7 @@
     if (name === "privacy") {
       PermissionsView.refresh();
       AllowlistView.refresh();
+      BrowserTrackingView.refresh();
       refreshTrackingToggle();
     }
   }
@@ -173,6 +177,12 @@
     if (typeof LocalSignals === "undefined" || !LocalSignals.available()) return false;
     const pending = await LocalSignals.getPendingVerseRequest();
     if (!pending) return false;
+    return submitVerseRequest();
+  }
+
+  // Shared by the Android notification action and the browser extension's: land in Chat with a
+  // scripture request already sent (or on Home if the chat model isn't downloaded yet).
+  function submitVerseRequest() {
     if (chatLocked()) {
       // The auto-submit below would be refused while the model isn't downloaded; Home's "Today's
       // Verse" card is the same verse from YouVersion, so land there instead.
@@ -185,6 +195,23 @@
     updateSendState();
     form.requestSubmit();
     return true;
+  }
+
+  // Web version: the browser extension (extension/) holds the same three pending items the Android
+  // native side does -- a risk alert, a nightly-check-in action, a verse request -- written when a
+  // browser notification was clicked. Consumed once (the extension clears them on read). Runs at
+  // boot, whenever the tab regains focus, and when the extension pushes "something is pending".
+  async function checkPendingWeb() {
+    if (typeof WebTracker === "undefined" || !WebTracker.available() || !dbReady) return;
+    const pending = await WebTracker.takePending();
+    if (pending.nightly === "quick_resisted") {
+      CheckInStore.add({ timestamp: new Date().toISOString(), type: "resisted", tags: [] });
+      RiskProfile.syncToNative();
+    } else if (pending.nightly === "open_checkin") {
+      showView("checkin");
+    }
+    if (pending.verse) submitVerseRequest();
+    else if (pending.riskAlert) RiskAlertView.render(pending.riskAlert);
   }
 
   // MainActivity is singleTask, so tapping a notification while the app is already alive in the
@@ -207,6 +234,22 @@
 
   PermissionsView.init();
   AllowlistView.init();
+  BrowserTrackingView.init();
+
+  // Browser extension (web version): detected asynchronously, possibly after boot, so everything
+  // that mirrors state to it hooks in here as well as running at boot below.
+  WebTracker.onAvailable(() => {
+    RiskProfile.syncToNative();
+    BrowserTrackingView.refresh();
+    checkPendingWeb();
+  });
+  WebTracker.onPending(() => checkPendingWeb());
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      WebTracker.appOpened(); // "recently opened Reclaim" is a protective risk factor
+      checkPendingWeb();
+    }
+  });
 
   LocalModel.onChange(renderAiStatus);
   LocalModel.init();
@@ -227,6 +270,13 @@
       busy = false;
       dbReady = true;
       updateSendState();
+      WebTracker.init().then((found) => {
+        if (!found) return;
+        WebTracker.appOpened();
+        RiskProfile.syncToNative();
+        BrowserTrackingView.refresh();
+        checkPendingWeb();
+      });
       checkPendingVerseRequest().then((wentToVerse) => {
         if (!wentToVerse) RiskAlertView.checkPending();
       });

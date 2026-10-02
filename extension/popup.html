@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Reclaim</title>
+  <style>
+    :root { --navy:#06335d; --orange:#fe8722; --bg:#fff; --muted:#5b6b7b; --line:#dfe5ec; }
+    @media (prefers-color-scheme: dark) { :root { --bg:#0e1a26; --navy:#e8eef5; --muted:#9db0c2; --line:#25374a; } }
+    body { width: 320px; margin: 0; padding: 14px; font: 13px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--navy); }
+    h1 { font-size: 15px; margin: 0 0 4px; }
+    p { margin: 6px 0; color: var(--muted); }
+    .row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin: 10px 0; }
+    button { font: inherit; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+    button.primary { background: var(--orange); border-color: var(--orange); color: #fff; font-weight: 600; }
+    button.link { border: 0; padding: 0; color: var(--orange); text-decoration: underline; }
+    .consent { border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin: 8px 0; }
+    ul { margin: 4px 0 0; padding-left: 18px; color: var(--muted); }
+    .stat { color: var(--muted); }
+    hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
+    #testing { font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Reclaim — Browser Companion</h1>
+  <p id="status"></p>
+
+  <div class="consent">
+    <strong>What this does when it's on</strong>
+    <ul>
+      <li>Notes which site you're on and for how long.</li>
+      <li>Checks page text for a short list of words, and keeps only which word matched — never the text or page address.</li>
+      <li>Never reads webmail, banking, health or messaging pages.</li>
+      <li>Everything stays in this browser. Nothing is sent anywhere.</li>
+    </ul>
+  </div>
+  <div class="row">
+    <span id="toggleLabel">Tracking is off</span>
+    <button id="toggle" class="primary"></button>
+  </div>
+
+  <div class="row" id="siteRow" hidden>
+    <span id="siteLabel" class="stat"></span>
+    <button id="siteToggle"></button>
+  </div>
+
+  <div class="row" id="triggerRow" hidden>
+    <span id="triggerLabel" class="stat"></span>
+    <button id="triggerToggle"></button>
+  </div>
+
+  <p class="stat" id="summary"></p>
+  <div class="row"><button id="openApp">Open Reclaim</button><button id="clear" class="link">Delete my browsing data</button></div>
+
+  <hr />
+  <div id="testing">
+    <span class="stat">Test notifications:</span>
+    <button id="testRisk">Risk</button> <button id="testNightly">Nightly</button>
+    <p class="stat" id="testResult"></p>
+  </div>
+  <script src="lib/shared.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

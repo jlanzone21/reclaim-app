@@ -1420,6 +1420,52 @@ reality:
         forever" still get that template (the latter isn't in the crisis gate by
         design).
 
+- [x] **Web version: browser tracking, risk scoring and notifications, via a
+  local-only browser extension.** Asked for: bring the Android tracking idea to
+  the web version, kept on the device, using the research data-collector as a
+  starting point. Built `extension/` (Chrome/Edge, MV3): it records which
+  *site* (hostname only, no paths) is focused and for how long, scans page text
+  in memory for the same keyword list as Android and stores only which keyword
+  matched, scores risk with a JS port of `RiskScorer` (same weights, thresholds,
+  convergence bonus, recent-Reclaim-use protection and adaptive tuning), and
+  posts generic notifications (risk nudge, nightly check-in at 9:30 pm; a second
+  unanswered one stays on screen until dismissed, the browser's analogue of the
+  full-screen intent). The web app reads it through a postMessage bridge
+  (`web/js/webTracker.js` <-> `extension/bridge.js`) that is injected only on
+  `reclaim128.org` and `localhost:4173`, and the worker re-checks the sender's
+  origin before handing out anything. Insights, the risk-alert popup, the
+  nightly/verse notification actions and the check-in outcome tuning all work
+  through it, and a Privacy card turns tracking on/off and edits two site lists
+  (trigger sites; text opt-outs). Decisions: (1) a *new* extension in this repo,
+  not a change to the research collector, which keeps its own narrow consent and
+  Supabase upload; (2) the extension has no `fetch()` and no host permission for
+  any server, so nothing can leave the browser; (3) **deliberate departure from
+  "allowlist, not a blocklist":** text is scanned on every site except a
+  built-in sensitive list (webmail, messaging, banking, health) plus the user's
+  own opt-outs, because an allowlist would miss the sites that matter most on the
+  web. Revisit if that feels wrong; (4) whole-word keyword matching (a web page
+  is far bigger than an on-screen snippet, so substrings like "denuded" would
+  fire constantly), which still can't tell "escort" from "Ford Escort"; (5) no
+  "alone" factor (no nearby-device scan in a browser) and no Android-style
+  periodic background samples. Honest limits: browser notifications only appear
+  while the browser is running, and the "Reach out" action opens the app's
+  alert screen rather than dialing. **Verified:** both Node suites pass
+  (`node extension/tests/riskScorer.test.js`, `.../background.test.js`; the
+  second runs the real worker against a stubbed `chrome`), and the web side was
+  exercised in the browser pane against a mock extension (handshake, Privacy
+  card, site lists, alert popup, nightly and verse actions, Insights).
+  Added afterwards, from using it: an in-page banner (the same generic nudge
+  drawn on the current tab, because Windows hides toasts over fullscreen video
+  and under Focus assist); an explicit-keyword floor (a match on a clearly
+  pornographic word is high risk immediately at any intensity, web only so far;
+  it over-triggers on anti-porn articles by design); keyword list expanded from
+  20 to 71 on the web and by about 40 on Android (substring-unsafe words like
+  "milf" and "orgy" left off Android); and adding the current site to the
+  higher-risk list from the extension popup. **Verified in real Chrome by the
+  team:** loading the extension, the bridge, notifications and the in-page
+  banner, keyword-triggered nudges. **Not verified:** the Android keyword
+  additions (not compiled or run on a device).
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing
