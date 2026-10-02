@@ -7,7 +7,6 @@
  *     accountability_name, accountability_phone,     // optional; a place to fill in later matters
  *     accountability_name_2, accountability_phone_2, // up to 2 partners -- both optional
  *     pastor_name, pastor_phone,                    // as much as the initial prompt
- *     mentor_name, mentor_phone,                    // separate from the pastor; both optional
  *     tempting_times: string[],                     // subset of TEMPTING_TIME_BUCKETS
  *     common_triggers: string[],                    // subset of CONDITION_TAGS (constants.js)
  *     tempting_locations,                            // free text
@@ -36,8 +35,6 @@ const UserPreferencesStore = (function () {
     accountability_phone_2: "",
     pastor_name: "",
     pastor_phone: "",
-    mentor_name: "",
-    mentor_phone: "",
     tempting_times: [],
     common_triggers: [],
     tempting_locations: "",
@@ -74,8 +71,6 @@ const UserPreferencesStore = (function () {
       next.accountability_phone_2 || null,
       next.pastor_name || null,
       next.pastor_phone || null,
-      next.mentor_name || null,
-      next.mentor_phone || null,
       JSON.stringify(next.tempting_times || []),
       JSON.stringify(next.common_triggers || []),
       next.tempting_locations || null,
@@ -92,7 +87,6 @@ const UserPreferencesStore = (function () {
            accountability_name = ?, accountability_phone = ?,
            accountability_name_2 = ?, accountability_phone_2 = ?,
            pastor_name = ?, pastor_phone = ?,
-           mentor_name = ?, mentor_phone = ?,
            tempting_times = ?, common_triggers = ?, tempting_locations = ?,
            notification_intensity = ?, other_notes = ?,
            onboarding_completed_at = ?, updated_at = ?,
@@ -104,11 +98,11 @@ const UserPreferencesStore = (function () {
       DB.run(
         `INSERT INTO user_preferences
            (id, accountability_name, accountability_phone, accountability_name_2, accountability_phone_2,
-            pastor_name, pastor_phone, mentor_name, mentor_phone,
+            pastor_name, pastor_phone,
             tempting_times, common_triggers, tempting_locations,
             notification_intensity, other_notes, onboarding_completed_at, updated_at,
             home_lat, home_lon)
-         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         params
       );
     }
