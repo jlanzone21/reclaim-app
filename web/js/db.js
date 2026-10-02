@@ -24,6 +24,7 @@ const DB = (function () {
       area TEXT,
       duration_min INTEGER,
       tags TEXT,
+      method TEXT,
       is_sample INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -73,7 +74,8 @@ const DB = (function () {
       updated_at TEXT,
       home_lat REAL,
       home_lon REAL,
-      gender TEXT
+      gender TEXT,
+      preferred_coping_methods TEXT
     );
 
     -- One row per topic from bible_verses_for_100_circumstances.csv (user-provided). refs is a
@@ -92,7 +94,7 @@ const DB = (function () {
   // Bump whenever SEED_RESOURCES/SEED_BIBLE_PLANS/SEED_VERSE_TOPICS content changes materially.
   // ensureSeeded() re-syncs placeholder (is_sample=1) content up to this
   // version without ever touching checkins or user-added (is_sample=0) rows.
-  const CURRENT_SEED_VERSION = 9;
+  const CURRENT_SEED_VERSION = 10;
 
   let sqlJs = null;
   let db = null;
@@ -185,8 +187,8 @@ const DB = (function () {
 
   function insertResource(r) {
     run(
-      `INSERT INTO resources (type, title, subtitle, body, url, contact, area, duration_min, tags, is_sample)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO resources (type, title, subtitle, body, url, contact, area, duration_min, tags, method, is_sample)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         r.type,
         r.title,
@@ -197,6 +199,7 @@ const DB = (function () {
         r.area ?? null,
         r.duration_min ?? null,
         r.tags ? JSON.stringify(r.tags) : null,
+        r.method ?? null,
         r.is_sample === 0 ? 0 : 1,
       ]
     );
@@ -245,6 +248,10 @@ const DB = (function () {
     if (!prefCols.includes("accountability_name_2")) run("ALTER TABLE user_preferences ADD COLUMN accountability_name_2 TEXT");
     if (!prefCols.includes("accountability_phone_2")) run("ALTER TABLE user_preferences ADD COLUMN accountability_phone_2 TEXT");
     if (!prefCols.includes("gender")) run("ALTER TABLE user_preferences ADD COLUMN gender TEXT");
+    if (!prefCols.includes("preferred_coping_methods")) run("ALTER TABLE user_preferences ADD COLUMN preferred_coping_methods TEXT");
+
+    const resourceCols = all("PRAGMA table_info(resources)").map((c) => c.name);
+    if (!resourceCols.includes("method")) run("ALTER TABLE resources ADD COLUMN method TEXT");
   }
 
   async function init() {

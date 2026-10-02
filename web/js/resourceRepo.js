@@ -77,10 +77,22 @@ const ResourceRepo = (function () {
   }
 
   // Two at most: in the middle of an urge, a long list is more overwhelming than helpful.
+  // Ranked theme-and-preferred-method matches first, then theme-only, then preferred-method-only,
+  // then whatever's left (already shuffled) -- preferred methods come from onboarding/preferences
+  // (COPING_METHOD_OPTIONS in constants.js), read directly the same way getSmallGroups reads the
+  // saved home location.
   function getCopingMechanisms(theme, limit = 2) {
     const rows = shuffle(byType("coping_mechanism"));
-    const matches = theme ? rows.filter((r) => r.tags.includes(theme)) : [];
-    return [...matches, ...rows.filter((r) => !matches.includes(r))].slice(0, limit);
+    const prefs = typeof UserPreferencesStore !== "undefined" ? UserPreferencesStore.get() : null;
+    const preferredMethods = (prefs && prefs.preferred_coping_methods) || [];
+    const matchesTheme = theme ? rows.filter((r) => r.tags.includes(theme)) : [];
+    const matchesMethod = preferredMethods.length ? rows.filter((r) => r.method && preferredMethods.includes(r.method)) : [];
+    const ranked = [
+      ...matchesTheme.filter((r) => matchesMethod.includes(r)),
+      ...matchesTheme.filter((r) => !matchesMethod.includes(r)),
+      ...matchesMethod.filter((r) => !matchesTheme.includes(r)),
+    ];
+    return [...ranked, ...rows.filter((r) => !ranked.includes(r))].slice(0, limit);
   }
 
   function shuffle(items) {

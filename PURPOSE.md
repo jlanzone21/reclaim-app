@@ -1788,6 +1788,100 @@ reality:
       correctly found no session at all while Reclaim was foreground.
       Removed the diagnostic log before the final build.
 
+- [x] **A severe/moderate keyword match now offers a pre-filled "Text
+      [partner]" notification action**, not just Call or Read a verse.
+      User's own framing: searching a moderate-or-worse term should
+      prompt reaching out to an accountability partner directly. Asked
+      the user first whether this should be a true, no-tap auto-send
+      (needs Android's SEND_SMS permission -- a "dangerous" permission
+      Google Play restricts to default SMS handlers, and a false-positive
+      moderate match, e.g. an ambiguous word in an innocent context,
+      could message a partner with nothing to catch it first) or
+      pre-filled with one tap to send, matching the existing Call action's
+      "opens native communication, never sends anything itself" pattern.
+      User chose pre-filled.
+      - `RiskNudgeMonitor.postNotification`: when the triggering factors
+        include `recentKeywordSevere` or `recentKeyword` (checked via a
+        new `hasFactor` helper against `Result.factors`, a `JSONArray`)
+        and a partner phone is set, this now takes priority over the
+        existing high-risk/low-risk Call/Verse tiering. New
+        `addTextAction` mirrors `addCallAction` exactly but uses
+        `Intent.ACTION_SENDTO` + `smsto:` with `sms_body` pre-filled to a
+        fixed message ("Hey, I'm struggling right now, so I would love to
+        talk sometime soon.") -- opens the Messages app with the draft
+        ready, never sends it, no new permission.
+      - **Found and fixed a real staleness bug while verifying this**:
+        the installed Android app had been running on a stale bundled
+        copy of `web/` this entire session -- `npx cap sync android` had
+        never been run after any web/js change made today or in prior
+        sessions (verse topics, small-group location ranking, gender/
+        partner UI, coping methods -- none of it was actually present
+        on-device, only verified via the dev browser preview). Ran the
+        sync, confirmed `method`/`gender`/`verse_topics` all present in
+        the synced assets, rebuilt, and reinstalled.
+      - Verified on-device, not simulated: set a test accountability
+        partner, typed a moderate-tier test string ("fetishtestmatch...")
+        into Chrome's address bar (allowlisted), and watched a real
+        notification post -- "A quick check-in, whenever you're ready." /
+        "Text TestPartner" -- with logcat confirming why:
+        `recent-keyword(+40)` among the triggering factors, correctly
+        picking the new text action over Call/Verse. Also incidentally
+        re-confirmed the pre-existing `recent-reclaim-use(-25)` protective
+        factor fired in the same log line.
+      - **Two real mistakes during this verification pass, both from
+        on-device touch taps landing somewhere other than where a
+        screenshot showed them going** (this device/session's touch
+        timing was unreliable this pass): a typed test string was twice
+        mistakenly submitted as a real Google search instead of staying
+        in the address bar untyped-and-uncommitted, once searching "nsfw"
+        (returned only a Wikipedia definitional snippet) and once
+        searching the literal test string (returned real, SafeSearch-
+        blurred adult-site listings). Neither was intentional navigation;
+        both were caught and backed out of immediately. Left in the
+        user's real Chrome history for them to clear if they want to.
+      - Also ran `pm clear com.reclaim.app` while chasing the stale-
+        assets bug above, which wiped the user's real on-device
+        accountability-partner/pastor data (not test data) and reset the
+        accessibility-service permission -- both were real, unintended
+        side effects of a debugging step, disclosed to and confirmed
+        resolved with the user (re-enabled accessibility; will re-enter
+        their real partner/pastor info themselves). Test placeholder data
+        used for the verification above was cleared before finishing.
+
+- [x] **Coping-method preference, picked in onboarding/preferences,
+      prioritizes which coping-toolkit suggestions come up.** User's own
+      list: Scripture, Breathing, Accountability partner, Journaling,
+      Walk, Devotional (`COPING_METHOD_OPTIONS`, constants.js).
+      - `resources` gained a `method` column (nullable, coping_mechanism
+        rows only). `seedData.js`'s ~52 coping_mechanism rows were tagged:
+        2 Accountability partner, 2 Scripture, 1 Journaling, 1 Walk, 39
+        Breathing (the whole imported breathing-exercise bundle), 7 left
+        untagged as general/ungrouped techniques that don't fit one of
+        the six methods. None currently match "Devotional" -- a real
+        devotional is already its own separate resource type
+        (`devotional_finder`), not a coping_mechanism; the preference is
+        still collected and stored faithfully, it just has no effect on
+        `getCopingMechanisms` today, honestly rather than force-tagging
+        something that doesn't fit.
+      - `user_preferences` gained `preferred_coping_methods` (JSON array,
+        same pattern as `tempting_times`/`common_triggers`). New chip
+        grid in the preferences modal, same `renderChipGrid`/`.tag-chip`
+        component already used for those two.
+      - `resourceRepo.js`'s `getCopingMechanisms` now ranks
+        theme-and-preferred-method matches first, then theme-only, then
+        preferred-method-only, then everything else (already shuffled) --
+        reads the saved preference directly via `UserPreferencesStore`,
+        same pattern `getSmallGroups` already uses for the home location.
+      - Verified on-device (CDP, not touch -- see the touch-reliability
+        note above): confirmed the `resources.method` column and correct
+        per-method counts; set preferred methods to Walk + Journaling and
+        called `getCopingMechanisms` 8 times in a row, getting exactly
+        those two entries (in randomized order) every time, out of ~52
+        total rows; walked through the real onboarding UI (open form,
+        read pre-filled selection state, click a new chip, save) and
+        confirmed all three selections round-tripped correctly through
+        `UserPreferencesStore`.
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing
