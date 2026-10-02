@@ -430,6 +430,27 @@ button.conn-status:hover {
   filter: brightness(0.97);
 }
 
+/* Same shape as .home-crisis-btn, neutral coloring -- opens the "How Reclaim works" overlay,
+   not urgent/colored like crisis access. */
+.home-help-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-inset);
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.home-help-btn:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
 /* Chat area */
 .chat {
   flex: 1;

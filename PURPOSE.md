@@ -1465,6 +1465,141 @@ reality:
   team:** loading the extension, the bridge, notifications and the in-page
   banner, keyword-triggered nudges. **Not verified:** the Android keyword
   additions (not compiled or run on a device).
+- [x] **"How Reclaim works" instructions page, reachable from Home.** User
+      asked for a place to explain how to enable permissions and how the app
+      works, from Home. A new help button next to Home's crisis button opens
+      an overlay covering the five tabs, how to turn on each permission
+      (including the three -- App usage, Notification access, Accessibility
+      -- that need a system settings list, not just an in-app switch, since
+      that's the non-obvious part), and what happens once permissions are
+      on (background sampling cadence, allowlist-only text reading, tiered
+      risk-nudge notifications, recent-Reclaim-use being protective). A "Go
+      to Privacy" button closes the overlay and navigates there directly.
+      Verified on-device: real fresh install, overlay renders and scrolls
+      correctly, "Go to Privacy" closes it and switches views.
+
+- [x] **Fixed a real bug: on-device AI silently broken forever after one GPU
+      crash, Electron/desktop specifically.** User reported the AI replying
+      with "(Something went wrong before I finished — please try again.)"
+      on every single message once it happened once. Reproduced the actual
+      failure via the user's own devtools console (not guessed): Windows'
+      GPU driver watchdog killed the graphics device mid-generation
+      (`DXGI_ERROR_DEVICE_HUNG`, a TDR timeout -- hardware/driver behavior,
+      not an app bug, and more visible on Electron's D3D12/Dawn WebGPU
+      backend than Android's). WebGPU logs that device-loss as its own
+      console warning, not a catchable exception -- what `localModel.js`'s
+      `streamChat()` actually saw was the engine's next call throwing
+      "Object has already been disposed." The real bug: nothing ever told
+      `LocalModel` the engine had died, so `isReady()` kept reporting `true`
+      forever and every later message hit the same dead engine, identically
+      silently, with no path back except a full app reload.
+      - `streamChat()` now catches that failure the same way `start()`'s
+        own catch block already did -- reset `engine = null` and
+        `set("error", friendlyError(err))` -- so `LocalModel.isReady()`
+        correctly flips to `false` afterward instead of staying stuck on
+        `true` forever. Landed the same week as (just above) Chat's own
+        requires-the-AI lock (`chatLocked()`, `app.js`): since that lock
+        reads this same state and only exempts `unsupported` devices, this
+        fix is what makes it actually engage after a runtime crash -- the
+        composer correctly re-locks and the existing "Try again" panel
+        shows, instead of staying wrongly unlocked forever and silently
+        eating every later message into a dead engine (the original bug).
+        `ReclaimAgent`'s own `isReady()` check (a defensive fallback to
+        Basic mode) still exists underneath but is rarely reached now that
+        the composer itself gates first. "Try again" re-creates the engine
+        from the already-cached model weights -- no re-download.
+      - Deliberately NOT triggered by `interruptGenerate()`'s own drain --
+        that's the normal, frequent way a reply ends once enough sentences
+        are kept (most turns, via `onDelta` returning `false`), not a
+        failure; verified a benign throw during that drain correctly leaves
+        the engine marked ready, only a real mid-generation failure resets
+        it.
+      - `friendlyError()`'s GPU-problem pattern widened to also match
+        "disposed" (not just "device lost"), since that's the message that
+        actually reaches catchable code in practice.
+      - Verified without a real GPU crash or a 1GB model download: grafted
+        the live edited file into a running browser tab (this session's
+        established workaround for the dev server's missing
+        Cache-Control), injected a fake engine whose stream throws the
+        exact real error, and confirmed `isReady()` flips to `false` with
+        the right status/message. Confirmed separately that a fake
+        post-interrupt drain error leaves `isReady()` `true`, so the common
+        case is untouched.
+
+- [x] **Keyword list expanded and split into three severity tiers, instead of
+      one flat list where every match weighed the same -- and all three now
+      scale with notification_intensity.** User's own framing: some words
+      should always trigger a risk-nudge, others are only slightly
+      worrisome ("varied in risk"), and then: a higher notification setting
+      should mean higher points for each tier, not just the existing lower
+      trigger threshold.
+      - `TrackingAccessibilityService.java`: `KEYWORDS` (one `Map`) became
+        `KEYWORDS_SEVERE`/`KEYWORDS_MODERATE`/`KEYWORDS_MILD` (three), each
+        still a plain-substring match, no regex/NLP. SEVERE deliberately
+        holds only site names (pornhub, xvideos, onlyfans, ...) and
+        unambiguous compound phrases ("watch porn," "hire an escort") --
+        never a single ambiguous word, since an unconditional-trigger tier
+        can't afford false positives from a nude color swatch, an art
+        review, or a psychology article's "fetish." Those bare words
+        (nude, erotic, fetish, nsfw, xxx, hentai, escort, ...) stay
+        MODERATE; genuinely ambiguous ones (bare "nude," "risque," "18+,"
+        "thirst trap") are MILD.
+      - `keyword_matches` gained a `severity` column (native SQLite
+        migration, `DB_VERSION` 1 -> 2, `ALTER TABLE ... ADD COLUMN` --
+        existing rows keep their data, just `severity=NULL`).
+      - `RiskScorer.java`: SEVERE is a fixed, non-adaptive bonus (+150, not
+        in the weight-tuning system at all -- see its own comment) sized to
+        guarantee both `triggers()` and `isHighRisk()` even at the least
+        sensitive ("low") `notification_intensity` and its 0.8x multiplier
+        (150*0.8=120, still clears the 110 high-risk bar) -- "should always
+        trigger," literally. MODERATE keeps the pre-existing adaptive
+        `recentKeyword` factor (default boosted 35 -> 40, unrenamed on
+        purpose so existing `risk_weights`/`TAG_TO_FACTORS` stay
+        meaningful); MILD is its own smaller adaptive factor
+        (`recentKeywordMild`, boosted 12 -> 15). Each tier gets its own
+        recency window too (severe 30 min, moderate 15, mild 10) -- a
+        confirmed explicit match is worth flagging even if it's aged a
+        cycle, an ambiguous word only means much if it's genuinely current.
+        Takes only the single highest tier present, never stacks across
+        tiers. `keywordIntensityMultiplier` (0.8 low / 1.0 medium / 1.2
+        high) then scales whichever tier's points at the point of use --
+        compounds with the existing, separate `thresholdForIntensity`
+        (lower bar at high intensity) rather than duplicating it; no other
+        factor's weight is intensity-aware, only the three keyword tiers.
+      - **Found and fixed a real robustness bug while verifying the
+        intensity change, not present in the original single-tier
+        design.** The first implementation fetched each package's 20 most
+        recent keyword_matches (mixed severities) and scanned that page for
+        the highest tier present. Confirmed on-device that a flood of newer
+        MODERATE matches (the same repeated test typing this session
+        generated, each keystroke batch inserting several rows) can push an
+        older-but-still-within-its-30-minute-window SEVERE match off that
+        fixed-size page entirely -- silently defeating the "always
+        triggers" guarantee in exactly the real scenario it exists for
+        (e.g. browsing borderline content for a while, then hitting
+        something explicit). Fixed by replacing the one mixed-severity
+        fetch with three direct per-severity queries
+        (`LocalSignalsDb.mostRecentKeywordMatchAt(pkg, severity)`, `WHERE
+        package_name = ? AND severity = ?`) -- each asks directly for that
+        exact tier's own most recent match, so no amount of other-tier
+        activity in between can ever hide it. Re-verified the exact
+        failure scenario after the fix: the same aged (23+ min old) severe
+        match, now surrounded by 20+ newer moderate rows, was found
+        correctly (`recent-keyword-severe(+120)` at low intensity).
+      - Verified on-device, not simulated, real matches via the same safe
+        method used earlier (typed test text, never navigated/searched),
+        at all three notification_intensity settings: SEVERE (`pornhub`,
+        Chrome) at medium -> `recent-keyword-severe(+150)`, real
+        notification, high-risk "Call Joey" action (not "Read a verse")
+        after setting a real test accountability partner, confirming
+        `isHighRisk()` too. MODERATE (`fetish`/`erotica`, YouTube) ->
+        `+40` at medium, `+48` at high (40*1.2), `+32` at low (40*0.8) --
+        same real match, three different real scores, confirming the
+        intensity scaling itself, not just its formula. MILD (`risque`,
+        Google app) -> `+15` at medium, barely moves the score alone, as
+        intended. Also confirmed the native schema migration: all
+        pre-existing keyword_matches rows survived the `DB_VERSION` bump
+        with `severity=NULL`, nothing lost.
 
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging

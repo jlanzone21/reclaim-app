@@ -27,7 +27,7 @@ import org.json.JSONObject;
  */
 final class LocalSignalsDb extends SQLiteOpenHelper {
     private static final String DB_NAME = "reclaim_signals.db";
-    private static final int DB_VERSION = 1;
+    private static final int DB_VERSION = 2;
 
     private static volatile LocalSignalsDb instance;
 
@@ -96,6 +96,7 @@ final class LocalSignalsDb extends SQLiteOpenHelper {
             "  package_name TEXT NOT NULL," +
             "  matched_keyword TEXT NOT NULL," +
             "  category TEXT," +
+            "  severity TEXT," + // 'severe' | 'moderate' | 'mild' -- see TrackingAccessibilityService's tiered KEYWORDS_* / RiskScorer's recentKeyword factor
             "  capture_id INTEGER REFERENCES page_captures(id) ON DELETE CASCADE," +
             "  occurred_at TEXT NOT NULL" +
             ")"
@@ -109,8 +110,10 @@ final class LocalSignalsDb extends SQLiteOpenHelper {
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        // No prior versions yet -- first real migration adds ALTER TABLE / CREATE TABLE steps here,
-        // gated on oldVersion, the same pattern as db.js's migrateColumns().
+        // Same pattern as db.js's migrateColumns() -- gated on oldVersion, never touches existing rows.
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE keyword_matches ADD COLUMN severity TEXT");
+        }
     }
 
     // ---- usage_samples ----
@@ -234,11 +237,12 @@ final class LocalSignalsDb extends SQLiteOpenHelper {
         return getWritableDatabase().insert("page_captures", null, values);
     }
 
-    void insertKeywordMatch(String packageName, String matchedKeyword, String category, long captureId, String occurredAt) {
+    void insertKeywordMatch(String packageName, String matchedKeyword, String category, String severity, long captureId, String occurredAt) {
         ContentValues values = new ContentValues();
         values.put("package_name", packageName);
         values.put("matched_keyword", matchedKeyword);
         values.put("category", category);
+        values.put("severity", severity);
         values.put("capture_id", captureId);
         values.put("occurred_at", occurredAt);
         getWritableDatabase().insert("keyword_matches", null, values);
@@ -251,14 +255,18 @@ final class LocalSignalsDb extends SQLiteOpenHelper {
         );
     }
 
-    // RiskScorer's recentKeyword factor: the most recent keyword_matches row's timestamp for THIS
-    // package specifically, not "any match anywhere" -- ties the signal to the actual session being
-    // scored rather than misattributing a match from an unrelated earlier app/session. null if this
-    // package has no matches at all.
-    String mostRecentKeywordMatchAt(String packageName) {
+    // RiskScorer's keyword factor: the most recent keyword_matches timestamp for THIS package AND
+    // THIS severity tier specifically. Queried per-tier (RiskScorer calls this up to three times --
+    // severe/moderate/mild) rather than fetching one mixed-severity page and scanning it, on
+    // purpose: a fixed-size mixed fetch can let a flood of lower-tier matches (e.g. a lot of
+    // MODERATE activity) push an older but still-in-window SEVERE match off the page entirely,
+    // silently hiding it -- confirmed this actually happening on-device during testing. A direct
+    // per-severity query can't have that failure mode: it always finds the true most recent match
+    // of that exact tier, no matter how much other-tier activity happened in between.
+    String mostRecentKeywordMatchAt(String packageName, String severity) {
         Cursor c = getReadableDatabase().rawQuery(
-            "SELECT occurred_at FROM keyword_matches WHERE package_name = ? ORDER BY occurred_at DESC LIMIT 1",
-            new String[]{packageName}
+            "SELECT occurred_at FROM keyword_matches WHERE package_name = ? AND severity = ? ORDER BY occurred_at DESC LIMIT 1",
+            new String[]{packageName, severity}
         );
         try {
             return c.moveToFirst() ? c.getString(0) : null;

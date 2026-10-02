@@ -23,12 +23,19 @@ import java.util.Set;
  * evidence one is already happening. So this mostly weighs context that has actually preceded this
  * person's own past slips (RiskProfile, mirrored from CheckInStore) and what they told us to
  * watch for (UserPreferencesStore's tempting_times/common_triggers) -- proxies, not direct
- * evidence. The one exception is recentKeyword: an actual keyword match against on-screen text
+ * evidence. The one exception is the keyword factor: an actual keyword match against on-screen text
  * captured on the allowlist (TrackingAccessibilityService), which IS direct evidence, not a proxy
  * -- previously kept out of this scorer entirely and left as an Insights-only passive signal;
- * user explicitly asked for that reversed. Scoped to the current session's package (see its block
- * in score() below), not "any match anywhere," and weighted higher than the proxy factors for
- * exactly that reason.
+ * user explicitly asked for that reversed, and then asked for it to vary by severity rather than
+ * treat every match the same. Three tiers now (KEYWORDS_SEVERE/MODERATE/MILD, same file): SEVERE
+ * is a fixed bonus sized to guarantee a notification outright (see RECENT_KEYWORD_SEVERE_BONUS),
+ * reserved for phrases/site names essentially never seen outside actual porn-seeking; MODERATE and
+ * MILD are ordinary adaptive-tunable factors, scaled down for MILD's more ambiguous words. Scoped
+ * to the current session's package (see its block in score() below), not "any match anywhere."
+ * All three tiers also scale directly with notification_intensity (keywordIntensityMultiplier) --
+ * user's own framing: a higher notification setting should mean higher points for keyword
+ * matches specifically, compounding with that same setting's already-lower trigger threshold
+ * (thresholdForIntensity) rather than duplicating it. No other factor's weight is intensity-aware.
  *
  * Adaptive tuning (v2): the base factor weights below are stored, mutable values
  * (LocalSignalsDb.app_meta's "risk_weights"), not Java literals -- adjustWeights() nudges them a
@@ -87,8 +94,15 @@ final class RiskScorer {
         WEIGHT_SPECS.put("alone", new WeightSpec(15, 8, 25));
         // Higher default than the usage-pattern proxies above: this fires on an actual keyword
         // match against captured on-screen text, not an inferred pattern -- see its block in
-        // score() below.
-        WEIGHT_SPECS.put("recentKeyword", new WeightSpec(35, 20, 50));
+        // score() below. "recentKeyword" (not "...Moderate") is the historical name, kept as-is so
+        // TAG_TO_FACTORS and any already-adjusted risk_weights on a real device stay meaningful --
+        // it's the MODERATE tier specifically; SEVERE is deliberately not in this adaptive system
+        // at all (see RECENT_KEYWORD_SEVERE_BONUS), MILD gets its own smaller, separate entry.
+        // Boosted from the original 35/12 -- both also scale with notification_intensity at use
+        // time (see keywordIntensityMultiplier), on top of whatever this stored value has drifted
+        // to via adaptive tuning; bounds widened a bit to match.
+        WEIGHT_SPECS.put("recentKeyword", new WeightSpec(40, 22, 55));
+        WEIGHT_SPECS.put("recentKeywordMild", new WeightSpec(15, 8, 22));
     }
 
     // Small and fixed on purpose -- see class doc comment. ~7-8 correlated events to walk a weight
@@ -109,7 +123,9 @@ final class RiskScorer {
         TAG_TO_FACTORS.put("Fatigue", new String[] {"selfReportedTime", "historicalTime"});
         TAG_TO_FACTORS.put("Late at night", new String[] {"selfReportedTime", "historicalTime"});
         TAG_TO_FACTORS.put("Social media", new String[] {"socialMedia"});
-        TAG_TO_FACTORS.put("Unexpected exposure", new String[] {"recentKeyword"});
+        // Both adaptive keyword tiers -- not "recentKeywordSevere", which is deliberately fixed,
+        // not part of this system at all (see its own comment).
+        TAG_TO_FACTORS.put("Unexpected exposure", new String[] {"recentKeyword", "recentKeywordMild"});
         // Deliberately absent, not mapped to anything: "Anger or frustration", "Feeling low",
         // "Celebrating or rewarding myself", "Other" -- no factor here has a direct enough
         // relationship to these to be worth guessing at.
@@ -150,6 +166,7 @@ final class RiskScorer {
     static Result score(Context ctx, String currentPackage, long sessionMinutes) {
         LocalSignalsDb db = LocalSignalsDb.getInstance(ctx);
         Map<String, Integer> weights = loadWeights(db);
+        String intensity = db.getMeta("notification_intensity");
         int points = 0;
         int factorCount = 0;
         StringBuilder reason = new StringBuilder();
@@ -227,16 +244,42 @@ final class RiskScorer {
         // actual keyword match against on-screen text captured on THIS app (TrackingAccessibility
         // Service, allowlist-gated -- see PURPOSE.md). Scoped to currentPackage, not "any match
         // anywhere," so a match from an unrelated earlier app/session never gets attributed to a
-        // totally different later one. Weighted higher than the proxy factors above on purpose --
-        // confirmed content beats inferred pattern.
-        int minutesSinceKeyword = LocalSignalsDb.minutesSince(db.mostRecentKeywordMatchAt(currentPackage));
-        if (minutesSinceKeyword >= 0 && minutesSinceKeyword <= RECENT_KEYWORD_WINDOW_MIN) {
-            int w = weights.get("recentKeyword");
+        // totally different later one. Three severity tiers, each its own recency window (see
+        // mostSevereRecentKeyword below) -- takes only the single highest tier still within its
+        // own window, never stacked across tiers. All three scale with notification_intensity --
+        // user's own framing: higher notification settings should mean higher points for each
+        // tier, not just the existing lower trigger threshold (thresholdForIntensity below) --
+        // the two compound, so "high" is doubly more sensitive to confirmed on-screen content and
+        // "low" doubly less, while every OTHER factor's weight stays intensity-independent.
+        double intensityMult = keywordIntensityMultiplier(intensity);
+        String keywordSeverity = mostSevereRecentKeyword(db, currentPackage);
+        if ("severe".equals(keywordSeverity)) {
+            // Fixed, not adaptive -- see class doc comment. Sized (even at "low"'s 0.8x) to
+            // guarantee both triggers() and isHighRisk() at the least sensitive notification_
+            // intensity (threshold 90, high-risk bar 110): user's own framing, this tier should
+            // "always trigger a risk-nudge." Can still be pulled back under the trigger bar by the
+            // recent-reclaim-use protective factor below -- an acceptable, explainable interaction,
+            // not a bug: recently engaging with recovery content is allowed to soften, not erase, this.
+            int w = (int) Math.round(RECENT_KEYWORD_SEVERE_BONUS * intensityMult);
+            points += w;
+            factorCount++;
+            factors.put("recentKeywordSevere");
+            reason.append("recent-keyword-severe(+").append(w).append(") ");
+            userReasons.put("Something explicit was just seen on this app -- this matters enough to flag right away.");
+        } else if ("moderate".equals(keywordSeverity)) {
+            int w = (int) Math.round(weights.get("recentKeyword") * intensityMult);
             points += w;
             factorCount++;
             factors.put("recentKeyword");
             reason.append("recent-keyword(+").append(w).append(") ");
             userReasons.put("Something on this screen recently matched a word or phrase you'd flagged.");
+        } else if ("mild".equals(keywordSeverity)) {
+            int w = (int) Math.round(weights.get("recentKeywordMild") * intensityMult);
+            points += w;
+            factorCount++;
+            factors.put("recentKeywordMild");
+            reason.append("recent-keyword-mild(+").append(w).append(") ");
+            userReasons.put("Something on this screen recently had a word or phrase worth noticing.");
         }
 
         // Convergence bonus: any single factor above is weak evidence on its own (being on social
@@ -266,7 +309,7 @@ final class RiskScorer {
             reason.append("recent-reclaim-use(-").append(RECENT_RECLAIM_PROTECTION).append(") ");
         }
 
-        int threshold = thresholdForIntensity(db.getMeta("notification_intensity"));
+        int threshold = thresholdForIntensity(intensity);
         return new Result(points, threshold, reason.toString().trim(), userReasons, factors);
     }
 
@@ -275,8 +318,32 @@ final class RiskScorer {
 
     // Same window as the periodic background check's own cadence (BaselineSampleWorker, ~15 min --
     // see RiskNudgeMonitor's class doc comment): a keyword match older than one sampling cycle is
-    // stale, not "currently happening."
-    private static final int RECENT_KEYWORD_WINDOW_MIN = 15;
+    // stale, not "currently happening." MODERATE keeps that original window; SEVERE gets a longer
+    // one (a confirmed explicit match is worth flagging even if it's aged a cycle or two), MILD a
+    // shorter one (an ambiguous word only means much if it's genuinely current).
+    private static final int RECENT_KEYWORD_SEVERE_WINDOW_MIN = 30;
+    private static final int RECENT_KEYWORD_WINDOW_MIN = 15; // MODERATE
+    private static final int RECENT_KEYWORD_MILD_WINDOW_MIN = 10;
+
+    // See the SEVERE branch in score() for why this exact size -- boosted from the original 120,
+    // and chosen so even "low" intensity's 0.8x multiplier (150*0.8=120) still comfortably clears
+    // the high-risk bar at low intensity's own threshold (90+20=110), not just the trigger bar.
+    private static final int RECENT_KEYWORD_SEVERE_BONUS = 150;
+
+    // Three direct per-severity lookups (see LocalSignalsDb.mostRecentKeywordMatchAt's own
+    // comment for why not one mixed-severity fetch), highest first -- "severe" > "moderate" >
+    // "mild", each checked against its own recency window. null if nothing qualifies at all.
+    private static String mostSevereRecentKeyword(LocalSignalsDb db, String currentPackage) {
+        if (withinMinutes(db.mostRecentKeywordMatchAt(currentPackage, "severe"), RECENT_KEYWORD_SEVERE_WINDOW_MIN)) return "severe";
+        if (withinMinutes(db.mostRecentKeywordMatchAt(currentPackage, "moderate"), RECENT_KEYWORD_WINDOW_MIN)) return "moderate";
+        if (withinMinutes(db.mostRecentKeywordMatchAt(currentPackage, "mild"), RECENT_KEYWORD_MILD_WINDOW_MIN)) return "mild";
+        return null;
+    }
+
+    private static boolean withinMinutes(String occurredAtIso, int windowMin) {
+        int minutesAgo = LocalSignalsDb.minutesSince(occurredAtIso);
+        return minutesAgo >= 0 && minutesAgo <= windowMin;
+    }
 
     private static Map<String, Integer> loadWeights(LocalSignalsDb db) {
         Map<String, Integer> weights = new HashMap<>();
@@ -364,6 +431,18 @@ final class RiskScorer {
         if ("low".equals(intensity)) return 90;
         if ("high".equals(intensity)) return 35;
         return 60;
+    }
+
+    // Compounds with thresholdForIntensity above, deliberately, for the three keyword-severity
+    // factors specifically (see their block in score()) -- not applied to any other factor's
+    // weight. 1.0 at medium keeps today's stored risk_weights meaningful unscaled; the spread is
+    // modest (0.8-1.2) on purpose, the same "nudge, don't dominate" reasoning as ADJUST_DELTA for
+    // the adaptive system -- intensity should shift sensitivity, not make a single setting change
+    // swing the keyword factors wildly.
+    private static double keywordIntensityMultiplier(String intensity) {
+        if ("low".equals(intensity)) return 0.8;
+        if ("high".equals(intensity)) return 1.2;
+        return 1.0;
     }
 
     private static Set<String> parseJsonArray(String json) {
