@@ -13,6 +13,25 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
 
+// Derived from git history, not hand-maintained -- a Firebase App Distribution upload whose
+// versionCode matches the previous one gets treated as "already existing," and Firebase doesn't
+// reliably send tester invite emails for that (confirmed: this is why several testers never got
+// one). Commit count is monotonically increasing by construction, so every real commit on this
+// branch produces a genuinely new versionCode with zero chance of forgetting to bump it by hand.
+// Falls back to 1 if git isn't available (e.g. a source zip with no .git directory).
+def gitCommitCount = {
+    try {
+        def out = new ByteArrayOutputStream()
+        exec {
+            commandLine 'git', 'rev-list', '--count', 'HEAD'
+            standardOutput = out
+        }
+        return out.toString().trim().toInteger()
+    } catch (Exception e) {
+        return 1
+    }
+}()
+
 android {
     namespace = "com.reclaim.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -20,12 +39,8 @@ android {
         applicationId "com.reclaim.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        // Bump both on every Firebase App Distribution upload -- a build with an unchanged
-        // versionCode gets treated as "already existing" (not a new release), and Firebase
-        // doesn't reliably send invite emails for that, including to testers added since the
-        // last real release. See PURPOSE.md.
-        versionCode 2
-        versionName "1.1"
+        versionCode gitCommitCount
+        versionName "1.${gitCommitCount}"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -45,11 +60,15 @@ android {
     }
     buildTypes {
         debug {
-            // Plain email list, not a console-side tester group -- see the plugin apply comment
-            // above for why. Add more testers here directly as the project grows.
+            // References a console-side tester group ("testers" -- Firebase Console > App
+            // Distribution > Testers & Groups > Add group) instead of a hardcoded email list, so
+            // adding/removing someone never needs a code change or a new build: just edit the
+            // group membership in the console, then the *next* distribute (see the gitCommitCount
+            // comment above for why each one must be a genuinely new versionCode) reaches
+            // whoever's in it at that time.
             firebaseAppDistribution {
                 releaseNotes = "Debug build from ${new Date().format('yyyy-MM-dd HH:mm')}."
-                testers = "jlanzone21@gmail.com, nathanieldavis006@gmail.com, rebekahjones427@gmail.com, shintm22@gcc.edu"
+                groups = "testers"
             }
         }
         release {
