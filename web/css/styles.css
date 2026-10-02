@@ -1829,3 +1829,44 @@ a.resource-contact:active {
   text-align: center;
   padding: 14px 0;
 }
+
+/* Browser-tracking card (web version): add-a-site rows under the trigger / opt-out lists */
+.site-add-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.site-add-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  color: inherit;
+  font: inherit;
+  font-size: 13.5px;
+}
+
+/* Features that only exist in the Android app are hidden everywhere else (browser, Electron).
+   html.is-native is set in index.html's <head> and again at boot (app.js). */
+html:not(.is-native) .native-only {
+  display: none !important;
+}
+
+html.is-native .web-only {
+  display: none !important;
+}
+
+/* Desktop sidebar: Home first, right under the brand. The narrow-screen tab bar (and so the
+   Android app) keeps Home in the middle as the raised center tab. */
+@media (min-width: 761px) {
+  html:not(.is-native) .sidebar-brand {
+    order: -2;
+  }
+
+  html:not(.is-native) .nav-item-home {
+    order: -1;
+  }
+}

@@ -287,6 +287,28 @@ npm run dist
 
 Builds a Windows installer via `electron-builder` into `dist/`.
 
+## Run in the browser with the extension (web version tracking)
+
+The web version can notice risky browsing and check in, like the Android app,
+through a local-only browser extension in `extension/`. Everything it records
+stays in that browser's extension storage; it makes no network requests.
+
+1. Serve the app: `python -m http.server 4173 --directory web`, or use
+   reclaim128.org.
+2. In Chrome or Edge open `chrome://extensions`, turn on **Developer mode**,
+   click **Load unpacked** and pick the `extension/` folder.
+3. Open Reclaim, go to **Privacy**, and turn on browser tracking (or use the
+   extension's toolbar popup, which also has test-notification buttons).
+
+How it fits together: `extension/background.js` tracks the focused site, runs
+`lib/riskScorer.js` (a port of `RiskScorer.java`) once a minute and posts
+notifications; `extension/content.js` reports keyword matches only;
+`extension/bridge.js` relays `window.postMessage` between the page and the
+worker on the app's own origins; `web/js/webTracker.js` is the app-side client
+and `web/js/browserTrackingView.js` the Privacy card. Tests:
+`node extension/tests/riskScorer.test.js` and
+`node extension/tests/background.test.js`.
+
 ## Run as an Android app (Capacitor)
 
 Requires Android SDK + a JDK. On this machine both are already installed
