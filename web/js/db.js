@@ -142,9 +142,13 @@ const DB = (function () {
     return row ? row.value : null;
   }
 
+  // INSERT OR REPLACE, not a separate getMeta-then-INSERT-or-UPDATE check: the old check-then-
+  // branch had a real race window (two calls for the same key close together could both see "no
+  // row yet" and both attempt INSERT, the second failing on the key's UNIQUE constraint) --
+  // confirmed via usageAnalytics.js's own test calls. This is atomic and has the same net effect
+  // either way (row exists with this value), so nothing else needed to change.
   function setMeta(key, value) {
-    if (getMeta(key) === null) run("INSERT INTO app_meta (key, value) VALUES (?, ?)", [key, value]);
-    else run("UPDATE app_meta SET value = ? WHERE key = ?", [value, key]);
+    run("INSERT OR REPLACE INTO app_meta (key, value) VALUES (?, ?)", [key, value]);
   }
 
   function ensureSeeded() {
@@ -267,5 +271,5 @@ const DB = (function () {
     return ready;
   }
 
-  return { init, run, all, get, insertResource, scheduleSave, persistNow };
+  return { init, run, all, get, insertResource, scheduleSave, persistNow, getMeta, setMeta };
 })();

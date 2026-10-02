@@ -1985,6 +1985,60 @@ reality:
         one-time `firebase login` -- see CLAUDE.md's "Running it" section
         for the exact commands.
 
+- [x] **Minimal, privacy-preserving usage counter** -- "how many people use
+      Reclaim and how often," answered without Firebase Analytics or any
+      ad-tech SDK. Asked the user directly first: Firebase Analytics
+      conflicts with the app's own repeatedly-stated on-device-only
+      privacy commitment, especially for an app about pornography-
+      addiction recovery specifically -- usage data about who's using it
+      and how often is a real privacy cost, not a neutral technical
+      choice. User chose the minimal option over full Firebase Analytics
+      or Play Console's own (install-only, no frequency) stats.
+      - New Supabase table `app_opens` (same project the public resource
+        library already reads from): `install_id` (random per-install
+        UUID, generated client-side, never tied to anything identifying)
+        + `opened_date`, unique together -- one row per install per
+        calendar day it was opened, nothing else. RLS enabled with an
+        INSERT-only policy for `anon` and no SELECT/UPDATE/DELETE policy
+        at all, so the public key embedded in the app (same one already
+        used for the resource library) can only ever add a row, never
+        read usage data back -- confirmed directly: a `select=*` request
+        with that key gets a flat 401.
+      - New `usageAnalytics.js`: `pingIfNeeded()`, called once at boot
+        (`app.js`), checks a `last_ping_date` flag in `app_meta` and
+        skips the network call entirely once already pinged for today.
+        `supabaseClient.js` gained `logAppOpen` -- deliberately a plain
+        INSERT, not `Prefer: resolution=ignore-duplicates` (PostgREST's
+        upsert-conflict path needs more than INSERT privilege to
+        resolve, and granting `anon` anything beyond INSERT, e.g.
+        SELECT, would let the public key read usage data back, defeating
+        the entire point); a same-day duplicate ping instead hits the
+        table's own unique constraint (409) and is treated as success,
+        not an error.
+      - **Found and fixed a real, independent concurrency bug while
+        testing this**: `db.js`'s `setMeta` used a check-then-branch
+        pattern (`getMeta(key) === null` decides INSERT vs UPDATE) with
+        a real race window -- two calls for the same key close enough
+        together could both see "no row yet" and both attempt INSERT,
+        the second failing on the key's own UNIQUE constraint. Confirmed
+        by reproducing it directly (two near-simultaneous `pingIfNeeded`
+        calls). Fixed to a single atomic `INSERT OR REPLACE`, same net
+        effect, no race window -- this fixes every other `setMeta` call
+        site in the app (`UserPreferencesStore`, `RiskProfile`, etc.),
+        not just this new one.
+      - Verified against the real live Supabase project, not a mock:
+        confirmed table/RLS/grants directly via SQL, drove the real
+        `UsageAnalytics.pingIfNeeded()` end-to-end in a fresh browser
+        origin, confirmed the real row landed (`SELECT` as the project
+        owner), confirmed a second same-day call is a pure no-op, and
+        confirmed the anon key's 401 on read. Deleted the test rows
+        afterward.
+      - No in-app dashboard for this -- it's a backend-only counter
+        queried directly in Supabase (as the project owner) when wanted,
+        e.g. `SELECT opened_date, COUNT(DISTINCT install_id) FROM
+        app_opens GROUP BY opened_date ORDER BY opened_date DESC` for
+        daily active installs.
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing
