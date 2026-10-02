@@ -344,6 +344,17 @@ cd android
   domain `reclaim128.org` (Cloudflare, Nathaniel's).
 - Regenerate vendored libs: `npm run vendor:webllm`,
   `npm run vendor:youversion`.
+- **Distributing a debug build to testers (Firebase App Distribution,
+  project `reclaim-128`):** one-time per machine --
+  `npm install -g firebase-tools` then `firebase login` (your own Google
+  account, interactive browser login; do this yourself, never have an
+  agent do it). After that: `cd android && ./gradlew assembleDebug
+  appDistributionUploadDebug`. Testers (both of you) are listed directly
+  in `android/app/build.gradle`'s `debug.firebaseAppDistribution` block,
+  not a console-side group -- add more emails there as the project grows.
+  `android/app/google-services.json` is committed (it's a public client
+  config, not a secret -- standard Firebase practice); the keystore/
+  signing secrets it's *not* are still gitignored as before.
 
 ## 12. Neighboring folders (not this repo)
 

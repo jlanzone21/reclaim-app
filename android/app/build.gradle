@@ -1,4 +1,11 @@
 apply plugin: 'com.android.application'
+// Uploads debug builds to Firebase App Distribution (`./gradlew assembleDebug
+// appDistributionUploadDebug`) -- testers are listed directly in the debug buildType below, not a
+// console-side group, since this is the first pass and nobody's set one up there yet. Needs
+// google-services.json (present, reclaim-128 project) to resolve the Firebase app automatically,
+// and a one-time local `firebase login` (each person's own Google account, not something run in
+// CI/on someone else's behalf) before the upload task can authenticate -- see PURPOSE.md.
+apply plugin: 'com.google.firebase.appdistribution'
 
 def keystorePropertiesFile = rootProject.file("keystore.properties")
 def keystoreProperties = new Properties()
@@ -33,6 +40,14 @@ android {
         }
     }
     buildTypes {
+        debug {
+            // Plain email list, not a console-side tester group -- see the plugin apply comment
+            // above for why. Add more testers here directly as the project grows.
+            firebaseAppDistribution {
+                releaseNotes = "Debug build from ${new Date().format('yyyy-MM-dd HH:mm')}."
+                testers = "jlanzone21@gmail.com, nathanieldavis006@gmail.com"
+            }
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
