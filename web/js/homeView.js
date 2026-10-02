@@ -4,9 +4,10 @@
  * (usage samples, app events, keyword matches). That's meant to be found deliberately in Insights/
  * Privacy, not sitting on the screen anyone glancing at the phone sees first.
  *
- * Also a one-tap shortcut to call the accountability partner, when one's been set -- same real
+ * Also two one-tap shortcuts: calling the accountability partner, when one's been set -- same real
  * relationship RiskNudgeMonitor's high-risk notification action and the crisis modal already
- * point to, just reachable without waiting for either of those to fire.
+ * point to, just reachable without waiting for either of those to fire -- and opening the
+ * preferences edit form, so it's not buried a tap deep in Privacy.
  */
 const HomeView = (function () {
   let els = {};
@@ -20,6 +21,7 @@ const HomeView = (function () {
       verseBody: document.getElementById("homeVerseBody"),
       statRow: document.getElementById("homeStatRow"),
       callCards: document.getElementById("homeCallCards"),
+      preferencesCard: document.getElementById("homePreferencesCard"),
     };
     initialized = true;
     refresh();
@@ -29,6 +31,7 @@ const HomeView = (function () {
     if (!initialized) return init();
     renderVerse();
     renderAccountabilityShortcut();
+    renderPreferencesShortcut();
     renderStats();
   }
 
@@ -78,6 +81,42 @@ const HomeView = (function () {
       a.click();
       a.remove();
     };
+    return btn;
+  }
+
+  // A one-tap shortcut to the preferences edit form, same reasoning as the call-partner card
+  // above -- reachable from the first screen the app opens onto, not just buried a tap deep in
+  // Privacy. Always shown (not conditioned on anything already being filled in), same component
+  // shape as buildCallCard so it reads as the same kind of "quick action" row.
+  function renderPreferencesShortcut() {
+    els.preferencesCard.innerHTML = "";
+    els.preferencesCard.appendChild(buildPreferencesCard());
+  }
+
+  function buildPreferencesCard() {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "home-call-card";
+
+    const icon = document.createElement("span");
+    icon.className = "home-call-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 .1-1 7.6 7.6 0 0 0-.1-1l2.1-1.6a.5.5 0 0 0 .1-.6l-2-3.5a.5.5 0 0 0-.6-.2l-2.5 1a7.4 7.4 0 0 0-1.7-1l-.4-2.6a.5.5 0 0 0-.5-.4h-4a.5.5 0 0 0-.5.4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1a.5.5 0 0 0-.6.2l-2 3.5a.5.5 0 0 0 .1.6L4.5 11a7.6 7.6 0 0 0-.1 1 7.6 7.6 0 0 0 .1 1l-2.1 1.6a.5.5 0 0 0-.1.6l2 3.5c.1.2.4.3.6.2l2.5-1c.5.4 1.1.8 1.7 1l.4 2.6c0 .3.2.4.5.4h4c.3 0 .5-.2.5-.4l.4-2.6a7.4 7.4 0 0 0 1.7-1l2.5 1c.2.1.5 0 .6-.2l2-3.5a.5.5 0 0 0-.1-.6L19.4 13ZM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"/></svg>';
+    btn.appendChild(icon);
+
+    const text = document.createElement("span");
+    text.className = "home-call-text";
+    const label = document.createElement("span");
+    label.className = "home-call-label";
+    label.textContent = "Preferences";
+    const sub = document.createElement("span");
+    sub.className = "home-call-sub";
+    sub.textContent = "Accountability partner, triggers, coping methods, and how Reclaim reaches you.";
+    text.appendChild(label);
+    text.appendChild(sub);
+    btn.appendChild(text);
+
+    btn.onclick = () => PreferencesView.open("edit");
     return btn;
   }
 

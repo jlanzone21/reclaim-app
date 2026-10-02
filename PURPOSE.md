@@ -1933,6 +1933,32 @@ reality:
         (same Philadelphia test point as the original distance-ranking
         verification, now confirmed gender-filtered too).
 
+- [x] **"Preferences" shortcut card on Home**, same component shape as
+      the existing call-accountability-partner card right above it.
+      First attempt misread the request as an Android launcher/Home
+      Screen shortcut (long-press icon, pin to the phone's own home
+      screen) -- built and shipped that, user clarified they wanted it
+      inside the app's own Home tab instead, not on the phone's home
+      screen at all. Reverted the launcher-shortcut commit outright
+      (`git revert`, not a manual undo) rather than leaving it half-used,
+      then built the actual ask.
+      - `homeView.js`'s existing `buildCallCard` pattern
+        (`.home-call-card`/`-icon`/`-text`/`-label`/`-sub`, already
+        styled) reused exactly for a new `buildPreferencesCard` -- a
+        gear icon, label "Preferences", and a one-line summary of what's
+        in there, `onclick` just calling `PreferencesView.open("edit")`
+        directly (no native plugin, no pending-flag, no intent -- it's
+        already the same WebView, so there was never a need for any of
+        the launcher-shortcut machinery the reverted attempt built).
+        Always shown, not conditioned on anything already being filled
+        in, right below the call-partner card(s).
+      - Verified in-browser against the real rendered Home view (fresh
+        origin, not a cached script -- this session's browser-pane
+        caching quirk keeps resurfacing, worth remembering for next
+        time): confirmed the card renders with the right icon/label/sub,
+        and that clicking it actually opens `preferencesOverlay`
+        (`classList.contains("visible")` true).
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing
