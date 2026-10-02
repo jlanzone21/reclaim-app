@@ -1696,6 +1696,30 @@ reality:
         renderer already handles, so rendering is covered by that
         existing, already-verified path.
 
+- [x] **Small groups ranked by real distance from the saved home location**,
+      instead of only a same-state text match. The `resources` table
+      already had `latitude`/`longitude` columns, unused -- all 38
+      `small_group` rows had `city`/`state` but null coordinates. Geocoded
+      the 34 rows with a real physical location (city-center coordinates;
+      the remaining 4 are online/nationwide groups or directory links,
+      correctly left uncoordinated) directly in Supabase.
+      `resourceRepo.js`'s `getSmallGroups` now reads the saved
+      `home_lat`/`home_lon` (`UserPreferencesStore`, same field the
+      onboarding "Save current location as home" button sets) and, when
+      set and at least some groups have coordinates, fetches every
+      `small_group` row, ranks by the same Haversine `distanceMeters`
+      formula `insightsView.js` already uses for Home/Away labeling, and
+      returns the closest `limit`. Falls back to the pre-existing
+      text-detected-state match (then a nationwide sample) when there's no
+      saved home location yet -- never breaks the existing behavior for
+      someone who hasn't set one. `app.js`'s small-group card now shows
+      "~N mi from your saved home location" when a distance was computed.
+      Verified against the real live Supabase data (not a mock): with a
+      simulated Philadelphia, PA home location, the ranked list came back
+      Philadelphia (0 mi) -> Phoenixville (22 mi) -> Lancaster (61 mi) ->
+      Gettysburg (110 mi) -> Southern Maryland (132 mi), correct ascending
+      geographic order.
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing

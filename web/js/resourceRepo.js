@@ -105,10 +105,40 @@ const ResourceRepo = (function () {
     });
   }
 
-  // Filtered to a mentioned state when there is one, so "sort through quickly" actually happens
-  // instead of returning all 36+ nationwide entries. See getSmallGroups' comment for why this
-  // reads live rather than from a local copy.
+  // Same Haversine formula as insightsView.js's own distanceMeters (not shared cross-file --
+  // it's a one-off formula, not worth wiring a module for in this plain-script codebase).
+  function distanceMeters(lat1, lon1, lat2, lon2) {
+    const R = 6371000;
+    const toRad = (d) => (d * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  // Ranked by actual distance from the saved home location (onboarding/Privacy) when one is set
+  // and at least some groups have coordinates -- closest first, real proximity instead of a
+  // same-state coin flip. Falls back to the old text-detected-state match (then a nationwide
+  // sample) when there's no saved home location, or none of the groups have coordinates yet.
   async function getSmallGroups(query, limit = 2) {
+    const home = typeof UserPreferencesStore !== "undefined" ? UserPreferencesStore.get() : null;
+    if (home && home.home_lat != null && home.home_lon != null) {
+      let rows;
+      try {
+        rows = await SupabaseClient.queryResources("small_group");
+      } catch (e) {
+        console.warn("Couldn't reach Supabase for small_group:", e);
+        return null;
+      }
+      const withCoords = rows.filter((r) => r.latitude != null && r.longitude != null);
+      if (withCoords.length) {
+        return withCoords
+          .map((r) => ({ ...r, distanceMeters: distanceMeters(home.home_lat, home.home_lon, r.latitude, r.longitude) }))
+          .sort((a, b) => a.distanceMeters - b.distanceMeters)
+          .slice(0, limit);
+      }
+    }
+
     const state = detectState(query);
     const rows = await fromSupabase("small_group", { state, limit });
     if (rows === null) return null;
