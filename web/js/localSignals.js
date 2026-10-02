@@ -95,6 +95,24 @@ const LocalSignals = (function () {
     return !!pending;
   }
 
+  // MainActivity.handlePreferencesIntent writes this when the "Preferences" launcher shortcut
+  // (long-press, or the pinned one requestPinPreferencesShortcut below adds) is what opened the
+  // app. Consumed once, same reasoning as getPendingVerseRequest.
+  async function getPendingPreferencesRequest() {
+    if (!available()) return false;
+    const { pending } = await plugin().getPendingPreferencesRequest();
+    return !!pending;
+  }
+
+  // Asks the launcher to place a "Preferences" icon directly on the Home Screen -- shows the
+  // system's own confirmation dialog. Returns false (not a thrown error) if the launcher doesn't
+  // support pinning at all, so the caller can just hide the button rather than show a broken one.
+  async function requestPinPreferencesShortcut() {
+    if (!available()) return false;
+    const { supported } = await plugin().requestPinPreferencesShortcut();
+    return !!supported;
+  }
+
   // RiskScorer's adaptive-tuning loop, both halves: correlates this check-in against whichever
   // risk-nudge notification most recently fired (if any, and if recent enough), AND against this
   // check-in's own tags (independent of any notification) -- see RiskScorer.java's class doc
@@ -159,6 +177,8 @@ const LocalSignals = (function () {
     getPendingRiskAlert,
     getPendingNightlyAction,
     getPendingVerseRequest,
+    getPendingPreferencesRequest,
+    requestPinPreferencesShortcut,
     recordCheckinOutcome,
     getNotificationStats,
     debugRunBackgroundCheck,

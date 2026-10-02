@@ -184,6 +184,17 @@
     return submitVerseRequest();
   }
 
+  // MainActivity.handlePreferencesIntent writes this when the "Preferences" launcher shortcut
+  // (long-press, or a pinned Home Screen icon) is what opened the app -- lands straight in the
+  // preferences edit form instead of wherever the app would otherwise open to.
+  async function checkPendingPreferencesRequest() {
+    if (typeof LocalSignals === "undefined" || !LocalSignals.available()) return false;
+    const pending = await LocalSignals.getPendingPreferencesRequest();
+    if (!pending) return false;
+    PreferencesView.open("edit");
+    return true;
+  }
+
   // Shared by the Android notification action and the browser extension's: land in Chat with a
   // scripture request already sent (or on Home if the chat model isn't downloaded yet).
   function submitVerseRequest() {
@@ -228,6 +239,7 @@
   document.addEventListener("resume", async () => {
     if (busy) return;
     checkPendingNightlyAction();
+    if (await checkPendingPreferencesRequest()) return;
     const wentToVerse = await checkPendingVerseRequest();
     if (!wentToVerse && typeof RiskAlertView !== "undefined") RiskAlertView.checkPending();
   });
@@ -281,8 +293,11 @@
         BrowserTrackingView.refresh();
         checkPendingWeb();
       });
-      checkPendingVerseRequest().then((wentToVerse) => {
-        if (!wentToVerse) RiskAlertView.checkPending();
+      checkPendingPreferencesRequest().then((wentToPreferences) => {
+        if (wentToPreferences) return;
+        checkPendingVerseRequest().then((wentToVerse) => {
+          if (!wentToVerse) RiskAlertView.checkPending();
+        });
       });
     })
     .catch((err) => {

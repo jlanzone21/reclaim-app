@@ -58,6 +58,7 @@ const PreferencesView = (function () {
       skip: document.getElementById("preferencesSkip"),
       close: document.getElementById("preferencesClose"),
       editBtn: document.getElementById("editPreferencesBtn"),
+      pinBtn: document.getElementById("pinPreferencesBtn"),
       summary: document.getElementById("preferencesSummary"),
     };
 
@@ -68,6 +69,7 @@ const PreferencesView = (function () {
     wireGenderScale();
     wirePersonForms();
     wireHomeLocation();
+    wirePinShortcut();
 
     els.save.addEventListener("click", () => { persist(true); close(); });
     els.skip.addEventListener("click", () => close());
@@ -75,6 +77,24 @@ const PreferencesView = (function () {
     els.editBtn.addEventListener("click", () => open("edit"));
 
     renderSummary();
+  }
+
+  // "Pin to Home Screen" shows the system's own confirmation dialog (requestPinPreferencesShortcut,
+  // LocalSignalsPlugin.java) -- native-only (see index.html's native-only class) and further hidden
+  // whenever LocalSignals isn't actually available, so this never shows on desktop/browser/Electron.
+  function wirePinShortcut() {
+    if (typeof LocalSignals === "undefined" || !LocalSignals.available()) return;
+    els.pinBtn.hidden = false;
+    const defaultLabel = els.pinBtn.textContent;
+    els.pinBtn.addEventListener("click", async () => {
+      els.pinBtn.disabled = true;
+      const supported = await LocalSignals.requestPinPreferencesShortcut();
+      els.pinBtn.textContent = supported ? "Check your Home Screen for the prompt" : "Your launcher doesn't support this";
+      setTimeout(() => {
+        els.pinBtn.textContent = defaultLabel;
+        els.pinBtn.disabled = false;
+      }, 3000);
+    });
   }
 
   // Onboarding mode: user hasn't answered yet, "Skip for now" is offered, closing either way just

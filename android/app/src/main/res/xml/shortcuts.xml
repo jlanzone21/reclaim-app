@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Static app shortcut: long-press the launcher icon -> "Preferences" jumps straight to
+  PreferencesView in edit mode (see MainActivity.handlePreferencesIntent). The same target is also
+  what Privacy's "Pin preferences to Home Screen" button requests via ShortcutManagerCompat
+  (LocalSignalsPlugin.requestPinPreferencesShortcut) for a shortcut the user can place directly on
+  their home screen, not just reach via long-press.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="preferences"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_preferences"
+        android:shortcutLongLabel="@string/shortcut_preferences">
+        <intent
+            android:action="com.reclaim.app.OPEN_PREFERENCES"
+            android:targetPackage="com.reclaim.app"
+            android:targetClass="com.reclaim.app.MainActivity" />
+    </shortcut>
+</shortcuts>

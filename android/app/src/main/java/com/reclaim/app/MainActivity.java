@@ -42,10 +42,27 @@ public class MainActivity extends BridgeActivity {
         LocalSignalsDb.getInstance(this).setMeta("last_reclaim_open_at", LocalSignalsDb.isoNow());
     }
 
+    // Not a notification tap -- the shortcuts.xml static shortcut (long-press the launcher icon)
+    // and the pinned Home Screen shortcut (LocalSignalsPlugin.requestPinPreferencesShortcut) both
+    // launch this exact action. Named to match the other handlers below even though its trigger
+    // is a launcher action, not a PendingIntent, since app.js's pending-flag pattern is otherwise
+    // identical.
+    static final String ACTION_OPEN_PREFERENCES = "com.reclaim.app.OPEN_PREFERENCES";
+
     private void handleNotificationIntent(Intent intent) {
         if (intent == null) return;
         handleNightlyIntent(intent);
         handleRiskIntent(intent);
+        handlePreferencesIntent(intent);
+    }
+
+    private void handlePreferencesIntent(Intent intent) {
+        if (!ACTION_OPEN_PREFERENCES.equals(intent.getAction())) return;
+        LocalSignalsDb.getInstance(this).setMeta("pending_preferences_request", "1");
+        // Consumed by app.js via getPendingPreferencesRequest, same one-shot pattern as the other
+        // pending flags -- clearing the action here keeps a later plain resume (no new tap) from
+        // re-matching this check against a stale intent.
+        intent.setAction(null);
     }
 
     private void handleNightlyIntent(Intent intent) {
