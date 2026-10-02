@@ -24,6 +24,10 @@ const CRISIS_REPLY =
 // tempted" would silently mean different things to the same user.
 const TEMPTING_TIME_BUCKETS = ["Morning", "Afternoon", "Evening", "Night"];
 
+// Matches the `method` field on coping_mechanism rows (seedData.js) exactly -- getCopingMechanisms
+// (resourceRepo.js) prioritizes whichever of these the user picked in onboarding/preferences.
+const COPING_METHOD_OPTIONS = ["Scripture", "Breathing", "Accountability partner", "Journaling", "Walk", "Devotional"];
+
 const CONDITION_TAGS = [
   "Stress",
   "Loneliness",

@@ -15,6 +15,7 @@
  *     onboarding_completed_at,                       // ISO string once they've been through setup
  *     home_lat, home_lon,                            // number | null, captured via device GPS
  *     gender: 'male' | 'female' | null,              // optional, no default
+ *     preferred_coping_methods: string[],             // subset of COPING_METHOD_OPTIONS (constants.js)
  *   }
  *
  * home_lat/home_lon deliberately do NOT get mirrored into personalContext.js's AI-facing
@@ -45,6 +46,7 @@ const UserPreferencesStore = (function () {
     home_lat: null,
     home_lon: null,
     gender: null,
+    preferred_coping_methods: [],
   };
 
   function parseRow(row) {
@@ -54,6 +56,7 @@ const UserPreferencesStore = (function () {
       ...row,
       tempting_times: row.tempting_times ? JSON.parse(row.tempting_times) : [],
       common_triggers: row.common_triggers ? JSON.parse(row.common_triggers) : [],
+      preferred_coping_methods: row.preferred_coping_methods ? JSON.parse(row.preferred_coping_methods) : [],
     };
   }
 
@@ -83,6 +86,7 @@ const UserPreferencesStore = (function () {
       next.home_lat ?? null,
       next.home_lon ?? null,
       next.gender || null,
+      JSON.stringify(next.preferred_coping_methods || []),
     ];
     if (exists) {
       DB.run(
@@ -93,7 +97,7 @@ const UserPreferencesStore = (function () {
            tempting_times = ?, common_triggers = ?, tempting_locations = ?,
            notification_intensity = ?, other_notes = ?,
            onboarding_completed_at = ?, updated_at = ?,
-           home_lat = ?, home_lon = ?, gender = ?
+           home_lat = ?, home_lon = ?, gender = ?, preferred_coping_methods = ?
          WHERE id = 1`,
         params
       );
@@ -104,8 +108,8 @@ const UserPreferencesStore = (function () {
             pastor_name, pastor_phone,
             tempting_times, common_triggers, tempting_locations,
             notification_intensity, other_notes, onboarding_completed_at, updated_at,
-            home_lat, home_lon, gender)
-         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            home_lat, home_lon, gender, preferred_coping_methods)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         params
       );
     }

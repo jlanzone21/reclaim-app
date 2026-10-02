@@ -15,6 +15,7 @@ const PreferencesView = (function () {
   let els = {};
   let selectedTimes = new Set();
   let selectedTriggers = new Set();
+  let selectedCopingMethods = new Set();
   let selectedIntensity = "medium";
   let selectedGender = null; // "male" | "female" | null -- optional, unlike intensity there's no default
   // Staged like homeLat/homeLon below -- only actually written on Save, so Skip/Close discards a
@@ -46,6 +47,7 @@ const PreferencesView = (function () {
       genderScale: document.getElementById("prefGenderScale"),
       timeGrid: document.getElementById("prefTimeGrid"),
       triggerGrid: document.getElementById("prefTriggerGrid"),
+      copingMethodGrid: document.getElementById("prefCopingMethodGrid"),
       homeStatus: document.getElementById("prefHomeStatus"),
       saveHomeBtn: document.getElementById("prefSaveHomeBtn"),
       clearHomeBtn: document.getElementById("prefClearHomeBtn"),
@@ -61,6 +63,7 @@ const PreferencesView = (function () {
 
     renderChipGrid(els.timeGrid, TEMPTING_TIME_BUCKETS, selectedTimes);
     renderChipGrid(els.triggerGrid, CONDITION_TAGS, selectedTriggers);
+    renderChipGrid(els.copingMethodGrid, COPING_METHOD_OPTIONS, selectedCopingMethods);
     wireIntensityScale();
     wireGenderScale();
     wirePersonForms();
@@ -112,8 +115,10 @@ const PreferencesView = (function () {
 
     selectedTimes = new Set(prefs.tempting_times || []);
     selectedTriggers = new Set(prefs.common_triggers || []);
+    selectedCopingMethods = new Set(prefs.preferred_coping_methods || []);
     renderChipGrid(els.timeGrid, TEMPTING_TIME_BUCKETS, selectedTimes);
     renderChipGrid(els.triggerGrid, CONDITION_TAGS, selectedTriggers);
+    renderChipGrid(els.copingMethodGrid, COPING_METHOD_OPTIONS, selectedCopingMethods);
 
     selectedGender = prefs.gender || null;
     Array.from(els.genderScale.querySelectorAll(".scale-btn")).forEach((btn) => {
@@ -324,6 +329,7 @@ const PreferencesView = (function () {
       gender: selectedGender,
       tempting_times: Array.from(selectedTimes),
       common_triggers: Array.from(selectedTriggers),
+      preferred_coping_methods: Array.from(selectedCopingMethods),
       notification_intensity: selectedIntensity,
       other_notes: els.otherNotes.value.trim(),
       home_lat: homeLat,

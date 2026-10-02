@@ -269,11 +269,23 @@ final class RiskNudgeMonitor {
         // both are set -- anything lower suggests a lighter-touch action instead. Falls back to
         // the lighter action even at high risk if no partner's been set -- better than no
         // suggested action at all.
+        //
+        // An actual on-screen keyword match (severe or moderate -- not mild, that tier is the
+        // genuinely ambiguous one) takes priority over the usage-pattern-only high-risk tiering
+        // below: user's own framing, a real match is worth a direct nudge to reach out, not just
+        // a call option. Pre-filled, not auto-sent -- same "opens native communication, never
+        // sends anything itself" choice as addCallAction below, so a false-positive moderate match
+        // (an ambiguous word in an innocent context) can't blindside a partner with a message the
+        // user never saw or approved; they still have to actually tap Send.
         String phone1 = db.getMeta("accountability_phone");
         String phone2 = db.getMeta("accountability_phone_2");
         boolean hasPhone1 = phone1 != null && !phone1.trim().isEmpty();
         boolean hasPhone2 = phone2 != null && !phone2.trim().isEmpty();
-        if (result.isHighRisk() && (hasPhone1 || hasPhone2)) {
+        boolean keywordMatch = hasFactor(result.factors, "recentKeywordSevere") || hasFactor(result.factors, "recentKeyword");
+        if (keywordMatch && (hasPhone1 || hasPhone2)) {
+            if (hasPhone1) addTextAction(ctx, builder, 4, phone1, db.getMeta("accountability_name"));
+            if (hasPhone2) addTextAction(ctx, builder, 5, phone2, db.getMeta("accountability_name_2"));
+        } else if (result.isHighRisk() && (hasPhone1 || hasPhone2)) {
             if (hasPhone1) addCallAction(ctx, builder, 1, phone1, db.getMeta("accountability_name"));
             if (hasPhone2) addCallAction(ctx, builder, 3, phone2, db.getMeta("accountability_name_2"));
         } else {
@@ -306,6 +318,31 @@ final class RiskNudgeMonitor {
                 ctx, requestCode, dial, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         String label = "Call " + (name != null && !name.trim().isEmpty() ? name.trim() : "them");
         builder.addAction(0, label, callIntent);
+    }
+
+    // What the pre-filled text draft says -- never anything more specific than this (no app name,
+    // no keyword, no severity) for the same reason the notification text itself stays generic.
+    private static final String REACH_OUT_MESSAGE = "Hey, I'm struggling right now, so I would love to talk sometime soon.";
+
+    // ACTION_SENDTO with smsto:, not SmsManager -- opens the Messages app pre-filled with the
+    // draft, doesn't send it. Same "opens native communication, never sends anything itself"
+    // choice as addCallAction above: no SEND_SMS permission needed (a protected permission Google
+    // Play restricts to default SMS handlers), and the user still has to actually tap Send, so a
+    // false-positive match can't message a partner without the user seeing and approving it first.
+    private static void addTextAction(Context ctx, NotificationCompat.Builder builder, int requestCode, String phone, String name) {
+        Intent sms = new Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + phone.trim()));
+        sms.putExtra("sms_body", REACH_OUT_MESSAGE);
+        PendingIntent textIntent = PendingIntent.getActivity(
+                ctx, requestCode, sms, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        String label = "Text " + (name != null && !name.trim().isEmpty() ? name.trim() : "them");
+        builder.addAction(0, label, textIntent);
+    }
+
+    private static boolean hasFactor(org.json.JSONArray factors, String name) {
+        for (int i = 0; i < factors.length(); i++) {
+            if (name.equals(factors.optString(i))) return true;
+        }
+        return false;
     }
 
     // Machine-readable factor names (not the plain-language reasons above) plus a timestamp, so

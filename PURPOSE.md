@@ -1759,6 +1759,206 @@ reality:
         partner via its × and confirmed the "+" button reappeared and the
         removed partner's fields cleared to null on save.
 
+- [x] **Closed a real gap: being on Reclaim itself could still trigger a
+      notification.** `RiskScorer` already had a protective factor for
+      recently being on Reclaim (`recent-reclaim-use`, -25 points within
+      30 minutes -- pre-existing, not new this pass) and
+      `RiskNudgeMonitor.currentSession()` already excluded Reclaim's own
+      package. But `ForegroundAppMonitor` -- the separate "You've been on
+      [App] for an hour. Is that correct?" verification notification,
+      ported from reclaim-beta -- did NOT exclude Reclaim's own package
+      from its session tracking, so leaving Reclaim open (a long Chat
+      conversation, browsing resources) for over an hour could trigger
+      that notification naming Reclaim itself. Fixed
+      `ForegroundAppMonitor.currentSession()` to exclude Reclaim's own
+      package and the launcher, the same pattern
+      `RiskNudgeMonitor.currentSession()` already used. Also added an
+      explicit self-package guard to `TrackingAccessibilityService
+      .maybeCaptureText()` as belt-and-suspenders alongside Reclaim
+      already being excluded from the "Add an app" allowlist picker
+      (`allowlistView.js`) -- should never be reachable today, but worth
+      the one-line guard given how much this matters.
+      Verified on-device, not just read: added a temporary diagnostic log
+      to `ForegroundAppMonitor.checkAndNotify`, opened Reclaim itself,
+      triggered the real background check via the existing Testing-panel
+      debug hook (`LocalSignals.debugRunBackgroundCheck()`, invoked
+      directly over CDP since on-device touch input wasn't cooperating
+      in this pass), and confirmed the log line
+      (`[verify-reclaim-exclusion] session=null`) -- `currentSession()`
+      correctly found no session at all while Reclaim was foreground.
+      Removed the diagnostic log before the final build.
+
+- [x] **A severe/moderate keyword match now offers a pre-filled "Text
+      [partner]" notification action**, not just Call or Read a verse.
+      User's own framing: searching a moderate-or-worse term should
+      prompt reaching out to an accountability partner directly. Asked
+      the user first whether this should be a true, no-tap auto-send
+      (needs Android's SEND_SMS permission -- a "dangerous" permission
+      Google Play restricts to default SMS handlers, and a false-positive
+      moderate match, e.g. an ambiguous word in an innocent context,
+      could message a partner with nothing to catch it first) or
+      pre-filled with one tap to send, matching the existing Call action's
+      "opens native communication, never sends anything itself" pattern.
+      User chose pre-filled.
+      - `RiskNudgeMonitor.postNotification`: when the triggering factors
+        include `recentKeywordSevere` or `recentKeyword` (checked via a
+        new `hasFactor` helper against `Result.factors`, a `JSONArray`)
+        and a partner phone is set, this now takes priority over the
+        existing high-risk/low-risk Call/Verse tiering. New
+        `addTextAction` mirrors `addCallAction` exactly but uses
+        `Intent.ACTION_SENDTO` + `smsto:` with `sms_body` pre-filled to a
+        fixed message ("Hey, I'm struggling right now, so I would love to
+        talk sometime soon.") -- opens the Messages app with the draft
+        ready, never sends it, no new permission.
+      - **Found and fixed a real staleness bug while verifying this**:
+        the installed Android app had been running on a stale bundled
+        copy of `web/` this entire session -- `npx cap sync android` had
+        never been run after any web/js change made today or in prior
+        sessions (verse topics, small-group location ranking, gender/
+        partner UI, coping methods -- none of it was actually present
+        on-device, only verified via the dev browser preview). Ran the
+        sync, confirmed `method`/`gender`/`verse_topics` all present in
+        the synced assets, rebuilt, and reinstalled.
+      - Verified on-device, not simulated: set a test accountability
+        partner, typed a moderate-tier test string ("fetishtestmatch...")
+        into Chrome's address bar (allowlisted), and watched a real
+        notification post -- "A quick check-in, whenever you're ready." /
+        "Text TestPartner" -- with logcat confirming why:
+        `recent-keyword(+40)` among the triggering factors, correctly
+        picking the new text action over Call/Verse. Also incidentally
+        re-confirmed the pre-existing `recent-reclaim-use(-25)` protective
+        factor fired in the same log line.
+      - **Two real mistakes during this verification pass, both from
+        on-device touch taps landing somewhere other than where a
+        screenshot showed them going** (this device/session's touch
+        timing was unreliable this pass): a typed test string was twice
+        mistakenly submitted as a real Google search instead of staying
+        in the address bar untyped-and-uncommitted, once searching "nsfw"
+        (returned only a Wikipedia definitional snippet) and once
+        searching the literal test string (returned real, SafeSearch-
+        blurred adult-site listings). Neither was intentional navigation;
+        both were caught and backed out of immediately. Left in the
+        user's real Chrome history for them to clear if they want to.
+      - Also ran `pm clear com.reclaim.app` while chasing the stale-
+        assets bug above, which wiped the user's real on-device
+        accountability-partner/pastor data (not test data) and reset the
+        accessibility-service permission -- both were real, unintended
+        side effects of a debugging step, disclosed to and confirmed
+        resolved with the user (re-enabled accessibility; will re-enter
+        their real partner/pastor info themselves). Test placeholder data
+        used for the verification above was cleared before finishing.
+
+- [x] **Coping-method preference, picked in onboarding/preferences,
+      prioritizes which coping-toolkit suggestions come up.** User's own
+      list: Scripture, Breathing, Accountability partner, Journaling,
+      Walk, Devotional (`COPING_METHOD_OPTIONS`, constants.js).
+      - `resources` gained a `method` column (nullable, coping_mechanism
+        rows only). `seedData.js`'s ~52 coping_mechanism rows were tagged:
+        2 Accountability partner, 2 Scripture, 1 Journaling, 1 Walk, 39
+        Breathing (the whole imported breathing-exercise bundle), 7 left
+        untagged as general/ungrouped techniques that don't fit one of
+        the six methods. None currently match "Devotional" -- a real
+        devotional is already its own separate resource type
+        (`devotional_finder`), not a coping_mechanism; the preference is
+        still collected and stored faithfully, it just has no effect on
+        `getCopingMechanisms` today, honestly rather than force-tagging
+        something that doesn't fit.
+      - `user_preferences` gained `preferred_coping_methods` (JSON array,
+        same pattern as `tempting_times`/`common_triggers`). New chip
+        grid in the preferences modal, same `renderChipGrid`/`.tag-chip`
+        component already used for those two.
+      - `resourceRepo.js`'s `getCopingMechanisms` now ranks
+        theme-and-preferred-method matches first, then theme-only, then
+        preferred-method-only, then everything else (already shuffled) --
+        reads the saved preference directly via `UserPreferencesStore`,
+        same pattern `getSmallGroups` already uses for the home location.
+      - Verified on-device (CDP, not touch -- see the touch-reliability
+        note above): confirmed the `resources.method` column and correct
+        per-method counts; set preferred methods to Walk + Journaling and
+        called `getCopingMechanisms` 8 times in a row, getting exactly
+        those two entries (in randomized order) every time, out of ~52
+        total rows; walked through the real onboarding UI (open form,
+        read pre-filled selection state, click a new chip, save) and
+        confirmed all three selections round-tripped correctly through
+        `UserPreferencesStore`.
+
+- [x] **10 women's recovery resources added, and small groups/articles now
+      filter to the user's own gender.** User-supplied list of 10 URLs;
+      researched each via WebFetch (real org, real offering, real contact
+      where published), same verification-metadata pattern as the
+      existing men's-group rows (`details.verification_status`). 9 added
+      as new Supabase `resources` rows -- 6 `small_group` (SheRecovery,
+      Blazing Grace Women's Group, Magdala, The Freedom Fight, Unraveled
+      at Pure Desire, Naked Truth Project) and 3 `article` (Beyond
+      Ordinary Women's "Caring for Women Who Struggle with Porn",
+      Beggar's Daughter's church-group guide, IBCD's counselor workshop --
+      these three are guidance/teaching pieces, not something a struggling
+      woman joins directly, so `article` fit better than `small_group`).
+      The 10th, celebraterecovery.com, was a genuine duplicate of the
+      existing universal "Celebrate Recovery — Find a Group" row (id 52,
+      already `gender=null`, already confirmed serving both genders) --
+      not re-added.
+      - `resources` gained a `gender` column (`'male' | 'female' | null`,
+        null = universal). All 36 existing single-city men's-group rows
+        (titles literally say "Men's"/"For Men Only") backfilled to
+        `'male'`; the two existing national directory rows (Pure Desire
+        and Celebrate Recovery "Find a Group") correctly already had no
+        gender and stay universal.
+      - `resourceRepo.js`'s new `filterByGender` excludes the other
+        gender's rows outright (not just deprioritizes -- a men's-only
+        group isn't a usable suggestion for a woman, or vice versa),
+        always keeps universal (`gender: null`) rows, and does no
+        filtering at all when the user hasn't set a gender (optional, no
+        default -- better to show everything than silently under-serve
+        someone who hasn't answered). Applied in `fromSupabase` (covers
+        `getArticles`/`getSermons`/`getCounselingCenters`/the
+        text-state-matched path of `getSmallGroups`) and in
+        `getSmallGroups`'s distance-ranked path, so it composes correctly
+        with both existing selection methods, not just one.
+      - None of the 6 new small_group rows have coordinates (they're
+        national/international organizations, not single-city chapters,
+        so there's nothing honest to geocode) -- for a user with a saved
+        home location, they're naturally excluded from the distance-ranked
+        list (which only ever ranks rows that have coordinates) and
+        surface instead through the existing nationwide-sample fallback,
+        same as the two pre-existing directory rows always have.
+      - Verified in-browser against the real live Supabase data (not a
+        mock): gender `'female'` -> `getSmallGroups` returned exactly the
+        6 new rows plus the 2 universal directory rows, zero men's
+        groups; gender `'male'` -> exactly the 36 men's rows (2 universal
+        would also qualify but didn't come up in this particular
+        10-result sample); no gender set -> both genders present,
+        nothing excluded; gender `'male'` + a saved home location ->
+        distance ranking still composed correctly with the gender filter
+        (same Philadelphia test point as the original distance-ranking
+        verification, now confirmed gender-filtered too).
+
+- [x] **"Preferences" shortcut card on Home**, same component shape as
+      the existing call-accountability-partner card right above it.
+      First attempt misread the request as an Android launcher/Home
+      Screen shortcut (long-press icon, pin to the phone's own home
+      screen) -- built and shipped that, user clarified they wanted it
+      inside the app's own Home tab instead, not on the phone's home
+      screen at all. Reverted the launcher-shortcut commit outright
+      (`git revert`, not a manual undo) rather than leaving it half-used,
+      then built the actual ask.
+      - `homeView.js`'s existing `buildCallCard` pattern
+        (`.home-call-card`/`-icon`/`-text`/`-label`/`-sub`, already
+        styled) reused exactly for a new `buildPreferencesCard` -- a
+        gear icon, label "Preferences", and a one-line summary of what's
+        in there, `onclick` just calling `PreferencesView.open("edit")`
+        directly (no native plugin, no pending-flag, no intent -- it's
+        already the same WebView, so there was never a need for any of
+        the launcher-shortcut machinery the reverted attempt built).
+        Always shown, not conditioned on anything already being filled
+        in, right below the call-partner card(s).
+      - Verified in-browser against the real rendered Home view (fresh
+        origin, not a cached script -- this session's browser-pane
+        caching quirk keeps resurfacing, worth remembering for next
+        time): confirmed the card renders with the right icon/label/sub,
+        and that clicking it actually opens `preferencesOverlay`
+        (`classList.contains("visible")` true).
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing

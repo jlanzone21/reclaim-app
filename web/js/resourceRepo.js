@@ -77,10 +77,36 @@ const ResourceRepo = (function () {
   }
 
   // Two at most: in the middle of an urge, a long list is more overwhelming than helpful.
+  // Ranked theme-and-preferred-method matches first, then theme-only, then preferred-method-only,
+  // then whatever's left (already shuffled) -- preferred methods come from onboarding/preferences
+  // (COPING_METHOD_OPTIONS in constants.js), read directly the same way getSmallGroups reads the
+  // saved home location.
   function getCopingMechanisms(theme, limit = 2) {
     const rows = shuffle(byType("coping_mechanism"));
-    const matches = theme ? rows.filter((r) => r.tags.includes(theme)) : [];
-    return [...matches, ...rows.filter((r) => !matches.includes(r))].slice(0, limit);
+    const prefs = typeof UserPreferencesStore !== "undefined" ? UserPreferencesStore.get() : null;
+    const preferredMethods = (prefs && prefs.preferred_coping_methods) || [];
+    const matchesTheme = theme ? rows.filter((r) => r.tags.includes(theme)) : [];
+    const matchesMethod = preferredMethods.length ? rows.filter((r) => r.method && preferredMethods.includes(r.method)) : [];
+    const ranked = [
+      ...matchesTheme.filter((r) => matchesMethod.includes(r)),
+      ...matchesTheme.filter((r) => !matchesMethod.includes(r)),
+      ...matchesMethod.filter((r) => !matchesTheme.includes(r)),
+    ];
+    return [...ranked, ...rows.filter((r) => !ranked.includes(r))].slice(0, limit);
+  }
+
+  // Applies to any Supabase-backed resource with a gender column (small_group rows are the main
+  // case today, plus a few gender-specific articles) -- a men's-only or women's-only group isn't a
+  // usable suggestion for someone outside it, so this excludes the other gender's rows outright
+  // rather than just deprioritizing them. Universal rows (gender is null -- Celebrate Recovery,
+  // directory/find-a-group links, general articles) always stay. No filtering at all when the user
+  // hasn't told us their gender (onboarding/preferences, optional, no default) -- better to show
+  // everything than silently under-serve someone who hasn't answered.
+  function filterByGender(rows) {
+    const prefs = typeof UserPreferencesStore !== "undefined" ? UserPreferencesStore.get() : null;
+    const gender = prefs && prefs.gender;
+    if (!gender) return rows;
+    return rows.filter((r) => !r.gender || r.gender === gender);
   }
 
   function shuffle(items) {
@@ -130,7 +156,7 @@ const ResourceRepo = (function () {
         console.warn("Couldn't reach Supabase for small_group:", e);
         return null;
       }
-      const withCoords = rows.filter((r) => r.latitude != null && r.longitude != null);
+      const withCoords = filterByGender(rows).filter((r) => r.latitude != null && r.longitude != null);
       if (withCoords.length) {
         return withCoords
           .map((r) => ({ ...r, distanceMeters: distanceMeters(home.home_lat, home.home_lon, r.latitude, r.longitude) }))
@@ -158,7 +184,7 @@ const ResourceRepo = (function () {
   async function fromSupabase(type, { state, limit = 2 } = {}) {
     try {
       const rows = await SupabaseClient.queryResources(type, state ? { state } : {});
-      return shuffle(rows).slice(0, limit);
+      return shuffle(filterByGender(rows)).slice(0, limit);
     } catch (e) {
       console.warn(`Couldn't reach Supabase for ${type}:`, e);
       return null;
