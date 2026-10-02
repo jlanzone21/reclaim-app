@@ -98,7 +98,7 @@ class ReclaimAgent {
       let intro = "";
       const pick = agentPickResource(userText, previous);
       if (pick) {
-        const input = pick.theme ? { theme: pick.theme } : { query: userText };
+        const input = pick.theme ? { theme: pick.theme, query: userText } : { query: userText };
         const output = await executeAgentTool(pick.resource, input);
         if (output && output.groups === null) {
           // Supabase unreachable (small_group_finder only) -- say so instead of showing an empty card.

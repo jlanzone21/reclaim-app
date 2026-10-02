@@ -1597,6 +1597,57 @@ reality:
         recent-keyword-severe(+150)]`), not after waiting on the next
         15-minute `BaselineSampleWorker` tick.
 
+- [x] **Verse matching against 100 user-provided real-circumstance topics**
+      (`bible_verses_for_100_circumstances.csv`), instead of just the
+      existing broad theme words (`AGENT_THEME_WORDS`) or Verse of the Day.
+      User's own framing: search the list for the topic that best matches
+      what was said, then resolve that verse through YouVersion.
+      - `seedData.js` gained `SEED_VERSE_TOPICS` (100 `{topic, refs}` rows,
+        `refs` a semicolon-separated list of real references -- no body
+        text stored, resolved live through YouVersion by reference like
+        every other verse Chat shows). `db.js` gained a `verse_topics`
+        table and reseeds it in `ensureSeeded()` (`CURRENT_SEED_VERSION`
+        8 -> 9). `resourceRepo.js` gained `getVerseTopics()`.
+      - `agentTools.js`: `matchVerseTopic(userText)` scores every topic by
+        plain word overlap against the message (same philosophy as
+        `agentScoreTool` above it -- deterministic, not embeddings/ML). A
+        small stopword list keeps generic words from padding every score
+        equally. `wordsMatch(a, b)` catches ordinary inflection (shared
+        4+ letter prefix, short remaining tail) so "stressed" matches
+        "stress" and "anxious" matches "anxiety" without a real stemmer;
+        a tiny explicit `VERSE_TOPIC_SYNONYMS` map covers the handful of
+        common irregular pairs that can't share a long-enough prefix
+        ("angry"/"anger", "sad"/"sadness", "scared"/"fear"). Requires at
+        least one real word match (score >= 1), never a coincidental
+        partial. `pickVerseTopicReference` then picks one reference at
+        random from the matched topic's list.
+      - `agentFindVerse(theme, query)` tries the topic match first (if
+        YouVersion is available), falling back to the pre-existing
+        theme-based local verse, then Verse of the Day, then the local
+        verse text with no YouVersion -- the topic match sits in front of
+        that existing fallback chain, never replaces it, so "never empty"
+        still holds even offline/without an app key. `query` (the raw
+        message) is now threaded through everywhere a theme was
+        previously the only input: `executeAgentTool`'s `scripture_search`
+        case, `reclaimAgent.js`'s tool-input construction, and both
+        `scripture_search` call sites in `resourcesAgent.js` (Basic mode
+        gets the same matching, not just the on-device-model path).
+      - Verified: parsed the actual CSV via a scratch Node script and
+        spot-checked first/last 3 rows against the source; in-browser,
+        confirmed `verse_topics` seeds to exactly 100 rows and
+        `matchVerseTopic` picks the right topic for a battery of real
+        phrasings ("I'm really stressed about an exam tomorrow" ->
+        Stress, "I feel so lonely lately" -> Loneliness, "I'm so angry at
+        my brother" -> Anger via the synonym map, unrelated gibberish ->
+        null, correctly falling through). End-to-end through the real
+        loaded page (fresh origin, not a cached script): `executeAgentTool
+        ("scripture_search", { query: "I'm really stressed about an exam
+        tomorrow" })` matched "Stress", picked `Isaiah 41:10` from its
+        reference list, and resolved it live through the real YouVersion
+        API -- same output shape the existing theme/Today's-Verse card
+        renderer already handles, so rendering is covered by that
+        existing, already-verified path.
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing

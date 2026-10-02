@@ -57,6 +57,13 @@ const ResourceRepo = (function () {
     return randomByTheme("scripture", theme);
   }
 
+  // The 100 user-provided topics (see verse_topics table in db.js) -- matched against raw chat
+  // text in agentTools.js's matchVerseTopic, not filtered/shuffled here since the caller needs
+  // the full list to score against.
+  function getVerseTopics() {
+    return DB.all("SELECT topic, refs FROM verse_topics");
+  }
+
   async function getSermons() {
     return fromSupabase("sermon");
   }
@@ -130,6 +137,7 @@ const ResourceRepo = (function () {
 
   return {
     getScripture,
+    getVerseTopics,
     getSermons,
     getArticles,
     getDevotional,

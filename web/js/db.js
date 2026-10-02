@@ -75,14 +75,23 @@ const DB = (function () {
       home_lon REAL
     );
 
+    -- One row per topic from bible_verses_for_100_circumstances.csv (user-provided). refs is a
+    -- semicolon-separated list of real verse references, resolved live through YouVersion by
+    -- reference rather than storing body text here -- see agentTools.js matchVerseTopic.
+    CREATE TABLE IF NOT EXISTS verse_topics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      topic TEXT NOT NULL,
+      refs TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_resources_type ON resources(type);
     CREATE INDEX IF NOT EXISTS idx_checkins_timestamp ON checkins(timestamp);
   `;
 
-  // Bump whenever SEED_RESOURCES/SEED_BIBLE_PLANS content changes materially.
+  // Bump whenever SEED_RESOURCES/SEED_BIBLE_PLANS/SEED_VERSE_TOPICS content changes materially.
   // ensureSeeded() re-syncs placeholder (is_sample=1) content up to this
   // version without ever touching checkins or user-added (is_sample=0) rows.
-  const CURRENT_SEED_VERSION = 8;
+  const CURRENT_SEED_VERSION = 9;
 
   let sqlJs = null;
   let db = null;
@@ -158,6 +167,11 @@ const DB = (function () {
             [planId, day.day_number, day.reference, day.reflection]
           );
         }
+      }
+
+      run("DELETE FROM verse_topics");
+      for (const vt of SEED_VERSE_TOPICS) {
+        run("INSERT INTO verse_topics (topic, refs) VALUES (?, ?)", [vt.topic, vt.refs]);
       }
       run("COMMIT");
     } catch (e) {

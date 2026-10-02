@@ -212,7 +212,7 @@ async function executeAgentTool(name, input) {
   const theme = input && input.theme ? input.theme : null;
   switch (name) {
     case "scripture_search":
-      return agentFindVerse(theme);
+      return agentFindVerse(theme, input && input.query ? input.query : null);
     case "devotional_finder":
       return ResourceRepo.getDevotional(theme);
     case "bible_plan_finder":
@@ -242,11 +242,97 @@ async function executeAgentTool(name, input) {
   }
 }
 
+// Deterministic word-overlap scoring against the 100 topics in verse_topics (see db.js, imported
+// from bible_verses_for_100_circumstances.csv) -- same philosophy as agentScoreTool above: plain
+// keyword matching, not embeddings/ML. A short stopword list keeps generic words (the, feel, god,
+// verse...) from padding every topic's score equally and drowning out the real signal.
+const VERSE_TOPIC_STOPWORDS = new Set([
+  "the", "a", "an", "to", "of", "in", "on", "for", "and", "or", "i", "im", "i'm", "feel", "feeling",
+  "feelings", "feels", "about", "with", "my", "me", "is", "are", "am", "so", "really", "very",
+  "just", "like", "what", "do", "does", "god", "bible", "verse", "verses", "find", "something",
+  "need", "want", "right", "now", "can", "you", "it", "that", "this",
+]);
+
+function verseTopicWords(text) {
+  return (text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9'\s-]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !VERSE_TOPIC_STOPWORDS.has(w));
+}
+
+// A handful of common irregular pairs wordsMatch's prefix rule can't catch on its own (the words
+// diverge too early to share a 4-letter prefix -- "angry"/"anger" share only "ang"). Deliberately
+// short: real irregulars worth having, not an attempt at a full synonym dictionary.
+const VERSE_TOPIC_SYNONYMS = {
+  angry: "anger", mad: "anger",
+  sad: "sadness", sorrow: "sadness", sorrowful: "sadness",
+  scared: "fear", afraid: "fear", terrified: "fear",
+};
+
+// Two words count as the same for matching purposes if they're identical, or if they share a
+// long-enough common prefix and whichever one is shorter is almost entirely that prefix (just a
+// short suffix/ending differs) -- catches ordinary inflection ("stressed"/"stress",
+// "anxious"/"anxiety", "lonely"/"loneliness") without a real stemmer or synonym list. A plain
+// startsWith check alone misses "anxious"/"anxiety": they share the prefix "anxi" but neither
+// fully contains the other, since "-ous" and "-ety" are both real suffixes, not substrings of one
+// another.
+function wordsMatch(a, b) {
+  if (a === b) return true;
+  if (a.length <= 3 || b.length <= 3) return false;
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  if (i < 4) return false;
+  return Math.min(a.length, b.length) - i <= 3;
+}
+
+function matchVerseTopic(userText) {
+  const userWords = verseTopicWords(userText).map((w) => VERSE_TOPIC_SYNONYMS[w] || w);
+  if (!userWords.length) return null;
+  const rows = typeof ResourceRepo !== "undefined" ? ResourceRepo.getVerseTopics() : [];
+  if (!rows || !rows.length) return null;
+
+  let best = null;
+  let bestScore = 0;
+  for (const row of rows) {
+    const topicWords = verseTopicWords(row.topic);
+    let score = 0;
+    for (const tw of topicWords) {
+      if (userWords.some((uw) => wordsMatch(uw, tw))) score += 1;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      best = row;
+    }
+  }
+  return bestScore >= 1 ? best : null; // require at least one real word match, not just a coincidental partial
+}
+
+// One reference at random from the matched topic's semicolon-separated list -- varies which verse
+// comes back for the same topic across conversations, same spirit as randomByTheme (resourceRepo.js).
+function pickVerseTopicReference(userText) {
+  const row = matchVerseTopic(userText);
+  if (!row) return null;
+  const refs = row.refs.split(";").map((r) => r.trim()).filter(Boolean);
+  if (!refs.length) return null;
+  return { topic: row.topic, reference: refs[Math.floor(Math.random() * refs.length)] };
+}
+
 // Every verse Chat shows goes through the YouVersion Bible display (youversion.js, rendered by
-// app.js renderToolResult). A detected theme keeps its hand-picked verse from seedData.js, just
-// fetched from YouVersion; a plain "share a verse" gets YouVersion's Verse of the Day -- the same
-// "Today's Verse" Home shows. No app key / offline / API error -> the local verse, as before.
-async function agentFindVerse(theme) {
+// app.js renderToolResult). `query` (the raw message, when available) is checked against the
+// 100-topic list first -- the closest real-circumstance match wins and is resolved live through
+// YouVersion by reference. Failing that: a detected theme keeps its hand-picked verse from
+// seedData.js, just fetched from YouVersion; a plain "share a verse" gets YouVersion's Verse of
+// the Day -- the same "Today's Verse" Home shows. No app key / offline / API error -> the local
+// verse, as before -- this is why the topic match is tried first but never replaces that fallback
+// chain, only sits in front of it.
+async function agentFindVerse(theme, query) {
+  const topicPick = pickVerseTopicReference(query);
+  if (topicPick && typeof YouVersion !== "undefined" && YouVersion.available()) {
+    const display = await YouVersion.getVerse(topicPick.reference);
+    if (display) return { title: display.reference, body: null, youversion: display };
+  }
+
   const local = ResourceRepo.getScripture(theme);
   if (typeof YouVersion === "undefined" || !YouVersion.available()) return local;
   const display = theme && local ? await YouVersion.getVerse(local.title) : await YouVersion.getTodaysVerse();
