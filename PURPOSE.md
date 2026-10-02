@@ -1959,6 +1959,32 @@ reality:
         and that clicking it actually opens `preferencesOverlay`
         (`classList.contains("visible")` true).
 
+- [x] **Firebase App Distribution set up for sending debug builds to
+      testers**, project `reclaim-128`. Account/project creation had to be
+      the user's own (Google account), not something an agent does --
+      walked through registering the Android app (`com.reclaim.app`) and
+      enabling App Distribution in the console, then handled everything
+      code-side once `google-services.json` existed: the
+      `com.google.firebase:firebase-appdistribution-gradle` classpath
+      (`android/build.gradle`), the plugin apply + a
+      `debug.firebaseAppDistribution` block (`android/app/build.gradle`)
+      listing both testers' emails directly (no console-side tester group
+      yet -- add more there as the project grows). `google-services.json`
+      is committed on purpose -- it's a public client config, not a secret,
+      standard Firebase practice; the real secrets (keystore/signing) stay
+      gitignored exactly as before.
+      - Verified without being able to actually run the upload myself
+        (needs each person's own `firebase login`, a real Google OAuth
+        login -- not something to do on someone else's behalf): confirmed
+        the plugin resolves and registers `appDistributionUploadDebug`/
+        `appDistributionUploadRelease`/tester-management tasks, and that a
+        full `assembleDebug` still builds clean with the Firebase SDK
+        wired in, after this session's many other changes landed on top.
+        The actual upload+tester-notification path is for Joey (and
+        Nathaniel, on his own machine) to confirm after their own
+        one-time `firebase login` -- see CLAUDE.md's "Running it" section
+        for the exact commands.
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing
