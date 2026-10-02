@@ -607,6 +607,10 @@
         sampleTagIf(g).forEach((n) => head.appendChild(n));
         card.appendChild(head);
         card.appendChild(el("div", "resource-line", `${g.subtitle} · ${g.area}`));
+        if (g.distanceMeters != null) {
+          const miles = Math.round(g.distanceMeters / 1609.34);
+          card.appendChild(el("div", "resource-line", `~${miles < 1 ? "<1" : miles} mi from your saved home location`));
+        }
         card.appendChild(el("div", "resource-line", g.body));
         card.appendChild(el("div", "resource-contact", g.contact));
         wrap.appendChild(card);

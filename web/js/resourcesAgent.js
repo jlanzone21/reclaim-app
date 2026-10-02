@@ -76,9 +76,9 @@ class ResourcesAgent {
     const theme = inferTheme(lower);
 
     if (/\b(verse|scripture|bible verse|passage|word of god)\b/.test(lower)) {
-      const match = await executeAgentTool("scripture_search", { theme });
+      const match = await executeAgentTool("scripture_search", { theme, query: userText });
       return {
-        toolCalls: [{ name: "scripture_search", input: { theme }, output: match, delay: 700 }],
+        toolCalls: [{ name: "scripture_search", input: { theme, query: userText }, output: match, delay: 700 }],
         // With the YouVersion display the card already shows the verse (and its required
         // attribution), so the reply points to it instead of quoting a second copy.
         reply: match.youversion
@@ -188,9 +188,9 @@ class ResourcesAgent {
     // generic when someone's named how they feel, even in Basic mode.
     const broaderTheme = agentInferTheme(lower);
     if (broaderTheme) {
-      const match = await executeAgentTool("scripture_search", { theme: broaderTheme });
+      const match = await executeAgentTool("scripture_search", { theme: broaderTheme, query: userText });
       return {
-        toolCalls: [{ name: "scripture_search", input: { theme: broaderTheme }, output: match, delay: 700 }],
+        toolCalls: [{ name: "scripture_search", input: { theme: broaderTheme, query: userText }, output: match, delay: 700 }],
         reply: match.youversion
           ? `Here's a verse from YouVersion for that — ${match.title}. Would a coping technique, a devotional, or a small group to process this with also help?`
           : `${match.title} — "${match.body}" Would a coping technique, a devotional, or a small group to process this with also help?`,

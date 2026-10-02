@@ -14,6 +14,7 @@
  *     other_notes,
  *     onboarding_completed_at,                       // ISO string once they've been through setup
  *     home_lat, home_lon,                            // number | null, captured via device GPS
+ *     gender: 'male' | 'female' | null,              // optional, no default
  *   }
  *
  * home_lat/home_lon deliberately do NOT get mirrored into personalContext.js's AI-facing
@@ -43,6 +44,7 @@ const UserPreferencesStore = (function () {
     onboarding_completed_at: null,
     home_lat: null,
     home_lon: null,
+    gender: null,
   };
 
   function parseRow(row) {
@@ -80,6 +82,7 @@ const UserPreferencesStore = (function () {
       now,
       next.home_lat ?? null,
       next.home_lon ?? null,
+      next.gender || null,
     ];
     if (exists) {
       DB.run(
@@ -90,7 +93,7 @@ const UserPreferencesStore = (function () {
            tempting_times = ?, common_triggers = ?, tempting_locations = ?,
            notification_intensity = ?, other_notes = ?,
            onboarding_completed_at = ?, updated_at = ?,
-           home_lat = ?, home_lon = ?
+           home_lat = ?, home_lon = ?, gender = ?
          WHERE id = 1`,
         params
       );
@@ -101,8 +104,8 @@ const UserPreferencesStore = (function () {
             pastor_name, pastor_phone,
             tempting_times, common_triggers, tempting_locations,
             notification_intensity, other_notes, onboarding_completed_at, updated_at,
-            home_lat, home_lon)
-         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            home_lat, home_lon, gender)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         params
       );
     }

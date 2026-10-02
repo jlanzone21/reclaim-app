@@ -102,7 +102,7 @@ reality:
       partner + pastor name/phone (optional, explicitly revisitable —
       skipping now doesn't lose the chance), tempting times of day, common
       trigger situations (reuses `CONDITION_TAGS`, the same vocabulary
-      check-ins already use), tempting locations (free text), trigger apps
+      check-ins already use), trigger apps
       (reuses the real monitoring allowlist rather than a separate
       self-reported list — naming an app here IS adding it to what gets
       read), and notification intensity (Low/Medium/High — will scale the
@@ -1603,6 +1603,161 @@ reality:
         intended. Also confirmed the native schema migration: all
         pre-existing keyword_matches rows survived the `DB_VERSION` bump
         with `severity=NULL`, nothing lost.
+
+- [x] **"Where does it usually happen?" free-text field removed from
+      onboarding/preferences.** User's own framing: being at home should
+      just count as higher risk automatically, not rely on someone
+      self-reporting it in a text box once at setup. Removed the field
+      (UI, pre-fill, save, and the AI-context sentence it fed) from
+      `web/index.html`/`preferencesView.js`/`personalContext.js`; the
+      underlying `tempting_locations` DB column is deliberately left in
+      place as harmless unused legacy, same precedent as `sleep_hours`.
+      The actual home-based risk factor (mirroring `home_lat`/`home_lon`
+      into `LocalSignalsDb`, a new adaptive RiskScorer factor reusing the
+      same Haversine Home/Away thresholds Insights already uses) is a
+      separate, not-yet-started follow-up, not part of this change.
+
+- [x] **Severe/moderate keyword matches now trigger the risk-nudge check
+      immediately, instead of waiting for the next ~15-minute tick.** Text
+      capture + keyword matching (`TrackingAccessibilityService`) was
+      already real-time (`TYPE_WINDOW_CONTENT_CHANGED`, ~200ms OS debounce
+      via `accessibility_service_config.xml`'s `notificationTimeout`), but
+      `RiskNudgeMonitor.checkAndNotify()` -- the part that actually scores
+      and decides whether to notify -- was only ever called from
+      `BaselineSampleWorker`'s `PeriodicWorkRequest`, which can't be
+      scheduled tighter than WorkManager's own enforced 15-minute floor. A
+      severe match could sit unseen for up to 15 minutes. `checkKeywords`
+      (`TrackingAccessibilityService.java`) now calls
+      `RiskNudgeMonitor.checkAndNotify(this)` directly right after a SEVERE
+      or MODERATE match is recorded (mild stays on the regular cycle --
+      that tier is the genuinely ambiguous one, not worth an immediate
+      interrupt). Safe to call this often: `checkAndNotify`'s own dedup is
+      keyed by session start time, not call frequency, so the extra call
+      only ever means noticing sooner, never an extra notification for the
+      same session. This is part of the file Claude Code already wrote
+      directly (allowlist text capture + keyword matching), not the two
+      files edited by hand for Phase 4.
+      - Verified on-device, not simulated: typed a severe-tier test string
+        ("pornhubtestmatch") into Chrome's address bar (allowlisted,
+        never navigated/searched) and watched logcat -- a real high-risk
+        notification ("Got a second to check in? -- Call Joey") posted
+        within about 2 seconds (`score=180 threshold=60 [trigger-app(+30)
+        recent-keyword-severe(+150)]`), not after waiting on the next
+        15-minute `BaselineSampleWorker` tick.
+
+- [x] **Verse matching against 100 user-provided real-circumstance topics**
+      (`bible_verses_for_100_circumstances.csv`), instead of just the
+      existing broad theme words (`AGENT_THEME_WORDS`) or Verse of the Day.
+      User's own framing: search the list for the topic that best matches
+      what was said, then resolve that verse through YouVersion.
+      - `seedData.js` gained `SEED_VERSE_TOPICS` (100 `{topic, refs}` rows,
+        `refs` a semicolon-separated list of real references -- no body
+        text stored, resolved live through YouVersion by reference like
+        every other verse Chat shows). `db.js` gained a `verse_topics`
+        table and reseeds it in `ensureSeeded()` (`CURRENT_SEED_VERSION`
+        8 -> 9). `resourceRepo.js` gained `getVerseTopics()`.
+      - `agentTools.js`: `matchVerseTopic(userText)` scores every topic by
+        plain word overlap against the message (same philosophy as
+        `agentScoreTool` above it -- deterministic, not embeddings/ML). A
+        small stopword list keeps generic words from padding every score
+        equally. `wordsMatch(a, b)` catches ordinary inflection (shared
+        4+ letter prefix, short remaining tail) so "stressed" matches
+        "stress" and "anxious" matches "anxiety" without a real stemmer;
+        a tiny explicit `VERSE_TOPIC_SYNONYMS` map covers the handful of
+        common irregular pairs that can't share a long-enough prefix
+        ("angry"/"anger", "sad"/"sadness", "scared"/"fear"). Requires at
+        least one real word match (score >= 1), never a coincidental
+        partial. `pickVerseTopicReference` then picks one reference at
+        random from the matched topic's list.
+      - `agentFindVerse(theme, query)` tries the topic match first (if
+        YouVersion is available), falling back to the pre-existing
+        theme-based local verse, then Verse of the Day, then the local
+        verse text with no YouVersion -- the topic match sits in front of
+        that existing fallback chain, never replaces it, so "never empty"
+        still holds even offline/without an app key. `query` (the raw
+        message) is now threaded through everywhere a theme was
+        previously the only input: `executeAgentTool`'s `scripture_search`
+        case, `reclaimAgent.js`'s tool-input construction, and both
+        `scripture_search` call sites in `resourcesAgent.js` (Basic mode
+        gets the same matching, not just the on-device-model path).
+      - Verified: parsed the actual CSV via a scratch Node script and
+        spot-checked first/last 3 rows against the source; in-browser,
+        confirmed `verse_topics` seeds to exactly 100 rows and
+        `matchVerseTopic` picks the right topic for a battery of real
+        phrasings ("I'm really stressed about an exam tomorrow" ->
+        Stress, "I feel so lonely lately" -> Loneliness, "I'm so angry at
+        my brother" -> Anger via the synonym map, unrelated gibberish ->
+        null, correctly falling through). End-to-end through the real
+        loaded page (fresh origin, not a cached script): `executeAgentTool
+        ("scripture_search", { query: "I'm really stressed about an exam
+        tomorrow" })` matched "Stress", picked `Isaiah 41:10` from its
+        reference list, and resolved it live through the real YouVersion
+        API -- same output shape the existing theme/Today's-Verse card
+        renderer already handles, so rendering is covered by that
+        existing, already-verified path.
+
+- [x] **Small groups ranked by real distance from the saved home location**,
+      instead of only a same-state text match. The `resources` table
+      already had `latitude`/`longitude` columns, unused -- all 38
+      `small_group` rows had `city`/`state` but null coordinates. Geocoded
+      the 34 rows with a real physical location (city-center coordinates;
+      the remaining 4 are online/nationwide groups or directory links,
+      correctly left uncoordinated) directly in Supabase.
+      `resourceRepo.js`'s `getSmallGroups` now reads the saved
+      `home_lat`/`home_lon` (`UserPreferencesStore`, same field the
+      onboarding "Save current location as home" button sets) and, when
+      set and at least some groups have coordinates, fetches every
+      `small_group` row, ranks by the same Haversine `distanceMeters`
+      formula `insightsView.js` already uses for Home/Away labeling, and
+      returns the closest `limit`. Falls back to the pre-existing
+      text-detected-state match (then a nationwide sample) when there's no
+      saved home location yet -- never breaks the existing behavior for
+      someone who hasn't set one. `app.js`'s small-group card now shows
+      "~N mi from your saved home location" when a distance was computed.
+      Verified against the real live Supabase data (not a mock): with a
+      simulated Philadelphia, PA home location, the ranked list came back
+      Philadelphia (0 mi) -> Phoenixville (22 mi) -> Lancaster (61 mi) ->
+      Gettysburg (110 mi) -> Southern Maryland (132 mi), correct ascending
+      geographic order.
+
+- [x] **Gender question added to onboarding/preferences; accountability
+      partner and pastor/mentor sections redesigned around a "+ Add"
+      button** instead of showing empty name/phone inputs up front.
+      - `web/index.html`: a new "Gender" field (Male/Female, same
+        `.scale-picker`/`.scale-btn` component the notification-intensity
+        picker already uses) sits between the pastor section and "When
+        are you usually tempted?". The accountability-partner and pastor
+        sections each became a `.allowlist-list` (same component the
+        allowlist manager uses) of saved-person rows plus a dashed,
+        orange "+ Add ..." button with a circular plus badge
+        (`.add-person-btn`/`.add-person-plus`, new in `styles.css`);
+        clicking it reveals a small inline name/phone form
+        (`.person-form`) instead of static always-visible inputs.
+      - `preferencesView.js` was restructured around JS-managed state
+        (`partners: [{name, phone}]`, up to 2; `pastor: {name, phone} |
+        null`; `selectedGender`) instead of reading/writing individual
+        input elements directly. `wireGenderScale` lets the selected
+        option be clicked again to deselect -- gender has no default,
+        unlike intensity.
+      - `db.js` gained a `gender TEXT` column on `user_preferences`
+        (`migrateColumns`, no seed-version bump needed -- this is a
+        column migration, not seed content). `userPreferencesStore.js`'s
+        `DEFAULTS`/params/`UPDATE`/`INSERT` all gained `gender`.
+      - **Found and fixed a real bug during verification**: `.add-person-
+        btn[hidden] { display: none; }` was missing, so `.add-person-
+        btn`'s own `display: flex` (a class selector) beat the `[hidden]`
+        attribute's default `display: none` at equal specificity --
+        the "+" button stayed visible even after being hidden. Confirmed
+        the fix via computed style (`display: none` after adding a
+        person) once added.
+      - Verified end-to-end in the browser, not just read: added a
+        partner and a pastor through the real "+" flow, selected Male,
+        saved, and confirmed `UserPreferencesStore.get()` round-tripped
+        every field correctly; reopened the form and confirmed both
+        people pre-fill as rows with both "+" buttons correctly hidden
+        (2/2 partners, pastor filled) and Male still selected; removed a
+        partner via its × and confirmed the "+" button reappeared and the
+        removed partner's fields cleared to null on save.
 
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging

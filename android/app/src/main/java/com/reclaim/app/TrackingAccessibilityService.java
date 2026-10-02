@@ -271,20 +271,33 @@ public class TrackingAccessibilityService extends AccessibilityService {
         }
     }
 
+    // Severe/moderate matches call RiskNudgeMonitor directly instead of waiting for the next
+    // ~15-minute BaselineSampleWorker tick (Android's own enforced floor for periodic WorkManager
+    // jobs -- can't be scheduled tighter than that). Text capture itself is already real-time
+    // (TYPE_WINDOW_CONTENT_CHANGED, ~200ms debounce -- see accessibility_service_config.xml), but
+    // without this the actual risk-score evaluation of what it just found could still sit for up
+    // to 15 minutes. Safe to call this often: RiskNudgeMonitor's own dedup is keyed by session
+    // start time, not call frequency, so an extra call here just means it notices sooner, never an
+    // extra notification. Mild matches are intentionally left to the regular cycle -- that tier is
+    // the genuinely ambiguous one (bare "nude", "18+", etc.), not worth an immediate interrupt.
     private void checkKeywords(String packageName, String text, long captureId, String occurredAt) {
         String lower = text.toLowerCase(Locale.US);
         LocalSignalsDb db = LocalSignalsDb.getInstance(this);
-        checkKeywordTier(db, KEYWORDS_SEVERE, "severe", packageName, lower, captureId, occurredAt);
-        checkKeywordTier(db, KEYWORDS_MODERATE, "moderate", packageName, lower, captureId, occurredAt);
+        boolean severe = checkKeywordTier(db, KEYWORDS_SEVERE, "severe", packageName, lower, captureId, occurredAt);
+        boolean moderate = checkKeywordTier(db, KEYWORDS_MODERATE, "moderate", packageName, lower, captureId, occurredAt);
         checkKeywordTier(db, KEYWORDS_MILD, "mild", packageName, lower, captureId, occurredAt);
+        if (severe || moderate) RiskNudgeMonitor.checkAndNotify(this);
     }
 
-    private void checkKeywordTier(LocalSignalsDb db, Map<String, String> tier, String severity, String packageName, String lower, long captureId, String occurredAt) {
+    private boolean checkKeywordTier(LocalSignalsDb db, Map<String, String> tier, String severity, String packageName, String lower, long captureId, String occurredAt) {
+        boolean matched = false;
         for (Map.Entry<String, String> entry : tier.entrySet()) {
             if (lower.contains(entry.getKey())) {
                 db.insertKeywordMatch(packageName, entry.getKey(), entry.getValue(), severity, captureId, occurredAt);
+                matched = true;
             }
         }
+        return matched;
     }
 
     private String readAddressBar(AccessibilityNodeInfo root, String pkg) {

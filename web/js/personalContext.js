@@ -90,9 +90,6 @@ function buildUserPreferencesContext(prefs) {
   if (prefs.common_triggers && prefs.common_triggers.length) {
     parts.push(`Situations they've flagged as hardest: ${prefs.common_triggers.map((t) => t.toLowerCase()).join(", ")}.`);
   }
-  if (prefs.tempting_locations && prefs.tempting_locations.trim()) {
-    parts.push(`Where it tends to happen: ${prefs.tempting_locations.trim()}.`);
-  }
   if (prefs.other_notes && prefs.other_notes.trim()) {
     parts.push(`In their own words about what to know: "${prefs.other_notes.trim().replace(/\s+/g, " ").slice(0, 200)}"`);
   }
