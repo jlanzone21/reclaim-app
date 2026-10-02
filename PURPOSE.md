@@ -1933,56 +1933,6 @@ reality:
         (same Philadelphia test point as the original distance-ranking
         verification, now confirmed gender-filtered too).
 
-- [x] **"Preferences" launcher shortcut** -- long-press the Reclaim icon,
-      or pin a dedicated icon straight onto the Home Screen, either way
-      lands directly in the preferences edit form. User asked for the
-      label to just say "Preferences" (not "Edit my preferences" or
-      similar) -- `@string/shortcut_preferences` is used for both the
-      static shortcut's label and the pinned icon's.
-      - `res/xml/shortcuts.xml` (new): one static shortcut, `shortcutId`
-        `preferences`, launching `MainActivity` with a dedicated action
-        (`com.reclaim.app.OPEN_PREFERENCES`) -- wired into
-        `AndroidManifest.xml` via `android.app.shortcuts` meta-data.
-        Always available via long-press, no extra permission.
-      - `MainActivity.handlePreferencesIntent` (new, alongside the
-        existing nightly/risk handlers) recognizes that action and writes
-        a `pending_preferences_request` flag to `LocalSignalsDb`, same
-        one-shot pending-flag pattern as the existing verse-request/risk-
-        alert/nightly-action flags. `LocalSignalsPlugin
-        .getPendingPreferencesRequest` reads and consumes it;
-        `app.js`'s `checkPendingPreferencesRequest` calls
-        `PreferencesView.open("edit")` when set, checked in the same two
-        places (the `resume` listener, and boot's `DB.init().then(...)`)
-        the existing verse-request check already was, and ahead of it, so
-        a tapped shortcut always wins over whatever else would otherwise
-        claim the boot/resume.
-      - New "Pin Preferences to Home Screen" button in Privacy (next to
-        "Edit your preferences", native-only) calls
-        `LocalSignals.requestPinPreferencesShortcut()` ->
-        `LocalSignalsPlugin.requestPinPreferencesShortcut`, which uses
-        `ShortcutManagerCompat.requestPinShortcut` to show Android's own
-        "Add to Home screen?" confirmation -- a second, independent path
-        to the same `ACTION_OPEN_PREFERENCES` target, for a user who
-        wants a persistent visible icon rather than relying on
-        discovering the long-press menu. Resolves `{supported: false}`
-        (not an error) when the launcher doesn't support pinning at all,
-        so the button's own click handler can say so rather than
-        silently failing.
-      - Verified on-device, not simulated, and without repeating this
-        session's earlier `pm clear` mistake -- a plain `adb install -r`
-        after `npx cap sync android` was enough to pick up fresh JS this
-        time (confirmed via CDP before testing further), so no data was
-        wiped this pass. Simulated the shortcut tap via `adb shell am
-        start -a com.reclaim.app.OPEN_PREFERENCES`, confirmed
-        `preferencesOverlay` really opened (`classList.contains
-        ("visible")` true, and a screenshot showing the real edit form).
-        Clicked the new Pin button (via CDP, not touch, given this
-        session's touch-input unreliability) and confirmed the real
-        system "Add to Home screen?" dialog appeared with the Reclaim
-        icon labeled "Preferences" and a working Cancel/Add to home
-        screen choice -- dismissed with the back button rather than
-        tapping, for the same touch-reliability reason.
-
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing

@@ -23,11 +23,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Long-press the launcher icon -> "Preferences" (see res/xml/shortcuts.xml). -->
-            <meta-data
-                android:name="android.app.shortcuts"
-                android:resource="@xml/shortcuts" />
-
         </activity>
 
         <provider

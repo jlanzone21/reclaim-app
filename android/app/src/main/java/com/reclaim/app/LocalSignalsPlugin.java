@@ -162,43 +162,6 @@ public class LocalSignalsPlugin extends Plugin {
         call.resolve(result);
     }
 
-    // MainActivity.handlePreferencesIntent writes here when the "Preferences" launcher shortcut
-    // (long-press or pinned, see requestPinPreferencesShortcut below) is what opened the app --
-    // "1" or null, consumed once, same reasoning as getPendingVerseRequest.
-    @PluginMethod
-    public void getPendingPreferencesRequest(PluginCall call) {
-        String flag = db().getMeta("pending_preferences_request");
-        if (flag != null) db().setMeta("pending_preferences_request", "");
-        JSObject result = new JSObject();
-        result.put("pending", "1".equals(flag));
-        call.resolve(result);
-    }
-
-    // Asks the launcher to place a dedicated "Preferences" icon directly on the user's Home
-    // Screen (distinct from the always-available long-press shortcut in shortcuts.xml) -- shows
-    // the system's own "Add to Home screen?" confirmation, Android handles the rest. Silently
-    // no-ops if the launcher doesn't support pinning (requestPinShortcutSupported() false) rather
-    // than erroring, since this is a nice-to-have, not a feature the rest of the app depends on.
-    @PluginMethod
-    public void requestPinPreferencesShortcut(PluginCall call) {
-        android.content.Context ctx = getContext();
-        if (!androidx.core.content.pm.ShortcutManagerCompat.isRequestPinShortcutSupported(ctx)) {
-            call.resolve(new JSObject().put("supported", false));
-            return;
-        }
-        android.content.Intent openPrefs = new android.content.Intent(ctx, MainActivity.class);
-        openPrefs.setAction(MainActivity.ACTION_OPEN_PREFERENCES);
-        openPrefs.addCategory(android.content.Intent.CATEGORY_LAUNCHER);
-        androidx.core.content.pm.ShortcutInfoCompat shortcut =
-                new androidx.core.content.pm.ShortcutInfoCompat.Builder(ctx, "preferences_pinned")
-                        .setShortLabel(ctx.getString(R.string.shortcut_preferences))
-                        .setIcon(androidx.core.graphics.drawable.IconCompat.createWithResource(ctx, R.mipmap.ic_launcher))
-                        .setIntent(openPrefs)
-                        .build();
-        boolean requested = androidx.core.content.pm.ShortcutManagerCompat.requestPinShortcut(ctx, shortcut, null);
-        call.resolve(new JSObject().put("supported", requested));
-    }
-
     // How long after a risk-nudge notification a check-in can still plausibly be a reaction to
     // it, for RiskScorer's adaptive-tuning loop below. Long enough to cover "later that day"
     // (including the nightly check-in prompt), short enough that an unrelated check-in from days
