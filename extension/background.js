@@ -212,10 +212,6 @@ async function evaluateRisk() {
   ]);
 
   const start = runStart(sessions, current);
-  const lastMatch = matches.findLast((m) => m.domain === current.domain);
-  const strongKeywordRecent = matches.some(
-    (m) => m.domain === current.domain && Shared.STRONG_KEYWORDS.includes(m.keyword) && minutesSince(m.at) <= 15
-  );
   const result = RiskScorer.score({
     domain: current.domain,
     sessionMinutes: Math.floor((Date.now() - start) / 60000),
@@ -223,19 +219,18 @@ async function evaluateRisk() {
     triggerDomains: settings.triggerDomains,
     context,
     storedWeights: weights,
-    minutesSinceKeyword: minutesSince(lastMatch?.at),
+    keywordSeverity: RiskScorer.mostSevereRecentKeyword(matches, current.domain, Date.now()),
     minutesSinceReclaimOpen: minutesSince(lastReclaimOpenAt),
-    strongKeywordRecent,
   });
   console.debug("[reclaim] score", result.score, "threshold", result.threshold, result.reason);
   if (!result.triggers) return;
 
   // Once per continuous run -- otherwise every tick would re-notify for as long as you stay. An
-  // explicit-keyword hit is the exception: if this run already nudged for milder reasons, the
-  // explicit match still gets its own (one more) notification.
+  // severe-keyword hit is the exception: if this run already nudged for milder reasons, the
+  // severe match still gets its own (one more) notification.
   const sameRun = lastNotified && lastNotified.domain === current.domain && lastNotified.start === start;
-  if (sameRun && (lastNotified.strong || !result.strong)) return;
-  await save("lastNotifiedRun", { domain: current.domain, start, strong: result.strong });
+  if (sameRun && (lastNotified.severe || !result.severe)) return;
+  await save("lastNotifiedRun", { domain: current.domain, start, severe: result.severe });
 
   await postRiskNotification(current.domain, result);
 }
@@ -597,7 +592,7 @@ async function runOp(op, payload, { fromPopup }) {
           triggerDomains: ["example.com"],
           context: { ...context, intensity: "low" },
           storedWeights: await load("weights", null),
-          minutesSinceKeyword: -1,
+          keywordSeverity: null,
           minutesSinceReclaimOpen: -1,
         });
         await postRiskNotification("a test site", { ...fake, isHighRisk: payload.high !== false });

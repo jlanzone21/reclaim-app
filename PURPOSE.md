@@ -1456,11 +1456,14 @@ reality:
   card, site lists, alert popup, nightly and verse actions, Insights).
   Added afterwards, from using it: an in-page banner (the same generic nudge
   drawn on the current tab, because Windows hides toasts over fullscreen video
-  and under Focus assist); an explicit-keyword floor (a match on a clearly
-  pornographic word is high risk immediately at any intensity, web only so far;
-  it over-triggers on anti-porn articles by design); keyword list expanded from
-  20 to 71 on the web and by about 40 on Android (substring-unsafe words like
-  "milf" and "orgy" left off Android); and adding the current site to the
+  and under Focus assist); the keyword list expanded from 20 to 100 on the web
+  and by about 40 on Android (substring-unsafe words like "milf" and "orgy"
+  stay web-only, which matches whole words); the web version then aligned to
+  Joey's severity tiers (severe = site names and unambiguous phrases, a fixed
+  +150 that always notifies; moderate and mild = adaptive factors, all three
+  scaled 0.8x/1x/1.2x by notification intensity, with 30/15/10-minute recency
+  windows), replacing an interim web-only "explicit keyword floor" so a lone
+  "porn" is now moderate, as on Android; and adding the current site to the
   higher-risk list from the extension popup. **Verified in real Chrome by the
   team:** loading the extension, the bridge, notifications and the in-page
   banner, keyword-triggered nudges. **Not verified:** the Android keyword

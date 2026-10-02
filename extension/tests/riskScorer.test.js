@@ -5,7 +5,7 @@ globalThis.ReclaimShared = Shared;
 const R = require("../lib/riskScorer.js");
 
 const base = { domain: "example.com", sessionMinutes: 0, hour: 14, triggerDomains: Shared.DEFAULT_TRIGGER_DOMAINS,
-  context: {}, storedWeights: null, minutesSinceKeyword: -1, minutesSinceReclaimOpen: -1 };
+  context: {}, storedWeights: null, keywordSeverity: null, minutesSinceReclaimOpen: -1 };
 const s = (o) => R.score({ ...base, ...o });
 
 // Nothing flagged, nothing fires.
@@ -33,9 +33,35 @@ r = s({ domain: "reddit.com", sessionMinutes: 15, hour: 23,
 assert.deepEqual(r.factors.sort(), ["duration","historicalTime","selfReportedTime","socialMedia","triggerApp"].sort());
 assert.equal(r.score, 30 + 30 + 20 + 15 + 10 + 30);
 
-// Keyword evidence is recent-only.
-assert.ok(s({ minutesSinceKeyword: 10 }).factors.includes("recentKeyword"));
-assert.ok(!s({ minutesSinceKeyword: 16 }).factors.includes("recentKeyword"));
+// Keyword tiers: only the highest tier counts (never stacked), each scaled by intensity.
+assert.equal(s({ keywordSeverity: "moderate" }).score, 40);
+assert.equal(s({ keywordSeverity: "mild" }).score, 15);
+assert.equal(s({ keywordSeverity: "severe" }).score, 150);
+assert.equal(s({ keywordSeverity: "moderate", context: { intensity: "low" } }).score, 32);
+assert.equal(s({ keywordSeverity: "moderate", context: { intensity: "high" } }).score, 48);
+assert.ok(s({ keywordSeverity: "moderate" }).factors.includes("recentKeyword"));
+assert.ok(s({ keywordSeverity: "mild" }).factors.includes("recentKeywordMild"));
+// Severe ALWAYS notifies and is high risk, at every intensity -- even at Low's 90/110 bar...
+for (const intensity of ["low", "medium", "high"]) {
+  r = s({ keywordSeverity: "severe", context: { intensity } });
+  assert.ok(r.triggers && r.isHighRisk && r.severe, intensity);
+}
+// ...though recently opening Reclaim can soften (not erase) it, as on Android.
+assert.equal(s({ keywordSeverity: "severe", minutesSinceReclaimOpen: 5 }).score, 125);
+// A lone moderate keyword at Medium doesn't notify (40 < 60); it needs company.
+assert.ok(!s({ keywordSeverity: "moderate" }).triggers);
+assert.ok(s({ keywordSeverity: "moderate", domain: "reddit.com" }).triggers);
+// Severity lookup: per-tier windows (severe 30m, moderate 15m, mild 10m), scoped to the site,
+// highest tier wins, unknown words ignored.
+const now = Date.now(), ago = (m) => now - m * 60000;
+assert.equal(R.mostSevereRecentKeyword([{ domain: "a.com", keyword: "pornhub", at: ago(25) }], "a.com", now), "severe");
+assert.equal(R.mostSevereRecentKeyword([{ domain: "a.com", keyword: "pornhub", at: ago(31) }], "a.com", now), null);
+assert.equal(R.mostSevereRecentKeyword([{ domain: "a.com", keyword: "nsfw", at: ago(16) }], "a.com", now), null);
+assert.equal(R.mostSevereRecentKeyword([{ domain: "a.com", keyword: "naked", at: ago(11) }], "a.com", now), null);
+assert.equal(R.mostSevereRecentKeyword([{ domain: "b.com", keyword: "pornhub", at: ago(1) }], "a.com", now), null);
+assert.equal(R.mostSevereRecentKeyword([
+  { domain: "a.com", keyword: "naked", at: ago(1) }, { domain: "a.com", keyword: "nsfw", at: ago(1) },
+  { domain: "a.com", keyword: "bogus", at: ago(1) }], "a.com", now), "moderate");
 
 // Protective: recently opening Reclaim subtracts, floor 0.
 assert.equal(s({ domain: "reddit.com", minutesSinceReclaimOpen: 5 }).score, 5);
@@ -65,27 +91,18 @@ assert.deepEqual(Shared.findKeywords("denuded landscape, nudged along"), []);
 assert.deepEqual(Shared.findKeywords("pornhub com".replace(/\./g," ")).map(k=>k.keyword), ["pornhub"]);
 assert.ok(Shared.domainMatches("mail.google.com", Shared.SENSITIVE_DOMAINS));
 assert.ok(Shared.isAppUrl("https://reclaim128.org/x") && !Shared.isAppUrl("https://reclaim128.org.evil.com/"));
-// Explicit keyword floor: high risk immediately at ANY intensity, even right after opening Reclaim.
-for (const intensity of ["low", "medium", "high"]) {
-  r = s({ context: { intensity }, strongKeywordRecent: true, minutesSinceReclaimOpen: 1 });
-  assert.ok(r.triggers && r.isHighRisk && r.strong, intensity);
-  assert.equal(r.score, r.threshold + 20);
-  assert.ok(r.factors.includes("explicitKeyword"));
-}
-// ...but never lowers a score that is already higher, and not set without the flag.
-assert.equal(s({ domain: "reddit.com", sessionMinutes: 15, hour: 23, strongKeywordRecent: true,
-  context: { temptingTimes: ["Night"], riskyTimeBuckets: ["Night"], commonTriggers: ["Social media"] } }).score, 135);
-assert.ok(!s({ minutesSinceKeyword: 5 }).strong);
-// Only the unambiguous words are strong.
-for (const k of ["porn", "pornhub", "onlyfans", "xxx"]) assert.ok(Shared.STRONG_KEYWORDS.includes(k), k);
-for (const k of ["nsfw", "nude", "erotic", "escort", "fetish"]) assert.ok(!Shared.STRONG_KEYWORDS.includes(k), k);
-assert.ok(Shared.STRONG_KEYWORDS.every((k) => k in Shared.KEYWORDS));
-// Expanded keyword list: new terms and site names match as whole words, in text and hostnames.
-for (const [text, kw] of [["best brazzers videos", "brazzers"], ["xnxx com", "xnxx"], ["a milf site", "milf"], ["cam girls online", "cam girls"], ["rule34 art", "rule34"], ["leaked nudes thread", "leaked nudes"]]) {
+// Tier data: every keyword is in exactly one tier; spot-check the placements against Android's.
+const sev = (k) => Shared.KEYWORD_SEVERITY[k];
+for (const k of ["pornhub", "xvideos", "onlyfans", "brazzers", "free porn", "porn videos", "hire an escort", "escort service"]) assert.equal(sev(k), "severe", k);
+for (const k of ["porn", "xxx", "nsfw", "nudes", "hentai", "erotic", "fetish", "sexting", "strip club", "escort", "milf", "blowjob"]) assert.equal(sev(k), "moderate", k);
+for (const k of ["nude", "18+", "sexy pics", "thirst trap", "hardcore", "naked", "masturbation", "cam site"]) assert.equal(sev(k), "mild", k);
+const flat = Object.keys(Shared.KEYWORDS);
+assert.equal(flat.length, new Set(flat).size);
+assert.ok(flat.length >= 100, "list size " + flat.length);
+// Whole-word/phrase matching, in text and hostnames, including the web-only words.
+for (const [text, kw] of [["best brazzers videos", "brazzers"], ["xnxx com", "xnxx"], ["a milf site", "milf"], ["cam girls online", "cam girls"], ["rule34 art", "rule34"], ["18+ only", "18+"], ["watch porn now", "watch porn"]]) {
   assert.ok(Shared.findKeywords(text).some((k) => k.keyword === kw), kw);
 }
-// Ordinary words around them don't match.
-assert.deepEqual(Shared.findKeywords("hardcore fans of the hardwood; an ambrosial orgone"), [{ keyword: "hardcore", category: "explicit_content" }].slice(0, 1));
-assert.deepEqual(Shared.findKeywords("normal text about milfoil and cumulus clouds"), []);
-assert.ok(Shared.STRONG_KEYWORDS.includes("brazzers") && !Shared.STRONG_KEYWORDS.includes("hardcore") && !Shared.STRONG_KEYWORDS.includes("naked"));
+assert.deepEqual(Shared.findKeywords("normal text about milfoil, Georgy and Jerome"), []);
+assert.deepEqual(Shared.findKeywords("hardwood floors"), []);
 console.log("all extension tests passed");

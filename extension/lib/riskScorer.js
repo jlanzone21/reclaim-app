@@ -17,14 +17,23 @@
     selfReportedTime: { def: 20, min: 10, max: 30 },
     historicalTime: { def: 15, min: 8, max: 22 },
     socialMedia: { def: 10, min: 5, max: 15 },
-    recentKeyword: { def: 35, min: 20, max: 50 },
+    // MODERATE keyword tier (the historical name is kept) and a smaller MILD tier. SEVERE is
+    // deliberately not here: it is a fixed bonus, outside the adaptive system. Same numbers as
+    // RiskScorer.java.
+    recentKeyword: { def: 40, min: 22, max: 55 },
+    recentKeywordMild: { def: 15, min: 8, max: 22 },
   };
 
   const ADJUST_DELTA = 2;
   const HIGH_RISK_MARGIN = 20;
   const RECENT_RECLAIM_WINDOW_MIN = 30;
   const RECENT_RECLAIM_PROTECTION = 25;
-  const RECENT_KEYWORD_WINDOW_MIN = 15;
+  // Per-tier recency windows, as on Android: a confirmed explicit match is worth flagging for
+  // longer, an ambiguous word only if it is genuinely current.
+  const KEYWORD_WINDOW_MIN = { severe: 30, moderate: 15, mild: 10 };
+  // Sized so even Low intensity's 0.8x (120) clears the high-risk bar at Low's own threshold
+  // (90 + 20 = 110): this tier should "always trigger a risk-nudge".
+  const SEVERE_KEYWORD_BONUS = 150;
 
   // Same mapping as RiskScorer.TAG_TO_FACTORS (the "alone" entries drop out with that factor).
   const TAG_TO_FACTORS = {
@@ -33,7 +42,7 @@
     Fatigue: ["selfReportedTime", "historicalTime"],
     "Late at night": ["selfReportedTime", "historicalTime"],
     "Social media": ["socialMedia"],
-    "Unexpected exposure": ["recentKeyword"],
+    "Unexpected exposure": ["recentKeyword", "recentKeywordMild"],
   };
 
   function timeBucket(hour) {
@@ -41,6 +50,29 @@
     if (hour >= 12 && hour < 17) return "Afternoon";
     if (hour >= 17 && hour < 22) return "Evening";
     return "Night";
+  }
+
+  // Scales the three keyword factors (and only those) with notification intensity, compounding
+  // with the lower threshold -- Android's keywordIntensityMultiplier.
+  function keywordIntensityMultiplier(intensity) {
+    if (intensity === "low") return 0.8;
+    if (intensity === "high") return 1.2;
+    return 1;
+  }
+
+  // The highest tier with a match on this site still inside its own recency window, or null.
+  // `matches` are {domain, keyword, at}; severity comes from the keyword, so matches stored before
+  // tiers existed are classified correctly too. Used by background.js.
+  function mostSevereRecentKeyword(matches, domain, now) {
+    let best = null;
+    const rank = { mild: 1, moderate: 2, severe: 3 };
+    for (const m of matches || []) {
+      if (m.domain !== domain) continue;
+      const tier = Shared.KEYWORD_SEVERITY[m.keyword];
+      if (!tier || (now - m.at) / 60000 > KEYWORD_WINDOW_MIN[tier]) continue;
+      if (!best || rank[tier] > rank[best]) best = tier;
+    }
+    return best;
   }
 
   function thresholdForIntensity(intensity) {
@@ -66,10 +98,8 @@
    * @param {string[]} input.triggerDomains     user's trigger-site list
    * @param {object} input.context              synced from the app (RiskProfile.syncToNative)
    * @param {object} [input.storedWeights]      adaptive weights, if any have been tuned
-   * @param {number} input.minutesSinceKeyword  minutes since a keyword match on this site (-1 = never)
+   * @param {string|null} input.keywordSeverity  highest keyword tier with a recent match on this site
    * @param {number} input.minutesSinceReclaimOpen  minutes since Reclaim was last opened (-1 = never)
-   * @param {boolean} [input.strongKeywordRecent]  a Shared.STRONG_KEYWORDS match on this site in
-   *                                            the keyword window -- see the floor below
    */
   function score(input) {
     const ctx = input.context || {};
@@ -124,12 +154,31 @@
 
     // The strongest signal: an actual keyword match on this site's page text, not an inferred
     // pattern. Scoped to the current site so an earlier match elsewhere is never attributed here.
-    if (input.minutesSinceKeyword >= 0 && input.minutesSinceKeyword <= RECENT_KEYWORD_WINDOW_MIN) {
+    // Only the single highest tier still in its window counts, never stacked, and all three scale
+    // with notification intensity.
+    const mult = keywordIntensityMultiplier(ctx.intensity);
+    const severity = input.keywordSeverity || null;
+    if (severity === "severe") {
+      const w = Math.round(SEVERE_KEYWORD_BONUS * mult);
+      fire(
+        "recentKeywordSevere",
+        w,
+        "recent-keyword-severe",
+        "Something explicit was just seen on this site -- this matters enough to flag right away."
+      );
+    } else if (severity === "moderate") {
       fire(
         "recentKeyword",
-        weights.recentKeyword,
+        Math.round(weights.recentKeyword * mult),
         "recent-keyword",
         "Something on this page recently matched a word or phrase you'd flagged."
+      );
+    } else if (severity === "mild") {
+      fire(
+        "recentKeywordMild",
+        Math.round(weights.recentKeywordMild * mult),
+        "recent-keyword-mild",
+        "Something on this page recently had a word or phrase worth noticing."
       );
     }
 
@@ -150,24 +199,10 @@
 
     const threshold = thresholdForIntensity(ctx.intensity);
 
-    // Explicit-pornography floor. Everything above is an inferred pattern that has to add up; a
-    // match on one of the unambiguous words is direct evidence and should not wait for minutes to
-    // accumulate or depend on the intensity setting (a Low user would otherwise need 90 points).
-    // Applied after the protective subtraction on purpose: having opened Reclaim recently must not
-    // silence this. Fixed, not adaptive, like the convergence bonus.
-    const strong = !!input.strongKeywordRecent;
-    if (strong) {
-      const floor = threshold + HIGH_RISK_MARGIN;
-      if (points < floor) points = floor;
-      factors.push("explicitKeyword");
-      reasons.push(`explicit-keyword(floor ${floor})`);
-      userReasons.unshift("This page matched a word strongly tied to pornography.");
-    }
-
     return {
       score: points,
       threshold,
-      strong,
+      severe: severity === "severe",
       triggers: points >= threshold,
       isHighRisk: points >= threshold + HIGH_RISK_MARGIN,
       reason: reasons.join(" "),
@@ -197,7 +232,7 @@
     return [...names];
   }
 
-  const api = { WEIGHT_SPECS, score, adjustWeights, factorsForTags, timeBucket, thresholdForIntensity, loadWeights };
+  const api = { mostSevereRecentKeyword, keywordIntensityMultiplier, WEIGHT_SPECS, score, adjustWeights, factorsForTags, timeBucket, thresholdForIntensity, loadWeights };
   root.RiskScorer = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

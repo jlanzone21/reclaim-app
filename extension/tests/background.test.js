@@ -195,20 +195,26 @@ async function boot() {
   await t.listeners.onButtonClicked("reclaim-nightly", 1);
   assert.equal((await t.op("TAKE_PENDING", {})).result.nightly, "open_checkin");
 
-  // Explicit keyword: one report on a brand-new, non-trigger site notifies immediately and is
-  // high risk -- even at Low intensity -- and is still allowed after a milder nudge in the same run.
+  // Severe keyword: one report on a brand-new, non-trigger site notifies immediately and is high
+  // risk -- even at Low intensity -- and is still allowed after a milder nudge in the same run.
+  // A lone moderate word ("porn", "nsfw") does not, by design: only site names/phrases are severe.
   t = await boot();
   await t.op("SET_ENABLED", { enabled: true });
   await t.op("SYNC_RISK_CONTEXT", { intensity: "low", accountabilityName: "Sam", accountabilityPhone: "5551234" });
   await t.focus("https://blog.example.com/");
-  await t.send({ type: "KEYWORDS", matches: [{ keyword: "nsfw" }] }, "https://blog.example.com/");
-  assert.equal(t.state.notifications.length, 0, "ordinary keyword alone still doesn't notify at Low");
-  await t.send({ type: "KEYWORDS", matches: [{ keyword: "porn" }] }, "https://blog.example.com/");
-  assert.equal(t.state.notifications.length, 1, "explicit keyword notifies at once");
+  await t.send({ type: "KEYWORDS", matches: [{ keyword: "nsfw" }, { keyword: "porn" }] }, "https://blog.example.com/");
+  assert.equal(t.state.notifications.length, 0, "moderate keywords alone don't notify at Low");
+  await t.send({ type: "KEYWORDS", matches: [{ keyword: "free porn" }] }, "https://blog.example.com/");
+  assert.equal(t.state.notifications.length, 1, "severe keyword notifies at once");
   assert.ok(t.state.notifications[0].buttons[0].title.startsWith("Reach out"), "high risk -> reach out");
-  assert.ok(t.local.pendingAlert.reasons[0].includes("pornography"));
+  assert.ok(t.local.pendingAlert.reasons.some((r) => r.includes("explicit")));
   await t.tick();
   assert.equal(t.state.notifications.length, 1, "no repeat");
+  // Matches stored before tiers existed (no severity field) still classify, by keyword.
+  t.local.matches = [{ domain: "blog.example.com", keyword: "pornhub", category: "adult_site", at: Date.now() }];
+  t.local.lastNotifiedRun = null;
+  await t.tick();
+  assert.equal(t.state.notifications.length, 2);
 
   // Adaptive tuning: slip shortly after a notification reinforces the factors that fired;
   // tags apply independently; a stale notification is not correlated.
