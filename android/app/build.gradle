@@ -45,7 +45,7 @@ android {
             // above for why. Add more testers here directly as the project grows.
             firebaseAppDistribution {
                 releaseNotes = "Debug build from ${new Date().format('yyyy-MM-dd HH:mm')}."
-                testers = "jlanzone21@gmail.com, nathanieldavis006@gmail.com"
+                testers = "jlanzone21@gmail.com, nathanieldavis006@gmail.com, rebekahjones427@gmail.com, shintm22@gcc.edu"
             }
         }
         release {
