@@ -342,6 +342,18 @@ cd android
   a Windows installer into `dist/`.
 - Website: `wrangler.jsonc` deploys `./web` as Cloudflare static assets;
   domain `reclaim128.org` (Cloudflare, Nathaniel's).
+- Usage dashboard: `wrangler.analytics.jsonc` deploys `./analytics-site`
+  (one page) as its own separate Worker, `reclaim-analytics` -- separate
+  from the main site's worker so a custom domain pointed at it shows only
+  the dashboard, not the whole app. One-time setup (needs Nathaniel's
+  Cloudflare access, same as the main site): `npx wrangler deploy --config
+  wrangler.analytics.jsonc`, then in the Cloudflare dashboard, Workers &
+  Pages > reclaim-analytics > Settings > Domains & Routes > Add > Custom
+  Domain > `analytics.reclaim128.org` (auto-creates the DNS + SSL cert).
+  After that, `npx wrangler deploy --config wrangler.analytics.jsonc`
+  alone redeploys it. Passcode-gated (see PURPOSE.md); change it with
+  `UPDATE app_settings SET value = '...' WHERE key = 'analytics_passcode'`
+  in the `reclaim-128` Supabase project.
 - Regenerate vendored libs: `npm run vendor:webllm`,
   `npm run vendor:youversion`.
 - **Distributing a debug build to testers (Firebase App Distribution,

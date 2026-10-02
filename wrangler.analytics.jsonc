@@ -1,0 +1,13 @@
+{
+  // Deploys analytics-site/ (just the one dashboard page) as its own Cloudflare Worker, separate
+  // from the main app's (wrangler.jsonc, "reclaim-app", ./web) -- so a custom domain pointed at
+  // *this* worker shows only the dashboard, not the whole app. One-time setup (see CLAUDE.md):
+  //   npx wrangler deploy --config wrangler.analytics.jsonc
+  // then, in the Cloudflare dashboard: Workers & Pages > reclaim-analytics > Settings > Domains &
+  // Routes > Add > Custom Domain > analytics.reclaim128.org (auto-creates the DNS + SSL cert).
+  "name": "reclaim-analytics",
+  "compatibility_date": "2026-09-17",
+  "assets": {
+    "directory": "./analytics-site"
+  }
+}

@@ -2033,11 +2033,31 @@ reality:
         owner), confirmed a second same-day call is a pure no-op, and
         confirmed the anon key's 401 on read. Deleted the test rows
         afterward.
-      - No in-app dashboard for this -- it's a backend-only counter
-        queried directly in Supabase (as the project owner) when wanted,
-        e.g. `SELECT opened_date, COUNT(DISTINCT install_id) FROM
-        app_opens GROUP BY opened_date ORDER BY opened_date DESC` for
-        daily active installs.
+      - Follow-up, same session: a viewable dashboard, since "query it
+        yourself in Supabase" wasn't actually usable day to day. Two new
+        Supabase RPC functions (`get_usage_summary`/`get_usage_stats`),
+        `SECURITY DEFINER` so they can read `app_opens` despite `anon`
+        having no direct SELECT grant on it -- they return aggregate
+        counts only (daily active installs, 7/30-day actives, total
+        installs), never a raw `install_id` or per-person row, and both
+        are gated by a passcode checked server-side against a new
+        `app_settings` table (itself RLS-locked with zero policies, only
+        reachable through the two functions) -- not just hidden in
+        client JS, which would be trivially bypassed. `analytics-site/
+        index.html`: one small, self-contained page (passcode prompt,
+        then the numbers) with no dependency on the main app's JS.
+        Deployed as its own separate Cloudflare Worker
+        (`wrangler.analytics.jsonc`, `reclaim-analytics`) rather than a
+        page inside the main site's worker, specifically so a custom
+        domain (`analytics.reclaim128.org`, Nathaniel's Cloudflare
+        access needed for the one-time domain setup -- see CLAUDE.md)
+        shows only the dashboard, not the whole app.
+      - Verified against the real live project: wrong passcode correctly
+        rejected by both RPCs; inserted temporary rows directly as the
+        project owner (bypassing RLS, the same access a real end user's
+        key never has) and confirmed the dashboard's numbers matched
+        exactly (total/today/7d/30d and the per-day table); deleted the
+        test rows afterward, confirmed empty state renders correctly too.
 
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging

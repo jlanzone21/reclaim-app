@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<!--
+  Internal usage dashboard, deployed as its own small Cloudflare Worker (see
+  wrangler.analytics.jsonc at the repo root) -- separate from the main app's worker
+  (wrangler.jsonc, ./web) so analytics.reclaim128.org shows only this page, not the whole app.
+  Not linked from the app itself. Reads only aggregate counts (daily active installs, 7/30-day
+  actives, total installs) via two Supabase RPCs (get_usage_stats/get_usage_summary) that are
+  themselves gated by a passcode checked server-side -- see PURPOSE.md. The underlying app_opens
+  table has no SELECT grant for the public key at all; this page can only ever see aggregates,
+  never a raw install_id or per-person row, by construction, not just by convention.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Reclaim — Usage</title>
+<style>
+  :root {
+    --navy: #06335d;
+    --accent: #c2540a;
+    --bg: #f3f6f9;
+    --bg-elevated: #ffffff;
+    --bg-inset: #eaeff4;
+    --border: #dce3ea;
+    --text: #17242f;
+    --text-muted: #5b6b79;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px 16px 60px;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; color: var(--navy); }
+  .subtitle { font-size: 13px; color: var(--text-muted); margin: 0 0 24px; }
+
+  #gate { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  #gate label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  #gate input {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+    font-size: 14px; margin-bottom: 12px;
+  }
+  #gate button, #refreshBtn {
+    background: var(--navy); color: #fff; border: none; border-radius: 8px;
+    padding: 10px 16px; font-size: 13.5px; font-weight: 600; cursor: pointer;
+  }
+  #gateError { color: #b3261e; font-size: 13px; margin-top: 8px; display: none; }
+
+  #dashboard { display: none; }
+  .summary-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 24px; }
+  .stat-card { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+  .stat-value { font-size: 24px; font-weight: 700; color: var(--accent); }
+  .stat-label { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+  table { width: 100%; border-collapse: collapse; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 9px 12px; font-size: 13.5px; border-bottom: 1px solid var(--border); }
+  th { background: var(--bg-inset); font-weight: 600; color: var(--text-muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
+  tr:last-child td { border-bottom: none; }
+  #empty { color: var(--text-muted); font-size: 13px; text-align: center; padding: 20px 0; }
+  #topRow { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  #topRow h2 { font-size: 14px; margin: 0; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Reclaim — Usage</h1>
+    <p class="subtitle">Aggregate daily active installs only. No per-person data exists here to see.</p>
+
+    <div id="gate">
+      <label for="passcodeInput">Passcode</label>
+      <input type="password" id="passcodeInput" autocomplete="off" />
+      <button type="button" id="viewBtn">View</button>
+      <div id="gateError">Incorrect passcode.</div>
+    </div>
+
+    <div id="dashboard">
+      <div class="summary-row">
+        <div class="stat-card"><div class="stat-value" id="statTotal">—</div><div class="stat-label">total installs ever seen</div></div>
+        <div class="stat-card"><div class="stat-value" id="statToday">—</div><div class="stat-label">active today</div></div>
+        <div class="stat-card"><div class="stat-value" id="stat7d">—</div><div class="stat-label">active, last 7 days</div></div>
+        <div class="stat-card"><div class="stat-value" id="stat30d">—</div><div class="stat-label">active, last 30 days</div></div>
+      </div>
+
+      <div id="topRow">
+        <h2>Daily active installs</h2>
+        <button type="button" id="refreshBtn">Refresh</button>
+      </div>
+      <table id="dailyTable" hidden>
+        <thead><tr><th>Date</th><th>Active installs</th></tr></thead>
+        <tbody id="dailyBody"></tbody>
+      </table>
+      <div id="empty" hidden>No opens recorded yet.</div>
+    </div>
+  </div>
+
+<script>
+  const SUPABASE_URL = "https://hdymcreqtwcwgwftglox.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_-DsHhVDv07sLfa_8YovrkA_nh_P9y1C";
+
+  const els = {
+    passcodeInput: document.getElementById("passcodeInput"),
+    viewBtn: document.getElementById("viewBtn"),
+    gateError: document.getElementById("gateError"),
+    gate: document.getElementById("gate"),
+    dashboard: document.getElementById("dashboard"),
+    refreshBtn: document.getElementById("refreshBtn"),
+    statTotal: document.getElementById("statTotal"),
+    statToday: document.getElementById("statToday"),
+    stat7d: document.getElementById("stat7d"),
+    stat30d: document.getElementById("stat30d"),
+    dailyTable: document.getElementById("dailyTable"),
+    dailyBody: document.getElementById("dailyBody"),
+    empty: document.getElementById("empty"),
+  };
+
+  let passcode = "";
+
+  async function rpc(name, body) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`rpc ${name} failed: ${res.status}`);
+    return res.json();
+  }
+
+  async function load() {
+    const [summaryRows, dailyRows] = await Promise.all([
+      rpc("get_usage_summary", { passcode }),
+      rpc("get_usage_stats", { passcode }),
+    ]);
+    const s = summaryRows[0] || { total_installs: 0, active_today: 0, active_7d: 0, active_30d: 0 };
+    els.statTotal.textContent = s.total_installs;
+    els.statToday.textContent = s.active_today;
+    els.stat7d.textContent = s.active_7d;
+    els.stat30d.textContent = s.active_30d;
+
+    els.dailyBody.innerHTML = "";
+    if (!dailyRows.length) {
+      els.dailyTable.hidden = true;
+      els.empty.hidden = false;
+    } else {
+      els.dailyTable.hidden = false;
+      els.empty.hidden = true;
+      for (const row of dailyRows) {
+        const tr = document.createElement("tr");
+        const dateCell = document.createElement("td");
+        dateCell.textContent = row.opened_date;
+        const countCell = document.createElement("td");
+        countCell.textContent = row.active_installs;
+        tr.appendChild(dateCell);
+        tr.appendChild(countCell);
+        els.dailyBody.appendChild(tr);
+      }
+    }
+  }
+
+  els.viewBtn.addEventListener("click", async () => {
+    passcode = els.passcodeInput.value;
+    els.gateError.hidden = true;
+    try {
+      await load();
+      els.gate.style.display = "none";
+      els.dashboard.style.display = "block";
+    } catch (e) {
+      els.gateError.style.display = "block";
+    }
+  });
+  els.passcodeInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") els.viewBtn.click();
+  });
+  els.refreshBtn.addEventListener("click", load);
+</script>
+</body>
+</html>
