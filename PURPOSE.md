@@ -1882,6 +1882,57 @@ reality:
         confirmed all three selections round-tripped correctly through
         `UserPreferencesStore`.
 
+- [x] **10 women's recovery resources added, and small groups/articles now
+      filter to the user's own gender.** User-supplied list of 10 URLs;
+      researched each via WebFetch (real org, real offering, real contact
+      where published), same verification-metadata pattern as the
+      existing men's-group rows (`details.verification_status`). 9 added
+      as new Supabase `resources` rows -- 6 `small_group` (SheRecovery,
+      Blazing Grace Women's Group, Magdala, The Freedom Fight, Unraveled
+      at Pure Desire, Naked Truth Project) and 3 `article` (Beyond
+      Ordinary Women's "Caring for Women Who Struggle with Porn",
+      Beggar's Daughter's church-group guide, IBCD's counselor workshop --
+      these three are guidance/teaching pieces, not something a struggling
+      woman joins directly, so `article` fit better than `small_group`).
+      The 10th, celebraterecovery.com, was a genuine duplicate of the
+      existing universal "Celebrate Recovery — Find a Group" row (id 52,
+      already `gender=null`, already confirmed serving both genders) --
+      not re-added.
+      - `resources` gained a `gender` column (`'male' | 'female' | null`,
+        null = universal). All 36 existing single-city men's-group rows
+        (titles literally say "Men's"/"For Men Only") backfilled to
+        `'male'`; the two existing national directory rows (Pure Desire
+        and Celebrate Recovery "Find a Group") correctly already had no
+        gender and stay universal.
+      - `resourceRepo.js`'s new `filterByGender` excludes the other
+        gender's rows outright (not just deprioritizes -- a men's-only
+        group isn't a usable suggestion for a woman, or vice versa),
+        always keeps universal (`gender: null`) rows, and does no
+        filtering at all when the user hasn't set a gender (optional, no
+        default -- better to show everything than silently under-serve
+        someone who hasn't answered). Applied in `fromSupabase` (covers
+        `getArticles`/`getSermons`/`getCounselingCenters`/the
+        text-state-matched path of `getSmallGroups`) and in
+        `getSmallGroups`'s distance-ranked path, so it composes correctly
+        with both existing selection methods, not just one.
+      - None of the 6 new small_group rows have coordinates (they're
+        national/international organizations, not single-city chapters,
+        so there's nothing honest to geocode) -- for a user with a saved
+        home location, they're naturally excluded from the distance-ranked
+        list (which only ever ranks rows that have coordinates) and
+        surface instead through the existing nationwide-sample fallback,
+        same as the two pre-existing directory rows always have.
+      - Verified in-browser against the real live Supabase data (not a
+        mock): gender `'female'` -> `getSmallGroups` returned exactly the
+        6 new rows plus the 2 universal directory rows, zero men's
+        groups; gender `'male'` -> exactly the 36 men's rows (2 universal
+        would also qualify but didn't come up in this particular
+        10-result sample); no gender set -> both genders present,
+        nothing excluded; gender `'male'` + a saved home location ->
+        distance ranking still composed correctly with the gender filter
+        (same Philadelphia test point as the original distance-ranking
+        verification, now confirmed gender-filtered too).
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing
