@@ -1759,6 +1759,35 @@ reality:
         partner via its × and confirmed the "+" button reappeared and the
         removed partner's fields cleared to null on save.
 
+- [x] **Closed a real gap: being on Reclaim itself could still trigger a
+      notification.** `RiskScorer` already had a protective factor for
+      recently being on Reclaim (`recent-reclaim-use`, -25 points within
+      30 minutes -- pre-existing, not new this pass) and
+      `RiskNudgeMonitor.currentSession()` already excluded Reclaim's own
+      package. But `ForegroundAppMonitor` -- the separate "You've been on
+      [App] for an hour. Is that correct?" verification notification,
+      ported from reclaim-beta -- did NOT exclude Reclaim's own package
+      from its session tracking, so leaving Reclaim open (a long Chat
+      conversation, browsing resources) for over an hour could trigger
+      that notification naming Reclaim itself. Fixed
+      `ForegroundAppMonitor.currentSession()` to exclude Reclaim's own
+      package and the launcher, the same pattern
+      `RiskNudgeMonitor.currentSession()` already used. Also added an
+      explicit self-package guard to `TrackingAccessibilityService
+      .maybeCaptureText()` as belt-and-suspenders alongside Reclaim
+      already being excluded from the "Add an app" allowlist picker
+      (`allowlistView.js`) -- should never be reachable today, but worth
+      the one-line guard given how much this matters.
+      Verified on-device, not just read: added a temporary diagnostic log
+      to `ForegroundAppMonitor.checkAndNotify`, opened Reclaim itself,
+      triggered the real background check via the existing Testing-panel
+      debug hook (`LocalSignals.debugRunBackgroundCheck()`, invoked
+      directly over CDP since on-device touch input wasn't cooperating
+      in this pass), and confirmed the log line
+      (`[verify-reclaim-exclusion] session=null`) -- `currentSession()`
+      correctly found no session at all while Reclaim was foreground.
+      Removed the diagnostic log before the final build.
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing

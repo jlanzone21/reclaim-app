@@ -233,8 +233,12 @@ public class TrackingAccessibilityService extends AccessibilityService {
     // Allowlist-gated: returns immediately for any app the user hasn't explicitly added. Walks
     // the node tree for visible text, skips if it's identical to the last capture (avoids writing
     // duplicate rows when a content-changed event fires without anything actually changing),
-    // stores the raw text, then checks it against the severity-tiered keyword lists.
+    // stores the raw text, then checks it against the severity-tiered keyword lists. Reclaim's own
+    // package is excluded outright, same as recordAppOpen above -- belt-and-suspenders alongside
+    // it already being excluded from the "Add an app" picker (allowlistView.js), since being on
+    // Reclaim itself should never be captured or scored as risk, full stop.
     private void maybeCaptureText(String packageName) {
+        if (packageName.equals(getPackageName())) return;
         if (!LocalSignalsDb.getInstance(this).isAllowlisted(packageName)) return;
 
         AccessibilityNodeInfo root = getRootInActiveWindow();

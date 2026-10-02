@@ -77,12 +77,17 @@ final class ForegroundAppMonitor {
 
     // Walks recent foreground/background transitions to find which app, if any, is foreground
     // right now and since when -- null if the trail ends in a background event (nothing is
-    // foreground) or there's no usable history in the window.
+    // foreground) or there's no usable history in the window. Reclaim's own package and the
+    // launcher never count as a session at all, same exclusion RiskNudgeMonitor.currentSession
+    // already applies: being on Reclaim itself is never something to notify about, this check
+    // included -- a long Chat conversation or browsing the resource library shouldn't produce
+    // "You've been on Reclaim for an hour. Is that correct?"
     private static Session currentSession(Context ctx) {
         UsageStatsManager usm = (UsageStatsManager) ctx.getSystemService(Context.USAGE_STATS_SERVICE);
         if (usm == null) return null;
         long end = System.currentTimeMillis();
         UsageEvents events = usm.queryEvents(end - QUERY_WINDOW_MS, end);
+        String ownPackage = ctx.getPackageName();
 
         String currentPackage = null;
         long sessionStart = 0;
@@ -90,8 +95,13 @@ final class ForegroundAppMonitor {
         while (events.hasNextEvent()) {
             events.getNextEvent(event);
             if (event.getEventType() == UsageEvents.Event.MOVE_TO_FOREGROUND) {
-                currentPackage = event.getPackageName();
-                sessionStart = event.getTimeStamp();
+                String pkg = event.getPackageName();
+                if (pkg != null && (LocalSignalsDb.isLauncherPackage(ctx, pkg) || pkg.equals(ownPackage))) {
+                    currentPackage = null;
+                } else {
+                    currentPackage = pkg;
+                    sessionStart = event.getTimeStamp();
+                }
             } else if (event.getEventType() == UsageEvents.Event.MOVE_TO_BACKGROUND
                     && event.getPackageName() != null
                     && event.getPackageName().equals(currentPackage)) {
