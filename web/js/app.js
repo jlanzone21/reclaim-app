@@ -271,6 +271,7 @@
       // checkinStore.js), this just catches anyone already past that.
       RiskProfile.syncToNative();
       ensureBackgroundSchedulingCurrent();
+      UsageAnalytics.pingIfNeeded(); // minimal privacy-safe "how many/how often" counter -- see its own header
       busy = false;
       dbReady = true;
       updateSendState();

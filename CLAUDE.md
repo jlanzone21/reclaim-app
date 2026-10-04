@@ -342,8 +342,31 @@ cd android
   a Windows installer into `dist/`.
 - Website: `wrangler.jsonc` deploys `./web` as Cloudflare static assets;
   domain `reclaim128.org` (Cloudflare, Nathaniel's).
+- Usage dashboard: `wrangler.analytics.jsonc` deploys `./analytics-site`
+  (one page) as its own separate Worker, `reclaim-analytics` -- separate
+  from the main site's worker so a custom domain pointed at it shows only
+  the dashboard, not the whole app. One-time setup (needs Nathaniel's
+  Cloudflare access, same as the main site): `npx wrangler deploy --config
+  wrangler.analytics.jsonc`, then in the Cloudflare dashboard, Workers &
+  Pages > reclaim-analytics > Settings > Domains & Routes > Add > Custom
+  Domain > `analytics.reclaim128.org` (auto-creates the DNS + SSL cert).
+  After that, `npx wrangler deploy --config wrangler.analytics.jsonc`
+  alone redeploys it. Passcode-gated (see PURPOSE.md); change it with
+  `UPDATE app_settings SET value = '...' WHERE key = 'analytics_passcode'`
+  in the `reclaim-128` Supabase project.
 - Regenerate vendored libs: `npm run vendor:webllm`,
   `npm run vendor:youversion`.
+- **Distributing a debug build to testers (Firebase App Distribution,
+  project `reclaim-128`):** one-time per machine --
+  `npm install -g firebase-tools` then `firebase login` (your own Google
+  account, interactive browser login; do this yourself, never have an
+  agent do it). After that: `cd android && ./gradlew assembleDebug
+  appDistributionUploadDebug`. Testers (both of you) are listed directly
+  in `android/app/build.gradle`'s `debug.firebaseAppDistribution` block,
+  not a console-side group -- add more emails there as the project grows.
+  `android/app/google-services.json` is committed (it's a public client
+  config, not a secret -- standard Firebase practice); the keystore/
+  signing secrets it's *not* are still gitignored as before.
 
 ## 12. Neighboring folders (not this repo)
 

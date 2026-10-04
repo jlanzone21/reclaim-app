@@ -1959,6 +1959,106 @@ reality:
         and that clicking it actually opens `preferencesOverlay`
         (`classList.contains("visible")` true).
 
+- [x] **Firebase App Distribution set up for sending debug builds to
+      testers**, project `reclaim-128`. Account/project creation had to be
+      the user's own (Google account), not something an agent does --
+      walked through registering the Android app (`com.reclaim.app`) and
+      enabling App Distribution in the console, then handled everything
+      code-side once `google-services.json` existed: the
+      `com.google.firebase:firebase-appdistribution-gradle` classpath
+      (`android/build.gradle`), the plugin apply + a
+      `debug.firebaseAppDistribution` block (`android/app/build.gradle`)
+      listing both testers' emails directly (no console-side tester group
+      yet -- add more there as the project grows). `google-services.json`
+      is committed on purpose -- it's a public client config, not a secret,
+      standard Firebase practice; the real secrets (keystore/signing) stay
+      gitignored exactly as before.
+      - Verified without being able to actually run the upload myself
+        (needs each person's own `firebase login`, a real Google OAuth
+        login -- not something to do on someone else's behalf): confirmed
+        the plugin resolves and registers `appDistributionUploadDebug`/
+        `appDistributionUploadRelease`/tester-management tasks, and that a
+        full `assembleDebug` still builds clean with the Firebase SDK
+        wired in, after this session's many other changes landed on top.
+        The actual upload+tester-notification path is for Joey (and
+        Nathaniel, on his own machine) to confirm after their own
+        one-time `firebase login` -- see CLAUDE.md's "Running it" section
+        for the exact commands.
+
+- [x] **Minimal, privacy-preserving usage counter** -- "how many people use
+      Reclaim and how often," answered without Firebase Analytics or any
+      ad-tech SDK. Asked the user directly first: Firebase Analytics
+      conflicts with the app's own repeatedly-stated on-device-only
+      privacy commitment, especially for an app about pornography-
+      addiction recovery specifically -- usage data about who's using it
+      and how often is a real privacy cost, not a neutral technical
+      choice. User chose the minimal option over full Firebase Analytics
+      or Play Console's own (install-only, no frequency) stats.
+      - New Supabase table `app_opens` (same project the public resource
+        library already reads from): `install_id` (random per-install
+        UUID, generated client-side, never tied to anything identifying)
+        + `opened_date`, unique together -- one row per install per
+        calendar day it was opened, nothing else. RLS enabled with an
+        INSERT-only policy for `anon` and no SELECT/UPDATE/DELETE policy
+        at all, so the public key embedded in the app (same one already
+        used for the resource library) can only ever add a row, never
+        read usage data back -- confirmed directly: a `select=*` request
+        with that key gets a flat 401.
+      - New `usageAnalytics.js`: `pingIfNeeded()`, called once at boot
+        (`app.js`), checks a `last_ping_date` flag in `app_meta` and
+        skips the network call entirely once already pinged for today.
+        `supabaseClient.js` gained `logAppOpen` -- deliberately a plain
+        INSERT, not `Prefer: resolution=ignore-duplicates` (PostgREST's
+        upsert-conflict path needs more than INSERT privilege to
+        resolve, and granting `anon` anything beyond INSERT, e.g.
+        SELECT, would let the public key read usage data back, defeating
+        the entire point); a same-day duplicate ping instead hits the
+        table's own unique constraint (409) and is treated as success,
+        not an error.
+      - **Found and fixed a real, independent concurrency bug while
+        testing this**: `db.js`'s `setMeta` used a check-then-branch
+        pattern (`getMeta(key) === null` decides INSERT vs UPDATE) with
+        a real race window -- two calls for the same key close enough
+        together could both see "no row yet" and both attempt INSERT,
+        the second failing on the key's own UNIQUE constraint. Confirmed
+        by reproducing it directly (two near-simultaneous `pingIfNeeded`
+        calls). Fixed to a single atomic `INSERT OR REPLACE`, same net
+        effect, no race window -- this fixes every other `setMeta` call
+        site in the app (`UserPreferencesStore`, `RiskProfile`, etc.),
+        not just this new one.
+      - Verified against the real live Supabase project, not a mock:
+        confirmed table/RLS/grants directly via SQL, drove the real
+        `UsageAnalytics.pingIfNeeded()` end-to-end in a fresh browser
+        origin, confirmed the real row landed (`SELECT` as the project
+        owner), confirmed a second same-day call is a pure no-op, and
+        confirmed the anon key's 401 on read. Deleted the test rows
+        afterward.
+      - Follow-up, same session: a viewable dashboard, since "query it
+        yourself in Supabase" wasn't actually usable day to day. Two new
+        Supabase RPC functions (`get_usage_summary`/`get_usage_stats`),
+        `SECURITY DEFINER` so they can read `app_opens` despite `anon`
+        having no direct SELECT grant on it -- they return aggregate
+        counts only (daily active installs, 7/30-day actives, total
+        installs), never a raw `install_id` or per-person row, and both
+        are gated by a passcode checked server-side against a new
+        `app_settings` table (itself RLS-locked with zero policies, only
+        reachable through the two functions) -- not just hidden in
+        client JS, which would be trivially bypassed. `analytics-site/
+        index.html`: one small, self-contained page (passcode prompt,
+        then the numbers) with no dependency on the main app's JS.
+        Deployed as its own separate Cloudflare Worker
+        (`wrangler.analytics.jsonc`, `reclaim-analytics`) rather than a
+        page inside the main site's worker, specifically so a custom
+        domain (`analytics.reclaim128.org`, Nathaniel's Cloudflare
+        access needed for the one-time domain setup -- see CLAUDE.md)
+        shows only the dashboard, not the whole app.
+      - Verified against the real live project: wrong passcode correctly
+        rejected by both RPCs; inserted temporary rows directly as the
+        project owner (bypassing RLS, the same access a real end user's
+        key never has) and confirmed the dashboard's numbers matched
+        exactly (total/today/7d/30d and the per-day table); deleted the
+        test rows afterward, confirmed empty state renders correctly too.
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing

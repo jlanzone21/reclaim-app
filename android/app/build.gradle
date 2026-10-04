@@ -1,10 +1,36 @@
 apply plugin: 'com.android.application'
+// Uploads debug builds to Firebase App Distribution (`./gradlew assembleDebug
+// appDistributionUploadDebug`) -- testers are listed directly in the debug buildType below, not a
+// console-side group, since this is the first pass and nobody's set one up there yet. Needs
+// google-services.json (present, reclaim-128 project) to resolve the Firebase app automatically,
+// and a one-time local `firebase login` (each person's own Google account, not something run in
+// CI/on someone else's behalf) before the upload task can authenticate -- see PURPOSE.md.
+apply plugin: 'com.google.firebase.appdistribution'
 
 def keystorePropertiesFile = rootProject.file("keystore.properties")
 def keystoreProperties = new Properties()
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
+
+// Derived from git history, not hand-maintained -- a Firebase App Distribution upload whose
+// versionCode matches the previous one gets treated as "already existing," and Firebase doesn't
+// reliably send tester invite emails for that (confirmed: this is why several testers never got
+// one). Commit count is monotonically increasing by construction, so every real commit on this
+// branch produces a genuinely new versionCode with zero chance of forgetting to bump it by hand.
+// Falls back to 1 if git isn't available (e.g. a source zip with no .git directory).
+def gitCommitCount = {
+    try {
+        def out = new ByteArrayOutputStream()
+        exec {
+            commandLine 'git', 'rev-list', '--count', 'HEAD'
+            standardOutput = out
+        }
+        return out.toString().trim().toInteger()
+    } catch (Exception e) {
+        return 1
+    }
+}()
 
 android {
     namespace = "com.reclaim.app"
@@ -13,8 +39,8 @@ android {
         applicationId "com.reclaim.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode gitCommitCount
+        versionName "1.${gitCommitCount}"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -33,6 +59,18 @@ android {
         }
     }
     buildTypes {
+        debug {
+            // References a console-side tester group ("testers" -- Firebase Console > App
+            // Distribution > Testers & Groups > Add group) instead of a hardcoded email list, so
+            // adding/removing someone never needs a code change or a new build: just edit the
+            // group membership in the console, then the *next* distribute (see the gitCommitCount
+            // comment above for why each one must be a genuinely new versionCode) reaches
+            // whoever's in it at that time.
+            firebaseAppDistribution {
+                releaseNotes = "Debug build from ${new Date().format('yyyy-MM-dd HH:mm')}."
+                groups = "testers"
+            }
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
