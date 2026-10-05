@@ -245,6 +245,7 @@
   WebTracker.onAvailable(() => {
     RiskProfile.syncToNative();
     BrowserTrackingView.refresh();
+    HomeView.refresh();
     checkPendingWeb();
   });
   WebTracker.onPending(() => checkPendingWeb());
@@ -276,6 +277,7 @@
       dbReady = true;
       updateSendState();
       WebTracker.init().then((found) => {
+        HomeView.extensionProbeDone();
         if (!found) return;
         WebTracker.appOpened();
         RiskProfile.syncToNative();

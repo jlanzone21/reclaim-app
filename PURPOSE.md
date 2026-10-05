@@ -2059,6 +2059,7 @@ reality:
         exactly (total/today/7d/30d and the per-day table); deleted the
         test rows afterward, confirmed empty state renders correctly too.
 
+- [x] **Browser extension download from the web app.** Asked for: a way to get the extension without cloning the repo, plus a Home-screen reminder. Built: `scripts/pack-extension.mjs` zips `extension/` (minus tests) into `web/downloads/reclaim-extension.zip`, which ships with `web/`; the Privacy tab's browser-tracking card shows a download button and unzip/Load-unpacked steps while the extension isn't detected; Home shows a tap-to-Privacy reminder card (web only, hidden on Android/Electron and once the extension is detected, and only after the startup probe so it doesn't flash). Tradeoffs: still a manual developer-mode install (no Chrome Web Store listing yet), and the committed zip must be re-packed whenever `extension/` changes. Verified in the browser pane against the local server (reminder renders, download link serves the 39 KB zip, no console errors); not tested with the real extension installed.
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing
