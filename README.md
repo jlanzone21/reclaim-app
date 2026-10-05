@@ -297,6 +297,9 @@ stays in that browser's extension storage; it makes no network requests.
    reclaim128.org.
 2. In Chrome or Edge open `chrome://extensions`, turn on **Developer mode**,
    click **Load unpacked** and pick the `extension/` folder.
+   (The web app's Privacy tab also offers `web/downloads/reclaim-extension.zip` for
+   download; regenerate it with `node scripts/pack-extension.mjs` after any change
+   under `extension/`.)
 3. Open Reclaim, go to **Privacy**, and turn on browser tracking (or use the
    extension's toolbar popup, which also has test-notification buttons).
 

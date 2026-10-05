@@ -133,5 +133,23 @@ const PermissionsView = (function () {
     }
   }
 
-  return { init, refresh: render };
+  // Titles of the permissions that still need granting, for Home's reminder card. Capabilities
+  // that can't be granted here at all (no module, or not Android) are skipped -- otherwise the
+  // web/desktop build would nag about something the user has no way to do. A permission with a
+  // pending second step (Location's "Allow always") counts as remaining too.
+  async function missing() {
+    const out = [];
+    for (const cap of CAPABILITIES) {
+      if (!cap.module || !cap.module.available()) continue;
+      try {
+        if (!(await cap.module.hasPermission())) out.push(cap.title);
+        else if (cap.furtherCheck && !(await cap.furtherCheck())) out.push(cap.title);
+      } catch (e) {
+        /* can't tell -- don't nag over a failed check */
+      }
+    }
+    return out;
+  }
+
+  return { init, refresh: render, missing };
 })();

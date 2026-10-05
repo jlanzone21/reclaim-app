@@ -15,24 +15,102 @@ const HomeView = (function () {
   // Which day's verse is on screen (and whether it came from YouVersion), so switching back to Home
   // doesn't refetch or flash -- it only re-renders once the day changes or YouVersion recovers.
   let verseShownFor = null;
+  let extensionProbed = false;
 
   function init() {
     els = {
       verseBody: document.getElementById("homeVerseBody"),
       statRow: document.getElementById("homeStatRow"),
       callCards: document.getElementById("homeCallCards"),
+      permReminder: document.getElementById("homePermReminder"),
+      extReminder: document.getElementById("homeExtensionReminder"),
       preferencesCard: document.getElementById("homePreferencesCard"),
     };
     initialized = true;
+    // Coming back from the system settings screen after granting something should clear the
+    // reminder without needing to switch tabs.
+    document.addEventListener("visibilitychange", () => {
+      const panel = document.querySelector('[data-view-panel="home"]');
+      if (!document.hidden && panel && !panel.hidden) renderPermissionReminder();
+    });
     refresh();
   }
 
   function refresh() {
     if (!initialized) return init();
+    renderPermissionReminder();
+    renderExtensionReminder();
     renderVerse();
     renderAccountabilityShortcut();
     renderPreferencesShortcut();
     renderStats();
+  }
+
+  // Reminder to finish granting permissions (all of them, or just the remaining ones). Tapping it
+  // opens the Privacy tab where the Grant buttons live. Renders nothing when everything's granted
+  // or there's nothing grantable (web/desktop).
+  async function renderPermissionReminder() {
+    if (typeof PermissionsView === "undefined") return;
+    const missing = await PermissionsView.missing();
+    els.permReminder.innerHTML = "";
+    if (!missing.length) return;
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "home-perm-card";
+
+    const text = document.createElement("span");
+    text.className = "home-call-text";
+    const label = document.createElement("span");
+    label.className = "home-call-label";
+    label.textContent = missing.length === 1 ? "1 permission still needs to be enabled" : `${missing.length} permissions still need to be enabled`;
+    const sub = document.createElement("span");
+    sub.className = "home-call-sub";
+    sub.textContent = `Reclaim works best with all of them on — still off: ${missing.join(", ")}. Tap to finish.`;
+    text.append(label, sub);
+    btn.appendChild(text);
+
+    btn.onclick = () => {
+      const privacyNav = document.querySelector('.nav-item[data-view="privacy"]');
+      if (privacyNav) privacyNav.click();
+    };
+    els.permReminder.appendChild(btn);
+  }
+
+  // Web version only: nudge to install the browser extension (downloaded from Privacy). Shown only
+  // once app.js has finished probing for the extension (extensionProbed), so it doesn't flash for
+  // people who already have it; cleared when the extension is detected or on Android/Electron,
+  // where it isn't an option (Electron loads from file://, where the extension's bridge isn't injected).
+  function renderExtensionReminder() {
+    els.extReminder.innerHTML = "";
+    if (!extensionProbed || typeof WebTracker === "undefined" || WebTracker.available()) return;
+    if (window.Capacitor?.isNativePlatform?.() || !/^https?:$/.test(location.protocol)) return;
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "home-perm-card";
+    const text = document.createElement("span");
+    text.className = "home-call-text";
+    const label = document.createElement("span");
+    label.className = "home-call-label";
+    label.textContent = "Get the Reclaim browser extension";
+    const sub = document.createElement("span");
+    sub.className = "home-call-sub";
+    sub.textContent = "It lets Reclaim notice risky browsing and check in before a slip — all on this device. Tap to download it from Privacy.";
+    text.append(label, sub);
+    btn.appendChild(text);
+    btn.onclick = () => {
+      const privacyNav = document.querySelector('.nav-item[data-view="privacy"]');
+      if (privacyNav) privacyNav.click();
+    };
+    els.extReminder.appendChild(btn);
+  }
+
+  // app.js calls this once WebTracker's startup probe has finished (found or not), and
+  // WebTracker.onAvailable covers the extension turning up later.
+  function extensionProbeDone() {
+    extensionProbed = true;
+    if (initialized) renderExtensionReminder();
   }
 
   // Same tel: mechanism as the crisis modal and RiskAlertView -- a real anchor click, not a
@@ -179,5 +257,5 @@ const HomeView = (function () {
     els.statRow.appendChild(card);
   }
 
-  return { init, refresh };
+  return { init, refresh, extensionProbeDone };
 })();

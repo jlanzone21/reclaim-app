@@ -1440,6 +1440,22 @@ a.resource-contact:active {
   border-color: var(--success);
 }
 
+/* Reminder to finish granting permissions -- same shape as the call card, accent-colored so it
+   reads as "something to do" rather than a shortcut. Rendered only while permissions remain. */
+.home-perm-card {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 14px 16px;
+  margin-top: 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-elevated));
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
 .home-call-icon {
   display: flex;
   align-items: center;
