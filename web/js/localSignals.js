@@ -105,6 +105,12 @@ const LocalSignals = (function () {
     await plugin().recordCheckinOutcome({ type, timestamp: timestampMs, tags: tags || [] });
   }
 
+  // Factors the AI judged a piece of the person's own writing to be about (RiskExplainer.learnFromWords).
+  async function nudgeWeights(factors, increase) {
+    if (!available()) return;
+    await plugin().nudgeWeights({ factors: factors || [], increase: increase !== false });
+  }
+
   // The person's verdict on a risk alert (see RiskExplainer): nudges the weights of the factors
   // that fired, once per alert. Resolves {adjusted: string[], duplicate: boolean} -- adjusted is
   // the factors that are actually tunable, so the UI can say truthfully what changed.
@@ -190,6 +196,7 @@ const LocalSignals = (function () {
     getPendingVerseRequest,
     getPendingMeditation,
     recordCheckinOutcome,
+    nudgeWeights,
     recordRiskFeedback,
     takePendingFeedbackNotes,
     getNotificationStats,

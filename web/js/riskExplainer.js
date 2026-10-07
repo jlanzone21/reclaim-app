@@ -448,6 +448,96 @@ Reply with only the one word.`;
     return { processed: notes.length, attributed };
   }
 
+  // ---- 2c. Learning from what the person writes elsewhere (check-in notes, chat) ----
+  //
+  // The flag page is not the only place people tell the app what is hard. A check-in note ("scrolling
+  // alone in my room at 1am, bored") and a chat message ("nights are the worst when I'm by myself")
+  // describe the SAME things RiskScorer weighs. So the on-device model reads the words and answers with
+  // one category word (the format that was reliable on the phone for the flag page); CODE maps the
+  // category to factors and applies the usual bounded +2. Signs of difficulty only ever RAISE
+  // sensitivity here; nothing a person writes lowers a weight (a note that says things went fine is not
+  // evidence the nudge was wrong). Every use is logged (reclaim_learned_from_words) for transparency.
+
+  const LEARN_SYSTEM = `Someone in a recovery app wrote this. Say which situation, if any, they describe as hard for them, with exactly one word:
+ALONE - they were by themselves, lonely, or unobserved.
+NIGHT - it was late at night or very early morning, or they can't sleep.
+LONG - they lost track of time or spent a long time on their phone.
+SOCIAL - social media like Instagram, TikTok, Snapchat, YouTube or Reddit.
+BORED - boredom or idle time (this app calls the length of a session a factor).
+NONE - none of these, or it is a good day.
+Examples:
+"was scrolling in my room by myself" -> ALONE
+"nobody was home and I felt lonely" -> ALONE
+"couldn't sleep, it was 2am" -> NIGHT
+"nights are the hardest for me" -> NIGHT
+"lost track of time on my phone for an hour" -> LONG
+"got sucked into Instagram again" -> SOCIAL
+"TikTok is my weak spot" -> SOCIAL
+"just bored with nothing to do" -> BORED
+"had a great day, church and friends" -> NONE
+"what time is it in Tokyo" -> NONE
+Reply with only the one word.`;
+
+  const LEARN_GROUPS = {
+    ALONE: ["alone"],
+    NIGHT: ["selfReportedTime", "historicalTime"],
+    LONG: ["duration"],
+    BORED: ["duration"],
+    SOCIAL: ["socialMedia", "triggerApp"],
+  };
+
+  const LEARN_LOG_KEY = "reclaim_learned_from_words";
+  const LEARN_CHAT_GAP_MS = 6 * 3600 * 1000; // chat is chatty: at most one chat-driven nudge per 6 hours
+
+  function readLearnLog() {
+    try {
+      const v = JSON.parse(localStorage.getItem(LEARN_LOG_KEY) || "[]");
+      return Array.isArray(v) ? v : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // One category word -> the factors it covers (a subset of the adjustable ones), or [] for NONE /
+  // unparseable / no model. Exposed for tests with a stub model.
+  async function categorizeWords(text) {
+    if (!text || !(await whenModelReady(MODEL_WAIT_MS))) return { label: "NONE", factors: [] };
+    try {
+      const raw = await withTimeout(ask(LEARN_SYSTEM, text.slice(0, 400), { maxTokens: 6, temperature: 0 }), MODEL_WAIT_MS);
+      const m = raw.toUpperCase().replace(/[^A-Z]/g, " ").match(/\b(ALONE|NIGHT|LONG|SOCIAL|BORED|NONE)\b/);
+      const label = m ? m[1] : "NONE";
+      return { label, factors: LEARN_GROUPS[label] || [] };
+    } catch (err) {
+      console.warn("AI couldn't read the note:", err);
+      return { label: "NONE", factors: [] };
+    }
+  }
+
+  // source: "checkin" | "chat". Resolves the factors nudged (possibly []). Never rejects.
+  async function learnFromWords(text, source) {
+    try {
+      const said = String(text || "").trim();
+      if (said.length < 8) return [];
+      if (typeof agentIsCrisis === "function" && agentIsCrisis(said)) return []; // never mine a crisis message
+      if (typeof LocalSignals === "undefined" || !LocalSignals.available()) return [];
+      const log = readLearnLog();
+      if (source === "chat") {
+        const last = log.filter((e) => e.source === "chat").pop();
+        if (last && Date.now() - last.at < LEARN_CHAT_GAP_MS) return [];
+      }
+      const { label, factors } = await categorizeWords(said);
+      if (!factors.length) return [];
+      await LocalSignals.nudgeWeights(factors, true);
+      log.push({ at: Date.now(), source, label, factors, text: said.slice(0, 80) });
+      try {
+        localStorage.setItem(LEARN_LOG_KEY, JSON.stringify(log.slice(-20)));
+      } catch (e) {}
+      return factors;
+    } catch (e) {
+      return [];
+    }
+  }
+
   // ---- 3. Notification wording, written ahead of time ----
 
   // _v2: the first version asked the model to WRITE phrases from an idea, and on a real phone it
@@ -700,6 +790,8 @@ Reply with only the one word.`;
     refreshPhraseBank,
     processFeedbackNotes,
     feedbackContext,
+    learnFromWords,
+    _categorizeWords: categorizeWords,
     _attributeFactors: attributeFactors,
     // exposed for tests
     _validatePhrase: validatePhrase,

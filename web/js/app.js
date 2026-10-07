@@ -895,6 +895,8 @@
     } finally {
       busy = false;
       updateSendState();
+      // After the reply (the model is free again): what they said may describe what is hard for them.
+      if (typeof RiskExplainer !== "undefined") RiskExplainer.learnFromWords(text, "chat");
       // Back to the box for the next message -- but only where there's a physical keyboard: refocusing on a
       // phone would pop the keyboard straight back up over the reply that just finished.
       if (!isTouchDevice()) input.focus();

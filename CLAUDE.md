@@ -393,7 +393,8 @@ Chrome. Android gives no way to disable Home/Recents, so it is never "inescapabl
 Back is swallowed, Home leaves it up, and it has a hard 10-minute failsafe, and dies
 instantly if the permission is revoked. **A daily passage to pray through is on the overlay
 itself** (Nathaniel, 2026-10-07; it replaced Joey's short AI-picked verse, `verseBank.js` /
-`RiskVerse.java`, now removed): its reference and one-line description, and "Pray through
+`RiskVerse.java`, now removed, along with its smile / neutral / frown rating from Joey's
+422bdfa — Nathaniel's decision when merging): its reference and one-line description, and "Pray through
 <passage>", which opens the app into the 2-minute **Lectio Divina** meditation on it (§7).
 Which passage: `RiskPassage.java` (and `extension/lib/passagePicker.js` — keep the two in
 step) offers TODAY's passage on the first nudge of the day, then the passage the on-device AI

@@ -217,6 +217,16 @@ public class LocalSignalsPlugin extends Plugin {
         call.resolve();
     }
 
+    // The AI read something the person wrote (a check-in note, a chat message) and judged which risk
+    // factors it describes (RiskExplainer.learnFromWords). Same bounded +/-ADJUST_DELTA nudge as every
+    // other path; unknown or fixed factor names are ignored by RiskScorer. The model only picks the
+    // CATEGORY; this method (code) does the adjusting.
+    @PluginMethod
+    public void nudgeWeights(PluginCall call) {
+        RiskScorer.adjustWeights(getContext(), call.getArray("factors"), call.getBoolean("increase", true));
+        call.resolve();
+    }
+
     // The user's own verdict on a risk alert, from RiskAlertView: "fair" (valid=true) reinforces the
     // factors that fired, "false alarm" (valid=false) eases off the ones they said didn't fit (or
     // all of them if they didn't narrow it down) -- the same +/-ADJUST_DELTA, bounded nudge as the
