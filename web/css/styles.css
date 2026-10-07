@@ -1686,24 +1686,6 @@ a.resource-contact:active {
   background: var(--crisis-bg);
 }
 
-/* Lock-screen-detail toggle row (Privacy / preferences). */
-.toggle-row {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  margin: 18px 0 4px;
-  font-size: 13.5px;
-  cursor: pointer;
-}
-.toggle-row input { margin-top: 3px; }
-.toggle-sub {
-  display: block;
-  margin-top: 2px;
-  font-size: 12px;
-  color: var(--text-muted);
-  line-height: 1.45;
-}
-
 /* Risk alert: the AI's note, the numbers behind it, and the feedback controls (riskAlertView.js). */
 .risk-note {
   margin: 0 0 12px;

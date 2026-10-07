@@ -324,7 +324,6 @@ async function postRiskNotification(domain, result) {
         timeBucket: result.trace.timeBucket,
         bank: context.phraseBank,
         noteBank: context.noteBank,
-        detail: context.lockScreenDetail !== false,
       })
     : null;
   const text = specific || GENERIC_TEXTS[Math.floor(Math.random() * GENERIC_TEXTS.length)];
@@ -582,7 +581,6 @@ async function runOp(op, payload, { fromPopup }) {
         intensity: c.intensity || "medium",
         topSlipTags: Array.isArray(c.topSlipTags) ? c.topSlipTags : [],
         riskyTimeBuckets: Array.isArray(c.riskyTimeBuckets) ? c.riskyTimeBuckets : [],
-        lockScreenDetail: c.lockScreenDetail !== false,
         // AI-written phrase templates (web/js/riskExplainer.js); NotificationText re-validates
         // each one before use, so only the shape is checked here.
         phraseBank: c.phraseBank && typeof c.phraseBank === "object" ? c.phraseBank : {},

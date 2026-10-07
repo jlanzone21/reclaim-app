@@ -55,9 +55,11 @@ import java.util.Map;
  * crisis link was here and was removed at the user's request.) A scripture passage is deliberately not here yet -- an embedded AI feature for choosing and
  * presenting scripture is planned; "Read a verse" only routes into the app's existing verse flow.
  *
- * Feedback: ANY way of answering the main screen counts as "fair" by default (reinforces the factors
- * that fired, the same bounded +/-2 nudge as every other feedback path, once per alert) -- the person
- * only has to act if it was WRONG. The false-alarm link opens a second screen: tap which parts
+ * Feedback: answering the main screen (I'm okay, Call, Find resources) records NO signal -- it does not
+ * move any weight. (It used to count as "fair" and raise the weights of the factors that fired; that is
+ * a self-reinforcing loop -- a pointless nudge waved off with "I'm okay" would make the same situation
+ * score higher next time -- so only an explicit flag moves the weights now.) The false-alarm link opens
+ * a second screen: tap which parts
  * didn't fit and/or type why, then Send; or Skip to leave right away. Skip, and Send with reasons
  * picked, adjust the weights immediately (false alarm, those factors or all that fired). Typed
  * words with no reasons picked are left for the on-device AI to read the next time the app opens
@@ -102,7 +104,6 @@ final class RiskOverlay {
     private static View current; // main thread only
     private static Runnable failsafe;
     private static Runnable countdown;
-    private static boolean feedbackGiven; // a verdict was already applied this showing
 
     private RiskOverlay() {}
 
@@ -138,7 +139,6 @@ final class RiskOverlay {
                 }
                 WindowManager wm = (WindowManager) app.getSystemService(Context.WINDOW_SERVICE);
                 if (wm == null) return;
-                feedbackGiven = false;
                 View view = build(app, spec);
                 wm.addView(view, layoutParams());
                 current = view;
@@ -346,8 +346,8 @@ final class RiskOverlay {
         col.addView(okay.root);
         startOkayCountdown(okay);
 
-        // Small and at the bottom, words not a button: the default is "fair", so this is only for
-        // when the check-in was wrong.
+        // Small and at the bottom, words not a button: the only thing that moves the weights, so it is
+        // for when the check-in was wrong.
         LinearLayout bottom = new LinearLayout(c);
         bottom.setOrientation(LinearLayout.VERTICAL);
         bottom.setPadding(0, dp(c, 18), 0, 0);
@@ -573,17 +573,13 @@ final class RiskOverlay {
         if (!words.isEmpty()) {
             RiskFeedbackNotes.add(c, spec.alertId, spec.appLabel, words, spec.factors, !wordsOnly);
         }
-        feedbackGiven = true;
         Toast.makeText(c, "Thanks — I'll learn from that.", Toast.LENGTH_LONG).show();
         dismiss(c, true);
     }
 
-    // Any way of answering the main screen: "fair" unless they flagged it (the default verdict).
+    // Any way of answering the main screen. Counts as a RESPONSE (the notification stat, the notification is
+    // cancelled) but records no verdict and changes no weight -- see the class doc, "Feedback".
     private static void answer(Context c, Spec spec) {
-        if (!feedbackGiven) {
-            RiskScorer.applyFeedback(c, spec.alertId, spec.factors, true);
-            feedbackGiven = true;
-        }
         dismiss(c, true);
     }
 

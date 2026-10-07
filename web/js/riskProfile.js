@@ -74,9 +74,7 @@ const RiskProfile = (function () {
       intensity: prefs.notification_intensity || "medium",
       topSlipTags: profile.topTags,
       riskyTimeBuckets: profile.riskyTimeBuckets,
-      // Notification wording: whether the lock screen may show the specific reason (default ON),
-      // and the phrase templates the on-device AI wrote -- see RiskExplainer / RiskNotificationText.
-      lockScreenDetail: prefs.lock_screen_detail !== false,
+      // The phrase and note templates the on-device AI wrote -- see RiskExplainer / RiskNotificationText.
       phraseBank: typeof RiskExplainer !== "undefined" ? RiskExplainer.getPhraseBank() : {},
       noteBank: typeof RiskExplainer !== "undefined" ? RiskExplainer.getNoteBank() : {},
       // The Bible verse shown on the full-screen check-in, chosen ahead of time by the on-device AI.

@@ -17,12 +17,13 @@
  * the existing bounded nudge in the native/extension scorer -- see RiskExplainer's header.
  */
 const RiskAlertView = (function () {
-  // SWITCHED OFF (the user's decision): the full-screen overlay (RiskOverlay.java) is the only popup a
-  // risk nudge produces now, so entering the app no longer pops this up as well. Everything below is
-  // kept intact -- the AI note, the numbers, the feedback flow -- so it can come back by flipping this
-  // (or RiskAlertView.setEnabled(true)). While off, a pending alert is still CONSUMED on boot/resume so
-  // an old one can't surface later if this is switched back on.
-  let enabled = false;
+  // OFF on Android (the user's decision): there the full-screen overlay (RiskOverlay.java) is the only
+  // popup a risk nudge produces, so entering the app no longer pops this up as well. ON in the web
+  // version (the browser extension): a browser can't draw a full-screen overlay, so this in-app popup
+  // -- the AI note, the numbers, the feedback flow -- stays the place a nudge's detail and feedback
+  // live, reached from the extension's notification. RiskAlertView.setEnabled() overrides either way.
+  // While off, a pending alert is still CONSUMED on boot/resume so an old one can't surface later.
+  let enabled = !(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 
   // Deliberately slow -- long enough to make "I'm okay" a real choice, not a reflex tap that
   // dismisses this before it's actually been read. The filling bar behind the label (CSS) is what

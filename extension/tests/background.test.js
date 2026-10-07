@@ -142,7 +142,7 @@ async function boot() {
   assert.equal(t.state.notifications.length, 1);
   const n = t.state.notifications[0];
   assert.equal(n.id, "reclaim-risk");
-  // Default (lock-screen detail ON): says specifically why, with the real values.
+  // Says specifically why, with the real values.
   assert.match(n.message, /old\.reddit\.com/, n.message);
   assert.match(n.message, /16 minutes/, n.message);
   assert.match(n.message, /check in/i, n.message);
@@ -253,17 +253,6 @@ async function boot() {
   assert.match(explicitNote.message, /this site/, explicitNote.message);
   assert.match(explicitNote.message, /16 minutes/, explicitNote.message);
   assert.equal(t.local.pendingAlert.appLabel, "pornhub.com", "the in-app alert (shown once unlocked) still has the real name");
-
-  // Lock-screen detail OFF (Privacy setting): back to the generic wording, nothing specific.
-  t = await boot();
-  await t.op("SET_ENABLED", { enabled: true });
-  await t.op("SYNC_RISK_CONTEXT", { intensity: "medium", lockScreenDetail: false });
-  await t.focus("https://old.reddit.com/");
-  t.session.current.start -= 16 * 60 * 1000;
-  await t.tick();
-  assert.equal(t.state.notifications.length, 1);
-  assert.ok(!/reddit|minute|trigger/i.test(t.state.notifications[0].message), t.state.notifications[0].message);
-  assert.ok(t.local.pendingAlert.trace, "the in-app detail is still recorded");
 
   // AI-written phrase bank is used when present; an unsafe/malformed entry is ignored.
   t = await boot();

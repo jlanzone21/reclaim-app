@@ -93,7 +93,7 @@ for (let i = 0; i < 6000; i++) {
 
   // 9. what the lock screen / overlay SAYS is backed by the same trace: it never names a factor that
   //    didn't fire, never mentions the app unless it did, and keyword factors never reveal more than the fixed line.
-  const text = N.compose({ trace: t.factors, app: input.domain, minutes: input.sessionMinutes, timeBucket: t.timeBucket, bank: null, detail: true, pick: () => 0 });
+  const text = N.compose({ trace: t.factors, app: input.domain, minutes: input.sessionMinutes, timeBucket: t.timeBucket, bank: null, pick: () => 0 });
   const ids = new Set(fired.map((f) => f.id));
   if (text) {
     if (/\d+ minutes/.test(text)) { assert.ok(ids.has("duration"), `${msg} :: "${text}"`); assert.ok(text.includes(`${input.sessionMinutes} minutes`), `${msg} :: "${text}"`); }
@@ -114,7 +114,7 @@ for (let i = 0; i < 6000; i++) {
     const head = sig[0] === "D" ? "You've been on {app} for {minutes} minutes {time}" : "You're on {app} {time}";
     bank[sig] = [head + (sig.includes("T") ? ", a hard time of day for you" : "") + (sig.includes("L") ? ", and no one else seems to be nearby" : "") + ". Take a moment to pause and check in."];
   }
-  const noted = N.compose({ trace: t.factors, app: input.domain, minutes: input.sessionMinutes, timeBucket: t.timeBucket, bank: null, noteBank: bank, detail: true, pick: () => 0 });
+  const noted = N.compose({ trace: t.factors, app: input.domain, minutes: input.sessionMinutes, timeBucket: t.timeBucket, bank: null, noteBank: bank, pick: () => 0 });
   if (noted && /pause and check in/.test(noted)) {
     assert.equal(/hard time of day/.test(noted), ids.has("selfReportedTime") || ids.has("historicalTime"), `${msg} :: "${noted}"`);
     assert.equal(/no one else/.test(noted), ids.has("alone"), `${msg} :: "${noted}"`);

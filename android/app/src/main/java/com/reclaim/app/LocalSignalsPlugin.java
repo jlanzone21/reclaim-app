@@ -110,9 +110,7 @@ public class LocalSignalsPlugin extends Plugin {
         db().setMeta("notification_intensity", call.getString("intensity", "medium"));
         db().setMeta("top_slip_tags", jsonArrayOrEmpty(call, "topSlipTags"));
         db().setMeta("risky_time_buckets", jsonArrayOrEmpty(call, "riskyTimeBuckets"));
-        // Notification wording: whether the lock screen may show the specific reason (default ON),
-        // and the phrase templates the on-device AI wrote -- see RiskNotificationText.
-        db().setMeta("lock_screen_detail", Boolean.FALSE.equals(call.getBoolean("lockScreenDetail", true)) ? "0" : "1");
+        // The phrase and note templates the on-device AI wrote -- see RiskNotificationText.
         com.getcapacitor.JSObject bank = call.getObject("phraseBank");
         db().setMeta("phrase_bank", bank != null ? bank.toString() : "{}");
         com.getcapacitor.JSObject notes = call.getObject("noteBank");
