@@ -347,6 +347,19 @@
               <button type="button" class="secondary-btn" id="editPreferencesBtn" style="width:100%;">Edit your preferences</button>
             </div>
 
+            <div class="panel">
+              <div class="panel-title">What Reclaim has learned</div>
+              <p class="view-subtitle" style="margin-bottom:14px">
+                From your thumbs up and down on resources in Chat, Reclaim learns which kinds of resources and themes help you, so it can suggest more of what works. This stays on this device. Recent ratings count most and older ones slowly fade. Your accountability partner is never affected.
+              </p>
+              <p class="allowlist-empty" id="learnedEmpty">Nothing yet. Rate resources in Chat with the thumbs buttons (with Reclaim's AI turned on).</p>
+              <div class="learned-subtitle" id="learnedTypesTitle" hidden>Kinds of resources</div>
+              <div class="allowlist-list" id="learnedTypes"></div>
+              <div class="learned-subtitle" id="learnedKeywordsTitle" hidden>Themes</div>
+              <div class="allowlist-list" id="learnedKeywords"></div>
+              <button type="button" class="secondary-btn" id="clearFeedbackBtn" style="width:100%; margin-top:14px;" hidden>Clear everything Reclaim has learned</button>
+            </div>
+
             <!-- TEMPORARY: for verifying background features while building this. Not something a
                  real user should ever see — remove this whole panel, debugTestPanel.js, its CSS
                  (.debug-panel etc. in styles.css), and the native TEMPORARY block it calls into
@@ -614,6 +627,7 @@
   <script src="js/vendor/youversion-platform.js"></script>
   <script src="js/youversion.js"></script>
   <script src="js/resourceRepo.js"></script>
+  <script src="js/resourceFeedback.js"></script>
   <script src="js/checkinStore.js"></script>
   <script src="js/userPreferencesStore.js"></script>
   <script src="js/charts.js"></script>
@@ -638,6 +652,7 @@
   <script src="js/allowlistView.js"></script>
   <script src="js/browserTrackingView.js"></script>
   <script src="js/preferencesView.js"></script>
+  <script src="js/learnedView.js"></script>
   <script src="js/riskAlertView.js"></script>
   <script src="js/homeView.js"></script>
   <script src="js/debugTestPanel.js"></script>

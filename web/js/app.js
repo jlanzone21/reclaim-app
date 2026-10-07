@@ -149,6 +149,7 @@
       PermissionsView.refresh();
       AllowlistView.refresh();
       BrowserTrackingView.refresh();
+      LearnedView.refresh();
       refreshTrackingToggle();
     }
   }
@@ -265,6 +266,7 @@
       HomeView.init();
       PreferencesView.init();
       RiskAlertView.init();
+      LearnedView.init(); // reads resource_feedback, so it has to wait for DB.init() like the views above
       checkPendingNightlyAction();
       DebugTestPanel.init(); // TEMPORARY -- see debugTestPanel.js
       // Covers data that predates RiskNudgeMonitor's native mirror, or check-ins logged before
@@ -466,11 +468,11 @@
     return node;
   }
 
-  function completeToolCard(node, name, output) {
+  function completeToolCard(node, name, output, ctx) {
     node.setAttribute("data-status", "done");
     node.setAttribute("data-expanded", "true");
     const resultEl = node.querySelector(".tool-result");
-    resultEl.appendChild(renderToolResult(name, output));
+    resultEl.appendChild(renderToolResult(name, output, ctx));
     scrollToBottom();
   }
 
@@ -530,7 +532,58 @@
     return a;
   }
 
-  function renderToolResult(name, output) {
+  // Material Design "thumb_up"/"thumb_down" icon paths (Apache 2.0).
+  const THUMB_UP_PATH =
+    "M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z";
+  const THUMB_DOWN_PATH =
+    "M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z";
+
+  function thumbButton(path, label) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "feedback-btn";
+    btn.setAttribute("aria-label", label);
+    btn.setAttribute("aria-pressed", "false");
+    btn.title = label;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="${path}"/></svg>`;
+    return btn;
+  }
+
+  // Helpful / not helpful on one card. Only in on-device AI mode (ctx.feedback, set by
+  // ReclaimAgent) and never on the accountability partner -- see resourceFeedback.js for what a
+  // rating teaches. Tapping the pressed thumb again undoes the rating.
+  function addFeedbackRow(card, name, item, ctx) {
+    if (!ctx || !ctx.feedback || !item || typeof ResourceFeedback === "undefined" || !ResourceFeedback.rateable(name)) return;
+    const entry = ResourceFeedback.describe(name, item, ctx.input);
+    let rowId = null;
+    let current = 0;
+
+    const bar = el("div", "feedback-row");
+    bar.setAttribute("role", "group");
+    bar.setAttribute("aria-label", "Was this helpful?");
+    bar.appendChild(el("span", "feedback-label", "Helpful?"));
+    const up = thumbButton(THUMB_UP_PATH, "Helpful");
+    const down = thumbButton(THUMB_DOWN_PATH, "Not helpful");
+    const set = (rating) => {
+      if (rating === current) {
+        ResourceFeedback.remove(rowId);
+        rowId = null;
+        current = 0;
+      } else {
+        rowId = ResourceFeedback.rate(rowId, entry, rating);
+        current = rating;
+      }
+      up.setAttribute("aria-pressed", String(current === 1));
+      down.setAttribute("aria-pressed", String(current === -1));
+    };
+    up.addEventListener("click", () => set(1));
+    down.addEventListener("click", () => set(-1));
+    bar.appendChild(up);
+    bar.appendChild(down);
+    card.appendChild(bar);
+  }
+
+  function renderToolResult(name, output, ctx) {
     const wrap = document.createElement("div");
 
     if (name === "scripture_search") {
@@ -540,12 +593,14 @@
         const card = el("div", "resource-item resource-item-yv");
         if (output.todaysVerse) card.appendChild(el("div", "resource-kicker", "Today's Verse"));
         card.appendChild(YouVersion.render(output.youversion));
+        addFeedbackRow(card, name, output, ctx);
         wrap.appendChild(card);
         return wrap;
       }
       const card = el("div", "resource-item");
       card.appendChild(el("div", "resource-title", output.title));
       card.appendChild(el("blockquote", "resource-quote", output.body));
+      addFeedbackRow(card, name, output, ctx);
       wrap.appendChild(card);
       return wrap;
     }
@@ -557,6 +612,7 @@
       sampleTagIf(output).forEach((n) => head.appendChild(n));
       card.appendChild(head);
       card.appendChild(el("div", "resource-line", output.body));
+      addFeedbackRow(card, name, output, ctx);
       wrap.appendChild(card);
       return wrap;
     }
@@ -570,6 +626,7 @@
         card.appendChild(head);
         card.appendChild(el("div", "resource-line", p.body));
         card.appendChild(el("div", "resource-line", `${p.days.length}-day plan · starts with ${p.days[0].reference}`));
+        addFeedbackRow(card, name, p, ctx);
         wrap.appendChild(card);
       });
       return wrap;
@@ -586,6 +643,7 @@
         if (a.subtitle) card.appendChild(el("div", "resource-line", a.subtitle));
         card.appendChild(el("div", "resource-line", a.body));
         if (a.url) card.appendChild(resourceLink(a.url));
+        addFeedbackRow(card, name, a, ctx);
         wrap.appendChild(card);
       });
       return wrap;
@@ -596,6 +654,7 @@
         const card = el("div", "resource-item");
         card.appendChild(el("div", "resource-title", m.title));
         card.appendChild(el("div", "resource-line", m.body));
+        addFeedbackRow(card, name, m, ctx);
         wrap.appendChild(card);
       });
       return wrap;
@@ -616,6 +675,7 @@
         }
         card.appendChild(el("div", "resource-line", g.body));
         card.appendChild(el("div", "resource-contact", g.contact));
+        addFeedbackRow(card, name, g, ctx);
         wrap.appendChild(card);
       });
       return wrap;
@@ -659,6 +719,7 @@
         if (s.subtitle) card.appendChild(el("div", "resource-line", s.subtitle));
         if (s.duration_min) card.appendChild(el("div", "resource-line", `${s.duration_min} min`));
         if (s.url) card.appendChild(resourceLink(s.url));
+        addFeedbackRow(card, name, s, ctx);
         wrap.appendChild(card);
       });
       return wrap;
@@ -675,6 +736,7 @@
         card.appendChild(el("div", "resource-line", [c.subtitle, c.area].filter(Boolean).join(" · ")));
         if (c.contact) card.appendChild(el("div", "resource-contact", c.contact));
         else if (c.url) card.appendChild(resourceLink(c.url));
+        addFeedbackRow(card, name, c, ctx);
         wrap.appendChild(card);
       });
       return wrap;
@@ -728,14 +790,17 @@
           removeTyping();
           addCrisisCard(agentMsg.content, agentMsg.bubble);
         },
-        onToolCallStart: ({ name, input }) => {
+        onToolCallStart: ({ name, input, feedback }) => {
           removeTyping();
-          agentMsg.content._activeTool = { node: addToolCard(agentMsg.content, name, input, agentMsg.bubble), name };
+          agentMsg.content._activeTool = {
+            node: addToolCard(agentMsg.content, name, input, agentMsg.bubble),
+            name,
+            ctx: { input, feedback: !!feedback },
+          };
         },
         onToolCallEnd: ({ output }) => {
-          if (agentMsg.content._activeTool) {
-            completeToolCard(agentMsg.content._activeTool.node, agentMsg.content._activeTool.name, output);
-          }
+          const active = agentMsg.content._activeTool;
+          if (active) completeToolCard(active.node, active.name, output, active.ctx);
         },
         onTextDelta: (chunk) => {
           removeTyping();

@@ -87,6 +87,20 @@ const DB = (function () {
       refs TEXT NOT NULL
     );
 
+    -- One row per thumbs up/down on a resource card in Chat (on-device AI mode only; Basic mode
+    -- has no thumbs). Learning reads tool + keywords only, never the specific item -- the team
+    -- decided preferences are about kinds of resources and themes, not individual cards (see
+    -- resourceFeedback.js). resource_key is kept so a card can undo its own rating. Never leaves
+    -- the device.
+    CREATE TABLE IF NOT EXISTS resource_feedback (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      created_at TEXT NOT NULL,
+      rating INTEGER NOT NULL CHECK (rating IN (-1, 1)),
+      tool TEXT NOT NULL,
+      resource_key TEXT,
+      keywords TEXT
+    );
+
     CREATE INDEX IF NOT EXISTS idx_resources_type ON resources(type);
     CREATE INDEX IF NOT EXISTS idx_checkins_timestamp ON checkins(timestamp);
   `;

@@ -330,7 +330,8 @@ async function agentFindVerse(theme, query) {
   const topicPick = pickVerseTopicReference(query);
   if (topicPick && typeof YouVersion !== "undefined" && YouVersion.available()) {
     const display = await YouVersion.getVerse(topicPick.reference);
-    if (display) return { title: display.reference, body: null, youversion: display };
+    // topic: what a thumbs up/down on this verse teaches (resourceFeedback.js).
+    if (display) return { title: display.reference, body: null, youversion: display, topic: topicPick.topic };
   }
 
   const local = ResourceRepo.getScripture(theme);

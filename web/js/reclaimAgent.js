@@ -106,7 +106,8 @@ class ReclaimAgent {
           revealer.push(intro);
         } else {
           const id = `tool_${++this._idCounter}`;
-          handlers.onToolCallStart({ id, name: pick.resource, input });
+          // feedback: thumbs up/down on these cards (resourceFeedback.js) -- AI mode only; Basic mode never sets it.
+          handlers.onToolCallStart({ id, name: pick.resource, input, feedback: true });
           handlers.onToolCallEnd({ id, output });
           intro = cardIntro(pick.resource, pick.theme, output);
           revealer.push(intro);
