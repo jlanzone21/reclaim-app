@@ -633,7 +633,7 @@ app (`web/js/riskExplainer.js`):
   cover the first run. Keyword factors always use one fixed line, never AI wording.
 - **Feedback.** Same as the full-screen check-in below: no "was this fair?"
   question. Answering the alert screen normally (Call, Find resources, I'm
-  okay) counts as fair; a small "This was a false alarm" link opens a page to
+  okay) records nothing; a small "This was a false alarm" link opens a page to
   tap which parts were wrong and/or type why, or Skip (a false alarm on
   everything that fired). Typed words with nothing tapped go to the model's
   one-word attribution (`RiskExplainer.flagFalseAlarm`, same rules as the

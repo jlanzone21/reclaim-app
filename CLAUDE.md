@@ -268,8 +268,8 @@ Main JS modules (`web/js/`):
   Three jobs: (1) the note at the top of the alert screen; (2) working out
   which part of a flagged false alarm the person's own words point at (the
   alert screen and the overlay both work this way now: no "was this fair?"
-  question, answering counts as fair, a small false-alarm link — Nathaniel,
-  2026-10-07), before the existing bounded ±2 weight nudge runs
+  question, a small false-alarm link — Nathaniel, 2026-10-07; answering
+  records nothing, only the flag moves weights — Joey, a7ac7af), before the existing bounded ±2 weight nudge runs
   (`recordRiskFeedback` / extension `RISK_FEEDBACK`) — the model never moves
   weights itself, and its factor picks are re-validated against what actually
   fired; (3) writing phrase templates ({app}/{minutes}/{time}) ahead of time,
