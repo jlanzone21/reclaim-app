@@ -519,7 +519,10 @@ Reply with only the one word.`;
       const said = String(text || "").trim();
       if (said.length < 8) return [];
       if (typeof agentIsCrisis === "function" && agentIsCrisis(said)) return []; // never mine a crisis message
-      if (typeof LocalSignals === "undefined" || !LocalSignals.available()) return [];
+      // Android's scorer, or the browser extension's on the web version (whichever holds the weights).
+      const native = typeof LocalSignals !== "undefined" && LocalSignals.available();
+      const extension = !native && typeof WebTracker !== "undefined" && WebTracker.available();
+      if (!native && !extension) return [];
       const log = readLearnLog();
       if (source === "chat") {
         const last = log.filter((e) => e.source === "chat").pop();
@@ -527,7 +530,8 @@ Reply with only the one word.`;
       }
       const { label, factors } = await categorizeWords(said);
       if (!factors.length) return [];
-      await LocalSignals.nudgeWeights(factors, true);
+      if (native) await LocalSignals.nudgeWeights(factors, true);
+      else await WebTracker.nudgeWeights(factors, true);
       log.push({ at: Date.now(), source, label, factors, text: said.slice(0, 80) });
       try {
         localStorage.setItem(LEARN_LOG_KEY, JSON.stringify(log.slice(-20)));

@@ -66,7 +66,8 @@ public class MainActivity extends BridgeActivity {
         boolean isOpen = RiskNudgeMonitor.ACTION_OPEN.equals(action);
         boolean isVerse = RiskNudgeMonitor.ACTION_OPEN_VERSE.equals(action);
         boolean isResources = RiskNudgeMonitor.ACTION_OPEN_RESOURCES.equals(action);
-        if (!isOpen && !isVerse && !isResources) return;
+        boolean isMeditation = RiskNudgeMonitor.ACTION_OPEN_MEDITATION.equals(action);
+        if (!isOpen && !isVerse && !isResources && !isMeditation) return;
 
         // Explicit cancel, not just relying on setAutoCancel(true) -- confirmed on-device that
         // autoCancel doesn't reliably fire when this intent is invoked via the full-screen
@@ -85,6 +86,23 @@ public class MainActivity extends BridgeActivity {
             db.setMeta("pending_risk_alert", "");
             // "1" = a Bible verse request (the original), "resources" = "I need some help right now".
             db.setMeta("pending_verse_request", isResources ? "resources" : "1");
+        }
+        if (isMeditation) {
+            // "Pray through <passage>" (the overlay's button, the fallback notification's action or body tap):
+            // app.js opens the Lectio Divina meditation on it. The passage travels in the intent itself, not
+            // only in pending_risk_alert, so it survives that alert being consumed by an app open in between.
+            // pending_risk_alert is left for app.js to take (the meditation's false-alarm link).
+            try {
+                org.json.JSONObject m = new org.json.JSONObject();
+                m.put("ref", intent.getStringExtra(RiskNudgeMonitor.EXTRA_PASSAGE_REF));
+                m.put("description", intent.getStringExtra(RiskNudgeMonitor.EXTRA_PASSAGE_DESCRIPTION));
+                m.put("sig", intent.getStringExtra(RiskNudgeMonitor.EXTRA_SIGNATURE));
+                m.put("bucket", intent.getStringExtra(RiskNudgeMonitor.EXTRA_BUCKET));
+                m.put("alertId", intent.getLongExtra(RiskNudgeMonitor.EXTRA_ALERT_ID, 0L));
+                LocalSignalsDb.getInstance(this).setMeta("pending_meditation", m.toString());
+            } catch (org.json.JSONException e) {
+                // Nothing pending: the app just opens.
+            }
         }
         // Nothing else to do for a plain open -- the risk alert's own pending-flag
         // (pending_risk_alert) is already written at post time and consumed by RiskAlertView on

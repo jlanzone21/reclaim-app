@@ -11,10 +11,12 @@
  *
  * Feedback works like the full-screen overlay's (RiskOverlay.java), by decision (Nathaniel,
  * 2026-10-07: the "Was this a fair nudge?" question it used to ask shouldn't be there): no
- * question; answering normally -- Call, Find resources, I'm okay -- counts as a fair nudge; a small
- * "This was a false alarm" link opens the flag page (tap parts, type why, or Skip, which still
- * counts as a false alarm on everything that fired). The weights themselves are only ever moved by
- * the existing bounded nudge in the native/extension scorer -- see RiskExplainer's header.
+ * question; answering normally -- Call, Find resources, I'm okay -- records NO signal (Joey's
+ * a7ac7af: counting it as "fair" was a self-reinforcing loop, a nudge waved off with "I'm okay"
+ * would score higher next time); a small "This was a false alarm" link opens the flag page (tap
+ * parts, type why, or Skip, which still counts as a false alarm on everything that fired). The
+ * weights themselves are only ever moved by the existing bounded nudge in the native/extension
+ * scorer -- see RiskExplainer's header.
  */
 const RiskAlertView = (function () {
   // OFF on Android (the user's decision): there the full-screen overlay (RiskOverlay.java) is the only
@@ -202,14 +204,13 @@ const RiskAlertView = (function () {
     return Array.from(els.chips.querySelectorAll(".selected")).map((b) => b.dataset.id);
   }
 
-  // Answering the screen normally (Call, Find resources, I'm okay). Unflagged, that's the default
-  // verdict, "fair" -- reinforces what fired, as on the overlay. If they opened the false-alarm page
-  // but left without sending, they still said it was wrong: it counts as that page's Skip.
+  // Answering the screen normally (Call, Find resources, I'm okay). Unflagged, that records nothing,
+  // as on the overlay -- only the flag moves weights. If they opened the false-alarm page but left
+  // without sending, they still said it was wrong: it counts as that page's Skip.
   function answered() {
     if (!feedbackOk || verdictSent) return;
     verdictSent = true;
     if (flagged) sendFalseAlarm({ skip: !els.text.value.trim() && !selectedChips().length, quiet: true });
-    else RiskExplainer.recordFeedback(current, true, null).catch(() => {});
   }
 
   function showResult(message) {
@@ -300,5 +301,17 @@ const RiskAlertView = (function () {
     enabled = !!on;
   }
 
-  return { init, checkPending, render, setEnabled };
+  // "This was a false alarm" on the Lectio Divina meditation's closing screen (lectioView.js): this
+  // screen for that nudge, opened straight onto the flag page -- even on Android, where it's otherwise
+  // switched off, because here the person asked for it.
+  function openFlag(alert) {
+    if (!alert) return;
+    const was = enabled;
+    enabled = true;
+    render(alert);
+    enabled = was;
+    if (feedbackOk) showFlagPage();
+  }
+
+  return { init, checkPending, render, setEnabled, openFlag };
 })();

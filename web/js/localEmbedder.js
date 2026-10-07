@@ -371,6 +371,14 @@ const LocalEmbedder = (function () {
     ensure([{ key, text: text.slice(0, 600) }]).catch(() => {});
   }
 
+  // Embeds [{ key, text }] that aren't cached yet and resolves once they are (false if the model isn't
+  // ready). For things outside the resource index that get ranked -- the daily passages (PassageBank).
+  async function ensureItems(items) {
+    if (!isReady()) return false;
+    await ensure(items.map((it) => ({ key: it.key, text: String(it.text).slice(0, 600) })));
+    return true;
+  }
+
   // Direction of "what helped" minus "what didn't", weighted like the thumbs themselves
   // (rows carry their decay weight from ResourceFeedback.weightedRows). null until at least two
   // rated items have vectors -- one rating is too thin to call a taste.
@@ -417,6 +425,7 @@ const LocalEmbedder = (function () {
     analyze,
     vectorFor,
     rememberItem,
+    ensureItems,
     tasteVector,
     cosine,
     onChange,

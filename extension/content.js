@@ -54,7 +54,7 @@
     bannerHost = null;
   }
 
-  function showBanner({ id, text, buttons }) {
+  function showBanner({ id, text, subtext, buttons }) {
     removeBanner();
     const host = document.createElement("div");
     host.style.cssText = "all:initial;position:fixed;top:16px;right:16px;z-index:2147483647;";
@@ -64,6 +64,7 @@
       .card{position:relative;font:14px/1.4 system-ui,sans-serif;width:300px;box-sizing:border-box;padding:14px 16px;border-radius:12px;
         background:#06335d;color:#fff;box-shadow:0 8px 28px rgba(0,0,0,.45);border-left:4px solid #fe8722}
       .title{font-weight:700;margin-bottom:4px}
+      .sub{margin-top:6px;font-size:12.5px;color:rgba(255,255,255,.72)}
       .row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
       button{font:inherit;cursor:pointer;border-radius:8px;padding:7px 12px;border:1px solid rgba(255,255,255,.35);background:transparent;color:#fff}
       button.main{background:#fe8722;border-color:#fe8722;font-weight:600}
@@ -92,7 +93,15 @@
       };
       row.appendChild(btn);
     });
-    card.append(x, title, body, row);
+    card.append(x, title, body);
+    // The passage a risk nudge offers to pray through: "Romans 8:31-39 · Nothing can separate us..."
+    if (subtext) {
+      const sub = document.createElement("div");
+      sub.className = "sub";
+      sub.textContent = subtext;
+      card.appendChild(sub);
+    }
+    card.appendChild(row);
     root.append(style, card);
     (document.fullscreenElement || document.documentElement).appendChild(host);
     bannerHost = host;

@@ -2081,7 +2081,11 @@ reality:
 
 - [x] **Verse topics are matched by meaning, not shared words.** Asked for (Nathaniel, 2026-10-07) after the prompt round showed the word-overlap matcher (`matchVerseTopic`) firing on single generic words: "I'm about to look, help" -> "Helping someone who is struggling" -> Romans 12:15 shown as a verse about temptation. In AI mode the embedding model now embeds the 100 verse topics (query prefix, one at a time) and a topic counts only when it stands out from the other 99 (z >= 3.0 above their mean). Measured first: 11/11 clear-cut feeling messages got the right topic; "help" (z 2.9) and a plain "can you share a verse" (2.5) didn't pass; two word-ish matches did ("find me a recovery group" -> Recovering from a mistake, "give me a bible reading plan" -> Understanding God's plan), so a topic is only used for a verse about a feeling or an explicitly asked-for verse (`ResourcePicker.verseTopicFor`), never for a verse riding along with another ask. Basic mode and AI mode without the embedding model keep the word-overlap match. Verified in the browser pane with the real embedding model (chat model mocked): "God feels so distant" -> Jeremiah 29:13, "a verse about my marriage" -> 1 Corinthians 13:4-7 ("a verse about marriage problems"), "I'm about to look, help" -> Hebrews 4:15-16, "I'm stressed about finals" -> Isaiah 40:31, riding-along verses -> the grace default; `npm run test:picker` 21 cases.
 
-- [x] **The in-app check-in screen no longer asks "Was this a fair nudge?"** Reported (Nathaniel, 2026-10-07): notifications still asked whether it was a good nudge after Joey's full-screen check-in update. Cause: that update changed feedback only on the native overlay (`RiskOverlay.java`); the in-app alert screen (`riskAlertView.js`) -- what you land on from a notification, and the only check-in on the web version -- still showed "Was this a fair nudge?" with Yes/No buttons. Decision: match the overlay everywhere. No question; answering normally (Call, Find resources, I'm okay) counts as fair; a small "This was a false alarm" link opens the same flag page (tap parts, type why, Send -- or Skip, a false alarm on everything that fired; leaving after opening it counts as Skip). New `RiskExplainer.flagFalseAlarm` applies the overlay notes' rules immediately (picked parts as given; words alone -> the model's one-word attribution; words kept as chat context; crisis gate first). Same tradeoff as the overlay: unflagged nudges count as fair, so weights drift up (bounded). `interpretFeedback` (the old free-text fair/false proposal) is no longer called by the UI but is left in place with its tests. Verified: `npm test` (new `flagFalseAlarm` cases in `tests/riskExplainer.test.js`); in the browser pane with a sample alert and a stubbed tracker, each path recorded the right verdict once (I'm okay / Find resources -> fair on what fired; flag + pick + Send -> false on that part; Skip and flag-then-leave -> false on everything; older alerts without a trace -> no link, nothing recorded). Not yet tried on the phone or with the real extension.
+- [x] **Home shows a daily passage instead of YouVersion's Verse of the Day.** Asked for (Nathaniel, 2026-10-07): replace the daily verse with a daily passage from a list he supplied -- 35 passages (e.g. Romans 8:31-39, Ephesians 2:4-10, Psalm 23:1-6), each with a one-line description. Decisions: each person goes through all 35 in their own shuffled order (not one shared sequence); the text stays YouVersion NIV with its attribution (the pasted wording was KJV with typos, so only the references were used); the descriptions are stored for a planned 2-minute devotional but not shown yet. Built `DAILY_PASSAGES` (`seedData.js`) and `dailyPassage.js`: the order and its start day live in `app_meta`, the passage is stable for the whole local calendar day, a new shuffle starts after the 35th (never opening with the passage just shown; skipped days carry on through the round), and a changed list or a clock set backwards starts a fresh cycle. Home's label is now "Today's Passage"; offline it still falls back to a local verse. `getTodaysVerse`/`dayOfYear` were removed from `youversion.js` (nothing used them anymore). Verified: `tests/dailyPassage.test.js` (in `npm test`: one full round shows all 35 once, stable within a day, two installs differ, round boundaries, skipped days, list changes); in the browser, Home picked the day's passage from a stored shuffled order and rendered it from YouVersion (NIV, with attribution). Checking the 478 verse-topic references earlier that day had hit YouVersion's rate limit (429, retry-after 300 s), so Nathaniel issued a new App Key; it was confirmed licensed for NIV, and all 35 passages were then fetched live through the app with it (paced ~1/s).
+
+- [x] **More verses per topic.** Nathaniel supplied an expanded list for 90 of the 100 verse topics (2026-10-07). Merged into `SEED_VERSE_TOPICS`: each topic keeps its existing references in order and gains the new ones, exact duplicates dropped -- 246 references added (572 -> 818; 478 distinct). Every distinct reference was checked live against YouVersion through the app's own `referenceToPassageId`/`getVerse`: 477 resolved; the one that didn't was the pre-existing "Jude 20-21" (Jude has one chapter, so it needs "Jude 1:20-21"), fixed in both topics that used it -- it could never have loaded before. Seed version bumped to 11; verified an existing install picked up the new list. Some new references overlap another range in the same topic (e.g. Psalm 37:24 alongside Psalm 37:23-24) -- harmless, they're just picked at random from the list.
+
+- [x] **The in-app check-in screen no longer asks "Was this a fair nudge?"** Reported (Nathaniel, 2026-10-07): notifications still asked whether it was a good nudge after Joey's full-screen check-in update. Cause: that update changed feedback only on the native overlay (`RiskOverlay.java`); the in-app alert screen (`riskAlertView.js`) -- what you land on from a notification, and the only check-in on the web version -- still showed "Was this a fair nudge?" with Yes/No buttons. Decision: match the overlay everywhere. No question; answering normally (Call, Find resources, I'm okay) counts as fair; a small "This was a false alarm" link opens the same flag page (tap parts, type why, Send -- or Skip, a false alarm on everything that fired; leaving after opening it counts as Skip). New `RiskExplainer.flagFalseAlarm` applies the overlay notes' rules immediately (picked parts as given; words alone -> the model's one-word attribution; words kept as chat context; crisis gate first). Same tradeoff as the overlay: unflagged nudges count as fair, so weights drift up (bounded). `interpretFeedback` (the old free-text fair/false proposal) is no longer called by the UI but is left in place with its tests. Verified: `npm test` (new `flagFalseAlarm` cases in `tests/riskExplainer.test.js`); in the browser pane with a sample alert and a stubbed tracker, each path recorded the right verdict once (I'm okay / Find resources -> fair on what fired; flag + pick + Send -> false on that part; Skip and flag-then-leave -> false on everything; older alerts without a trace -> no link, nothing recorded). Not yet tried on the phone or with the real extension. **Later the same day:** Joey's a7ac7af made answering the overlay record nothing (counting it as fair was a self-reinforcing loop), so the alert screen now does the same: Call / Find resources / I'm okay record nothing, and only the flag moves weights.
 
 - [x] **Direct asks get just what was asked for; liked items rotate instead of repeating.** Found by testing with several liked kinds (Nathaniel, 2026-10-07: four kinds at +0.5 each). Before: every direct ask came back as a three-kind bundle ("can you share a verse" -> verse + group + devotional; "find me a counselor" -> counselors + group + coping tool), because liked kinds rode along with any ask; and one liked group appeared in 5 of 10 replies, since all its keywords were liked. Decisions and changes (`resourcePicker.js`): (1) unasked kinds are added only when a feeling or an urge is named -- a direct ask (including one the embedding model inferred) gets only that kind; "accountability" no longer counts as a feeling, since it's how people ask for their partner; and an urge now needs urge language (urge, craving, tempted, "about to look", "the pull", "give in"...), so "a verse and a coping tool please" is a direct ask; (2) items already shown in this conversation rank lower (`ITEM_SHOWN` 2.0: more than a typical liked-keyword lead, less than a theme match, so a shown item still beats anything off-topic; theme weight raised to 8 to keep that guarantee); "Clear conversation" starts it over. Verified in the browser pane with the real embedding model (chat model mocked), same four liked kinds and same prompts: direct asks for a verse, counselors, sermons, groups and the partner each returned only that kind; feelings still led with liked kinds ("I'm so lonely" -> groups + loneliness devotional + verse); the repeated group went from 5 appearances to 1, with groups, devotionals and coping tools rotating. `npm run test:picker` 22 cases. Topic-matched verses aren't rotated (a reference is still drawn at random from the topic's list).
 
@@ -2248,6 +2252,62 @@ reality:
   label in a note (not installed on the test phone; the Java composer is tested with
   the label), other Android versions.
 
+- [x] **Lectio Divina: a 2-minute scripture meditation, offered by every nudge and on Home.**
+  Asked for (Nathaniel, 2026-10-07): the notification should include the day's passage and make
+  it the primary option; opening the app should open a "Lectio Divina" meditation -- Guigo II's
+  four movements, 30 seconds each, with a brief description of each, full screen, "to interrupt
+  the user in times of temptation and really draw them into God's word" -- and Home's passage
+  should offer it by choice too. Decisions (asked one by one): every risk nudge offers it (the
+  browser extension's notification, Android's overlay and its fallback notification -- not the
+  nightly check-in); **the partner call stays first on a high-risk nudge**, the meditation first
+  otherwise; **the AI picks the passage from the 35 daily passages** -- today's on the first nudge
+  of the day, then personalized to the situation "like Joey's verse", never the same one twice a
+  day -- and **it replaces Joey's AI-picked verse on the overlay** (the overlay shows the passage's
+  reference and one-line description; Joey to agree); each step **narrows in** (tap the phrase
+  that catches you in Lectio; Meditatio shows only that phrase; Contemplatio is nearly empty);
+  steps **advance on their own, "End" is the only control**; a **soft chime + short buzz** between
+  steps; a closing screen with Call <partner>, Find resources, Done, **"This helped / Not for me"**
+  (learning), and the false-alarm link after a nudge; the notification shows **reference +
+  description** under the message; Home's button says **"Pray through it · 2 min"**. Built:
+  `lectioView.js` (the meditation), `passageBank.js` (replaced `verseBank.js`: Joey's ranking
+  method, applied to the passages' descriptions, synced to the notifiers as a plan with the
+  person's upcoming daily passages -- `DailyPassage.schedule` draws the next round ahead so
+  notification and Home agree), `RiskPassage.java` / `extension/lib/passagePicker.js` (the
+  first-today-then-situation rule, kept in step), and `RiskVerse.java` / the overlay's verse
+  feedback removed. Which AI: the embedding model (snowflake), not Qwen. **What the real model
+  taught us:** Joey's hub correction (subtract each item's mean closeness to all 36 situations)
+  leaves differences of a few hundredths between passages -- the 36 situation sentences mean
+  nearly the same thing to the model, and the passages are all about God's grace -- so one test
+  "this helped" made Romans 8:31-39 lead 29 of 36 situations. Now every signal is a z-score
+  (closeness vs. that passage's own spread across situations), with the person's recent
+  struggles weighted 0.25 (at VerseBank's 0.35, one passage led 15 of 36 for a lonely/stressed
+  person): 16 different passages lead with no struggles recorded, morning gets "fresh morning
+  mercies" (Lamentations 3), long-and-late gets "strength for the weary" (Isaiah 40), and one
+  "not for me" drops a passage from first in that situation without moving unrelated ones.
+  Honest limit: none of the 35 is specifically about temptation, so a keyword nudge gets
+  mercy/strength passages. Verified: `npm test` (picker rule, schedule-vs-Home agreement across
+  a round boundary, ranking with a stubbed model, phrase splitting, the extension's
+  notification/button/banner/pending alert); in the browser pane with the real embedding model
+  and YouVersion (the meditation start to finish, phrase taps carried into Meditatio and the
+  closing screen, partner-first on a high-risk nudge, "This helped" saved as thumbs + a
+  situation outcome, the false-alarm link recording a false alarm on the tapped part, "Reach out"
+  going to the check-in screen instead, the crisis modal opening on top, offline falling back to
+  a bundled verse); the Android Java compiles. **Not verified:** anything on a phone (the overlay
+  card and button, the fallback notification, the pending meditation round trip, the buzz -- the
+  manifest gained VIBRATE for it), the Java picker run against real data (it mirrors the
+  JavaScript rule, whose tests pass), the chime on a phone's speaker, the real extension in Chrome.
+  **Follow-ups the same day (Nathaniel):** offline, the meditation keeps the named passage -- its
+  reference, and "open your Bible or Bible app to this passage" -- instead of a random bundled verse;
+  the passage's reference and description come first, with a **Begin** button (an 8-second automatic
+  pause there felt rushed on the phone; the clock starts only on Begin); the chime plays at media volume (on
+  Android the ringer switch doesn't silence it -- kept); and **six temptation passages** were added
+  (1 Corinthians 10:12-14, Hebrews 2:14-18, James 1:12-17, James 4:6-10, 1 Peter 5:6-10, Psalm
+  119:9-16; 41 in all). Adding passages no longer restarts everyone's rotation: the round in progress
+  carries on and the new ones join from the next round (removing one still starts fresh). Verified
+  in the browser: all six load from YouVersion in NIV; today's passage didn't change; with the real
+  model a temptation moment late at night now leads with 1 Corinthians 10:12-14 (15 different
+  passages lead the 36 situations); the intro and the offline steps render as described.
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing
@@ -2331,3 +2391,10 @@ reality:
   end to end a check-in note raised `alone` 15 -> 17. The overlay verse card now has smile / neutral
   / frown buttons (48dp) instead of text links; verified on the phone (frown parks -1 and shows the
   next verse, neutral records nothing). Not done: the browser extension has no equivalent.
+  **Merged into Nathaniel's branch (2026-10-07):** the overlay verse card and its faces were not
+  kept -- the overlay shows the Lectio Divina passage card instead (Nathaniel's decision; see that
+  entry). **Now on the web too:** the extension takes the same bounded nudge (op `NUDGE_WEIGHTS`,
+  `WebTracker.nudgeWeights`), and `learnFromWords` uses whichever scorer is present. ALONE does
+  nothing there (a browser can't see nearby devices, so the extension has no `alone` factor).
+  Verified in tests (the web path, the extension's bounds and sender check); not yet with the real
+  model in a browser.

@@ -633,7 +633,7 @@ app (`web/js/riskExplainer.js`):
   cover the first run. Keyword factors always use one fixed line, never AI wording.
 - **Feedback.** Same as the full-screen check-in below: no "was this fair?"
   question. Answering the alert screen normally (Call, Find resources, I'm
-  okay) counts as fair; a small "This was a false alarm" link opens a page to
+  okay) records nothing; a small "This was a false alarm" link opens a page to
   tap which parts were wrong and/or type why, or Skip (a false alarm on
   everything that fired). Typed words with nothing tapped go to the model's
   one-word attribution (`RiskExplainer.flagFalseAlarm`, same rules as the
@@ -655,18 +655,38 @@ rewrites of a sentence the code wrote, checked word-by-word, re-checked on every
 fall back to per-factor phrases and built-ins. Keyword nudges always use one fixed line.
 Refreshed weekly (about 4 minutes of background model time).
 
-### The Bible verse on the full-screen check-in
+### Lectio Divina, and the passage a nudge offers
 
-The verse on the overlay is chosen by the on-device AI ahead of time (`web/js/verseBank.js`),
-because the overlay is native and has no model of its own. For each situation a nudge can be in,
-the app describes it in a sentence — the time of day, what's going on, and what this person has
-been struggling with lately (their recent check-ins and the triggers they named) — embeds it with
-the same small embedding model the chat uses, and ranks the bundled verses by closeness in
-meaning. What helped under similar conditions raises a verse, "Not for me" lowers it, and the
-person's thumbs elsewhere in the app nudge it too. The three best per situation are stored with
-their text and YouVersion's required attribution and handed to the native overlay, which just
-picks one. A smile / neutral / frown rating under the verse feeds back into this the next time the app
-opens. Everything stays on the phone.
+Every risk nudge offers one of the 41 daily passages to **pray through**: the browser
+extension's notification ("Pray through Romans 8:31-39", with the reference and its one-line
+description under the message), Android's full-screen check-in (a passage card and a button),
+and Android's fallback notification. Taking it — or tapping "Pray through it · 2 min" on Home's
+Today's Passage card — opens a full-screen, 2-minute **Lectio Divina** meditation
+(`web/js/lectioView.js`): first the passage's reference and one-line description with a Begin
+button, then the four movements Guigo II described, 30 seconds each:
+
+1. **Lectio** — the whole passage; read it slowly, then tap the word or phrase that catches you.
+2. **Meditatio** — only that phrase, large (no tap → the first verse).
+3. **Oratio** — the phrase with a prompt to pray honestly.
+4. **Contemplatio** — an almost empty screen: rest.
+
+Steps advance on their own (only "End"; a soft chime and a short buzz between them; the clock
+pauses while the page is hidden). A closing screen offers Call <partner>, Find resources and
+Done, "This helped / Not for me", and — after a nudge — the false-alarm link, which opens the
+check-in screen's flag page for that nudge. A small crisis link stays on screen throughout. The
+text comes from YouVersion with its attribution; offline it falls back to a bundled verse.
+
+**Which passage a nudge offers** (`RiskPassage.java` / `extension/lib/passagePicker.js`): the
+first nudge of the day offers today's passage (the one Home shows); later nudges offer the
+passage the on-device AI ranked best for the situation; never one already offered or prayed
+through that day. The ranking is made ahead of time (`web/js/passageBank.js`), because the
+notifiers have no model: for each of 36 situations (which reasons fired × time of day) the
+embedding model ranks the passages' descriptions against a sentence about the situation and one
+about what this person has been struggling with lately, as z-scores (each passage's closeness
+vs. its own spread across situations, which keeps one broadly-fitting passage from winning
+everywhere), shifted by "This helped / Not for me" under similar conditions and by their thumbs
+elsewhere. It's synced with the person's upcoming daily passages (`DailyPassage.schedule`), which
+are also the fallback when the embedding model isn't downloaded. Everything stays on the device.
 
 ### The full-screen check-in (Android)
 
@@ -677,8 +697,10 @@ granted, or it fails to draw).
 A notification is easy to swipe away mid-slip, so when a risk nudge fires and the
 person has granted "Display over other apps" (a card in Privacy opens the Settings
 page), `RiskOverlay.java` also covers the screen with a check-in: the specific
-sentence, the reasons behind it (always shown), Call <accountability partner>, Read a
-verse, "I'm okay" (disabled for 5 s), and a small link for "This was a false alarm".
+sentence, the reasons behind it (always shown), a daily passage with "Pray through
+<passage>" (opens the Lectio Divina meditation, above), Call <accountability partner>
+(first on a high-risk nudge), Find resources, "I'm okay" (disabled for 5 s), and a small
+link for "This was a false alarm".
 Answering normally records no signal (only the flag moves the weights); the false-alarm link opens a page to
 tap which parts were wrong and/or type why (or skip). Typed words are read by the
 on-device AI the next time the app opens, which works out which parts of the nudge

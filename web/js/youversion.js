@@ -2,9 +2,9 @@
  * Bible text from the YouVersion Platform (https://developers.youversion.com), rendered the way
  * their SDK expects: YouVersion's transformed passage HTML inside a data-slot="yv-bible-renderer"
  * container, their Bible stylesheets, and the version's copyright attribution -- which the license
- * requires be shown every time the text is. Used by the Home "Today's Verse" card (YouVersion's own
- * Verse of the Day -- Home only; Chat never repeats it) and by Chat whenever someone asks for a
- * verse (app.js renderToolResult).
+ * requires be shown every time the text is. Used by Home's "Today's Passage" card (the day's pick
+ * from DAILY_PASSAGES, dailyPassage.js -- it replaced YouVersion's Verse of the Day on 2026-10-07)
+ * and by Chat whenever someone asks for a verse (app.js renderToolResult).
  *
  * The SDK itself (@youversion/platform-core) is vendored as a plain script at
  * js/vendor/youversion-platform.js -- see scripts/vendor-youversion.mjs -- matching this project's
@@ -16,8 +16,10 @@
  */
 const YouVersion = (function () {
   // Free App Key from https://platform.youversion.com. Like the Supabase publishable key it ships in
-  // the client by design -- it identifies the app to YouVersion, it isn't a secret.
-  const APP_KEY = "zAGTTUfjIl45Yn8P0xiamAN34XZ8Ei3t6sdAFbzdgBFjkV3m";
+  // the client by design -- it identifies the app to YouVersion, it isn't a secret. Replaced
+  // 2026-10-07 (Nathaniel) after a bulk check of 478 references hit the old key's rate limit (429,
+  // retry-after 300 s); this one was checked live for NIV (id 111) the same day. Pace bulk checks.
+  const APP_KEY = "DZeR2StpMG1q1y6etGEsuqzXCKoFC0E9kwFMht6mZDQMAEV2";
 
   // Tried in order; the first one this app key is licensed for wins (checked once, then cached).
   // 111 = NIV, the translation the team wants (licensed for this key via Biblica). 3034 = Berean
@@ -61,14 +63,6 @@ const YouVersion = (function () {
       bibleClient = new YouVersionPlatform.BibleClient(new YouVersionPlatform.ApiClient({ appKey: APP_KEY }));
     }
     return bibleClient;
-  }
-
-  // Day-of-year in the user's local time zone (Jan 1 = 1), which is what YouVersion's Verse of the
-  // Day calendar is keyed on -- so "today's verse" flips at the user's midnight, not UTC's.
-  function dayOfYear(date = new Date()) {
-    const start = Date.UTC(date.getFullYear(), 0, 1);
-    const today = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
-    return Math.floor((today - start) / 86400000) + 1;
   }
 
   // "Psalm 139:23-24" -> "PSA.139.23-24". null for anything it can't parse (caller falls back).
@@ -130,19 +124,8 @@ const YouVersion = (function () {
     return cache.get(passageId);
   }
 
-  // YouVersion's Verse of the Day for today. Resolves to a display object or null.
-  async function getTodaysVerse() {
-    if (!available()) return null;
-    try {
-      const votd = await client().getVOTD(dayOfYear());
-      return votd && votd.passage_id ? fetchDisplay(votd.passage_id) : null;
-    } catch (err) {
-      console.warn("[YouVersion] verse of the day failed", err);
-      return null;
-    }
-  }
-
-  // A specific verse by its human reference (e.g. a themed pick from seedData.js).
+  // A specific verse or passage by its human reference (a themed pick, a verse topic, or Home's
+  // daily passage from seedData.js).
   async function getVerse(reference) {
     if (!available()) return null;
     const passageId = referenceToPassageId(reference);
@@ -197,5 +180,5 @@ const YouVersion = (function () {
     return wrap;
   }
 
-  return { available, getTodaysVerse, getVerse, render, referenceToPassageId, passageIdToReference, dayOfYear };
+  return { available, getVerse, render, referenceToPassageId, passageIdToReference };
 })();

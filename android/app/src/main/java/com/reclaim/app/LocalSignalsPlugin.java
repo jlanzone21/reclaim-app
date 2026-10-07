@@ -115,8 +115,9 @@ public class LocalSignalsPlugin extends Plugin {
         db().setMeta("phrase_bank", bank != null ? bank.toString() : "{}");
         com.getcapacitor.JSObject notes = call.getObject("noteBank");
         db().setMeta("note_bank", notes != null ? notes.toString() : "{}");
-        com.getcapacitor.JSObject verses = call.getObject("verseBank");
-        db().setMeta("verse_bank", verses != null ? verses.toString() : "{}");
+        // Which daily passage a nudge offers to pray through -- see RiskPassage / PassageBank.getPlan.
+        com.getcapacitor.JSObject plan = call.getObject("passagePlan");
+        db().setMeta("passage_plan", plan != null ? plan.toString() : "");
         call.resolve();
     }
 
@@ -260,11 +261,21 @@ public class LocalSignalsPlugin extends Plugin {
         call.resolve(result);
     }
 
-    // "This helped" / "Not for me" taps on the overlay's verse, waiting for VerseBank.processFeedback. Consumed once.
+    // MainActivity writes this when "Pray through <passage>" (the overlay's button, or the fallback
+    // notification) opened the app: {ref, description, sig, bucket, alertId}. Consumed once, cleared on
+    // read, same as the other pending items; app.js checks it before getPendingRiskAlert.
     @PluginMethod
-    public void getPendingVerseFeedback(PluginCall call) {
+    public void getPendingMeditation(PluginCall call) {
+        String json = db().getMeta("pending_meditation");
+        if (json != null) db().setMeta("pending_meditation", "");
         JSObject result = new JSObject();
-        result.put("feedback", RiskFeedbackNotes.takeAllVerseFeedback(getContext()));
+        if (json != null && !json.isEmpty()) {
+            try {
+                result.put("meditation", new JSObject(json));
+            } catch (org.json.JSONException e) {
+                // Malformed -- treat as nothing pending rather than failing the call.
+            }
+        }
         call.resolve(result);
     }
 

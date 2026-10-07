@@ -28,7 +28,7 @@ function makeChrome() {
     storage: { local: area(local), session: area(session), onChanged: ev() },
     tabs: {
       onActivated: ev(), onUpdated: ev(), onRemoved: ev(),
-      query: async (q) => (q.url ? state.tabs : state.focusedUrl ? [{ url: state.focusedUrl }] : []),
+      query: async (q) => (q.url ? state.tabs : state.focusedUrl ? [{ id: 99, url: state.focusedUrl }] : []),
       update: async (id, o) => state.updated.push([id, o]),
       create: async (o) => state.created.push(o),
       sendMessage: async (id, m) => state.sent.push([id, m]),
@@ -265,6 +265,77 @@ async function boot() {
   t.session.current.start -= 16 * 60 * 1000;
   await t.tick();
   assert.match(t.state.notifications[0].message, /^16 minutes on old\.reddit\.com -- I'm here with you\. .*Can we talk for a sec\?$/, t.state.notifications[0].message);
+
+  // A daily passage to pray through (Lectio Divina, in the app): today's on the first nudge of the day, the
+  // AI's pick for the situation after that, never the same one twice in a day. It's on the notification as
+  // a button and a line under the message, rides along in the pending alert for the app to open, and
+  // "Reach out" still asks for the check-in screen instead.
+  t = await boot();
+  await t.op("SET_ENABLED", { enabled: true });
+  const now = new Date();
+  const today = Math.floor(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / 86400000);
+  const passagePlan = {
+    passages: { "Romans 8:31-39": "Nothing can separate us from God's love.", "Psalm 23:1-6": "The Lord is my shepherd.", "Isaiah 41:10": "Do not fear." },
+    schedule: [{ day: today, ref: "Romans 8:31-39" }, { day: today + 1, ref: "Isaiah 41:10" }],
+    ranked: Object.fromEntries(["D", "DT", "DL", "DTL", "A", "AT", "AL", "ATL", "K"].flatMap((s) => ["Morning", "Afternoon", "Evening", "Night"].map((b) => [`${s}|${b}`, ["Psalm 23:1-6", "Romans 8:31-39"]]))),
+    used: { day: today, refs: [] },
+  };
+  await t.op("SYNC_RISK_CONTEXT", { intensity: "medium", accountabilityName: "Sam", accountabilityPhone: "5551234", passagePlan });
+  await t.focus("https://old.reddit.com/");
+  t.session.current.start -= 16 * 60 * 1000;
+  await t.tick();
+  let pn = t.state.notifications.at(-1);
+  assert.equal(pn.buttons[0].title, "Pray through Romans 8:31-39", "first nudge of the day: today's passage, and it leads");
+  assert.equal(pn.contextMessage, "Romans 8:31-39 · Nothing can separate us from God's love.");
+  assert.match(pn.message, /16 minutes/, "the message itself is unchanged");
+  assert.deepEqual(t.local.pendingAlert.passage, { ref: "Romans 8:31-39", description: "Nothing can separate us from God's love." });
+  assert.equal(t.local.pendingAlert.situation.sig, "D");
+  assert.deepEqual(t.local.passagesUsed, { day: today, refs: ["Romans 8:31-39"] });
+  await t.listeners.onButtonClicked("reclaim-risk", 0);
+  p = (await t.op("TAKE_PENDING", {})).result;
+  assert.equal(p.riskAlert.passage.ref, "Romans 8:31-39", "the app opens the meditation from the pending alert");
+  assert.equal(p.reach, false);
+  // Second nudge today: the AI's pick for this situation, not today's again.
+  await t.focus("https://youtube.com/");
+  t.session.current.start -= 20 * 60 * 1000;
+  await t.tick();
+  pn = t.state.notifications.at(-1);
+  assert.equal(pn.buttons.find((b) => b.title.startsWith("Pray")).title, "Pray through Psalm 23:1-6");
+  assert.equal(t.local.pendingAlert.passage.ref, "Psalm 23:1-6");
+  // High risk: "Reach out to Sam" first, the meditation second; "Reach out" asks for the check-in screen.
+  await t.send({ type: "KEYWORDS", matches: [{ keyword: "free porn" }] }, "https://youtube.com/");
+  pn = t.state.notifications.at(-1);
+  assert.deepEqual(JSON.parse(JSON.stringify(pn.buttons.map((b) => b.title))), ["Reach out to Sam", "Pray through Isaiah 41:10"], "ranking used up -> the upcoming daily passage");
+  await t.listeners.onButtonClicked("reclaim-risk", 0);
+  p = (await t.op("TAKE_PENDING", {})).result;
+  assert.equal(p.reach, true);
+  assert.equal(p.riskAlert.passage.ref, "Isaiah 41:10");
+  assert.equal((await t.op("TAKE_PENDING", {})).result.reach, false, "consumed once");
+  // The in-page banner carries the same passage line.
+  const banner = t.state.sent.filter(([, m]) => m.type === "SHOW_BANNER").at(-1);
+  assert.equal(banner[1].subtext, "Isaiah 41:10 · Do not fear.");
+  assert.ok(banner[1].buttons.some((b) => b.action === "pray"));
+  // Prayed through in the app today (from Home) also counts: the app's list arrives with the plan.
+  t = await boot();
+  await t.op("SET_ENABLED", { enabled: true });
+  await t.op("SYNC_RISK_CONTEXT", { intensity: "medium", passagePlan: { ...passagePlan, used: { day: today, refs: ["Romans 8:31-39"] } } });
+  await t.focus("https://old.reddit.com/");
+  t.session.current.start -= 16 * 60 * 1000;
+  await t.tick();
+  assert.equal(t.local.pendingAlert.passage.ref, "Psalm 23:1-6");
+
+  // Learning from words (RiskExplainer.learnFromWords): the same bounded step, adjustable factors only,
+  // and -- unlike an alert verdict -- not once-only (each note or message is its own signal).
+  t = await boot();
+  // ("alone" isn't a factor here -- a browser can't scan for nearby devices -- so it's ignored.)
+  let nw = (await t.op("NUDGE_WEIGHTS", { factors: ["socialMedia", "alone", "recentKeywordSevere", "bogus"], increase: true })).result;
+  assert.deepEqual(JSON.parse(JSON.stringify(nw.adjusted)), ["socialMedia"]);
+  assert.equal(t.local.weights.socialMedia, 12);
+  await t.op("NUDGE_WEIGHTS", { factors: ["socialMedia"] });
+  assert.equal(t.local.weights.socialMedia, 14, "raise by default, every time");
+  await t.op("NUDGE_WEIGHTS", { factors: ["socialMedia"] });
+  assert.equal(t.local.weights.socialMedia, 15, "bounded at the factor's max");
+  assert.equal((await t.op("NUDGE_WEIGHTS", { factors: ["socialMedia"] }, "https://evil.example/")).ok, false, "only the app may ask");
 
   // Feedback on an alert: bounded +/- nudge to adjustable factors only, once per alert id.
   t = await boot();

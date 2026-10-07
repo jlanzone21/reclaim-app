@@ -50,10 +50,14 @@ import java.util.Map;
  *
  * Main screen: the specific sentence (RiskNotificationText) and, always, the plain-language reasons
  * the scorer had -- so the person can judge for themselves whether this is a false alarm instead of
- * having to ask why -- then Call <partner>, Read a verse, "I'm okay" (disabled for a few seconds so
- * it's a choice, not a reflex tap) and, small and at the bottom, "This was a false alarm". (A 988
- * crisis link was here and was removed at the user's request.) A scripture passage is deliberately not here yet -- an embedded AI feature for choosing and
- * presenting scripture is planned; "Read a verse" only routes into the app's existing verse flow.
+ * having to ask why -- then a daily passage to pray through (its reference and one-line description,
+ * picked by RiskPassage: today's passage on the first nudge of the day, then the on-device AI's pick for
+ * the situation), "Pray through <passage>" (opens the app into the 2-minute Lectio Divina meditation on
+ * it, web/js/lectioView.js), Call <partner>, Find resources, "I'm okay" (disabled for a few seconds so
+ * it's a choice, not a reflex tap) and, small and at the bottom, "This was a false alarm". On a high-risk
+ * nudge the partner call comes before the meditation; otherwise the meditation is first (Nathaniel,
+ * 2026-10-07). The passage replaced a short AI-picked verse (RiskVerse) that used to sit here. (A 988
+ * crisis link was here and was removed at the user's request.)
  *
  * Feedback: answering the main screen (I'm okay, Call, Find resources) records NO signal -- it does not
  * move any weight. (It used to count as "fair" and raise the weights of the factors that fired; that is
@@ -117,7 +121,8 @@ final class RiskOverlay {
         long alertId;
         JSONArray factors; // every factor that fired (ids)
         List<String> reasons = new ArrayList<>(); // plain-language, RiskScorer.Result.userReasons
-        List<RiskVerse.Verse> verses = new ArrayList<>(); // the AI's picks for this situation, best first
+        RiskPassage.Passage passage; // the daily passage to pray through; null before the app synced a plan
+        boolean highRisk; // partner call before the meditation
         String sig = "K";
         String bucket = "";
         String[] partnerNames = new String[2];
@@ -306,20 +311,19 @@ final class RiskOverlay {
             col.addView(new View(c), new LinearLayout.LayoutParams(1, dp(c, 10)));
         }
 
-        // The Bible verse the on-device AI chose for this situation (and this person), right on the screen.
-        if (!spec.verses.isEmpty()) {
-            final LinearLayout card = new LinearLayout(c);
-            card.setOrientation(LinearLayout.VERTICAL);
-            card.setPadding(0, dp(c, 4), 0, dp(c, 8));
-            renderVerse(c, spec, card, new int[] {0});
-            col.addView(card, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        }
+        // The daily passage to pray through, chosen for this situation (RiskPassage).
+        if (spec.passage != null) col.addView(passageCard(c, spec.passage));
 
+        // High risk: reach a person first, then the meditation. Otherwise the meditation leads.
+        boolean hasPartner = false;
+        for (String p : spec.partnerPhones) hasPartner |= p != null && !p.trim().isEmpty();
+        boolean partnerFirst = spec.highRisk || spec.passage == null;
+        if (!partnerFirst) addPrayButton(c, spec, col, true);
         for (int i = 0; i < 2; i++) {
             final String phone = spec.partnerPhones[i];
             if (phone == null || phone.trim().isEmpty()) continue;
             String name = spec.partnerNames[i];
-            Button call = button(c, "Call " + (name != null && !name.trim().isEmpty() ? name.trim() : "your partner"), true);
+            Button call = button(c, "Call " + (name != null && !name.trim().isEmpty() ? name.trim() : "your partner"), partnerFirst);
             call.setOnClickListener(v -> {
                 // ACTION_DIAL, not ACTION_CALL: opens the dialer pre-filled and the person presses
                 // call -- same choice as the notification's call action, no extra permission.
@@ -328,6 +332,8 @@ final class RiskOverlay {
             });
             col.addView(call);
         }
+        // No partner set: the meditation is the main button even on a high-risk nudge.
+        if (partnerFirst) addPrayButton(c, spec, col, !hasPartner);
 
         // Opens the app's Chat with a "I need some help right now" message already sent, so the app's
         // own resource picker (coping tools, a verse, people to reach) answers -- see MainActivity.
@@ -356,20 +362,12 @@ final class RiskOverlay {
         return col;
     }
 
-    // One verse, with its attribution and a three-face rating to teach the AI: smiling = it helped, neutral =
-    // no opinion (nothing is recorded), frowning = not for me (which also moves on to the next verse). A
-    // face is recorded only when tapped. Ratings are parked natively and read by the app next time it opens
-    // (RiskFeedbackNotes.addVerseFeedback -> VerseBank.processFeedback).
-    private static void renderVerse(Context c, Spec spec, LinearLayout card, int[] idx) {
-        card.removeAllViews();
-        if (idx[0] >= spec.verses.size()) {
-            card.setVisibility(View.GONE);
-            return;
-        }
-        final RiskVerse.Verse v = spec.verses.get(idx[0]);
-
+    // The passage to pray through: a label, its reference and its one-line description, beside an orange bar.
+    // Full passages are too long for a glance; the text itself is on the meditation screen, from YouVersion.
+    private static View passageCard(Context c, RiskPassage.Passage p) {
         LinearLayout row = new LinearLayout(c);
         row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(0, dp(c, 4), 0, dp(c, 8));
         View bar = new View(c);
         bar.setBackgroundColor(ORANGE);
         row.addView(bar, new LinearLayout.LayoutParams(dp(c, 3), ViewGroup.LayoutParams.MATCH_PARENT));
@@ -377,71 +375,34 @@ final class RiskOverlay {
         LinearLayout body = new LinearLayout(c);
         body.setOrientation(LinearLayout.VERTICAL);
         body.setPadding(dp(c, 12), 0, 0, 0);
-        TextView verse = text(c, "\u201C" + v.text + "\u201D", 17, WHITE, false);
-        verse.setTypeface(Typeface.defaultFromStyle(Typeface.ITALIC));
-        verse.setLineSpacing(0, 1.2f);
-        body.addView(verse);
-        TextView ref = text(c, "\u2014 " + v.ref, 13, MUTED, true);
-        ref.setPadding(0, dp(c, 6), 0, 0);
+        TextView label = text(c, p.today ? "TODAY'S PASSAGE" : "A PASSAGE FOR RIGHT NOW", 12, MUTED, true);
+        label.setLetterSpacing(0.12f);
+        body.addView(label);
+        TextView ref = text(c, p.ref, 20, WHITE, true);
+        ref.setPadding(0, dp(c, 4), 0, 0);
         body.addView(ref);
-        if (!v.attribution.isEmpty()) {
-            TextView attr = text(c, v.attribution, 11, Color.parseColor("#8aa0b8"), false);
-            attr.setPadding(0, dp(c, 2), 0, 0);
-            body.addView(attr);
+        if (!p.description.isEmpty()) {
+            TextView desc = text(c, p.description, 16, WHITE, false);
+            desc.setTypeface(Typeface.defaultFromStyle(Typeface.ITALIC));
+            desc.setLineSpacing(0, 1.2f);
+            desc.setPadding(0, dp(c, 4), 0, 0);
+            body.addView(desc);
         }
-
-        final LinearLayout links = new LinearLayout(c);
-        links.setOrientation(LinearLayout.HORIZONTAL);
-        links.setGravity(Gravity.CENTER_VERTICAL);
-        links.setPadding(0, dp(c, 6), 0, 0);
-        final TextView ask = text(c, "Did this help?", 12, MUTED, false);
-        ask.setPadding(0, 0, dp(c, 10), 0);
-        links.addView(ask);
-        final TextView happy = faceButton(c, "\uD83D\uDE42", "It helped");
-        final TextView meh = faceButton(c, "\uD83D\uDE10", "Neutral");
-        final TextView sad = faceButton(c, "\uD83D\uDE41", "Not for me");
-        happy.setOnClickListener(x -> {
-            RiskFeedbackNotes.addVerseFeedback(c, v.ref, v.text, spec.sig, spec.bucket, 1);
-            thank(c, links, "Thanks \u2014 I'll remember that.");
-        });
-        meh.setOnClickListener(x -> thank(c, links, "Thanks \u2014 noted.")); // no opinion: nothing is recorded
-        sad.setOnClickListener(x -> {
-            RiskFeedbackNotes.addVerseFeedback(c, v.ref, v.text, spec.sig, spec.bucket, -1);
-            idx[0]++;
-            renderVerse(c, spec, card, idx); // on to the next verse the AI picked, if there is one
-        });
-        links.addView(happy);
-        links.addView(meh);
-        links.addView(sad);
-        body.addView(links);
-
         row.addView(body, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        card.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        row.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        return row;
     }
 
-    // One face of the verse rating: a big, easy tap target (48dp) around an emoji.
-    private static TextView faceButton(Context c, String face, String description) {
-        TextView t = text(c, face, 26, WHITE, false);
-        t.setGravity(Gravity.CENTER);
-        t.setContentDescription(description);
-        t.setMinWidth(dp(c, 48));
-        t.setMinHeight(dp(c, 48));
-        return t;
-    }
-
-    private static void thank(Context c, LinearLayout links, String message) {
-        links.removeAllViews();
-        TextView thanks = text(c, message, 12, MUTED, false);
-        thanks.setPadding(0, dp(c, 4), 0, dp(c, 4));
-        links.addView(thanks);
-    }
-
-    // A small underlined word-link (not a button), left-aligned, for use inline.
-    private static TextView smallLink(Context c, String s) {
-        TextView t = text(c, s, 12, MUTED, false);
-        t.setPaintFlags(t.getPaintFlags() | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
-        t.setPadding(0, dp(c, 4), dp(c, 2), dp(c, 4));
-        return t;
+    // "Pray through <passage>": opens the app into the 2-minute Lectio Divina meditation on it (MainActivity
+    // writes the pending meditation; app.js opens lectioView.js). An answer like the others: no verdict.
+    private static void addPrayButton(Context c, Spec spec, LinearLayout col, boolean filled) {
+        if (spec.passage == null) return;
+        Button pray = button(c, "Pray through " + spec.passage.ref, filled);
+        pray.setOnClickListener(v -> {
+            launch(c, RiskNudgeMonitor.meditationIntent(c, spec.passage, spec.sig, spec.bucket, spec.alertId));
+            answer(c, spec);
+        });
+        col.addView(pray);
     }
 
     // "I'm okay" with the filling bar: same idea as the in-app dismiss button (a translucent bar fills left
