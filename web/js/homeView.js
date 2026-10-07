@@ -198,17 +198,19 @@ const HomeView = (function () {
     return btn;
   }
 
-  // "Today's Verse" is YouVersion's own Verse of the Day (youversion.js), rendered with the
-  // YouVersion Bible display and its required copyright attribution. With no app key, offline, or
-  // on an API error it falls back to a verse from the local scripture set (resourceRepo.js/
+  // "Today's Passage": the day's pick from DAILY_PASSAGES (dailyPassage.js -- each person's own
+  // shuffled order; replaced YouVersion's Verse of the Day, Nathaniel 2026-10-07), fetched and
+  // rendered through YouVersion with its required copyright attribution. With no app key, offline,
+  // or on an API error it falls back to a verse from the local scripture set (resourceRepo.js/
   // seedData.js), so the card is never empty.
   async function renderVerse() {
     const day = new Date().toDateString();
     if (verseShownFor === `yv:${day}`) return;
 
-    if (typeof YouVersion !== "undefined" && YouVersion.available()) {
-      if (!verseShownFor) els.verseBody.replaceChildren(verseLine("home-verse-text home-verse-loading", "Loading today's verse…"));
-      const display = await YouVersion.getTodaysVerse();
+    const passage = typeof DailyPassage !== "undefined" ? DailyPassage.today() : null;
+    if (passage && typeof YouVersion !== "undefined" && YouVersion.available()) {
+      if (!verseShownFor) els.verseBody.replaceChildren(verseLine("home-verse-text home-verse-loading", "Loading today's passage…"));
+      const display = await YouVersion.getVerse(passage.reference);
       if (display) {
         els.verseBody.replaceChildren(YouVersion.render(display));
         verseShownFor = `yv:${day}`;

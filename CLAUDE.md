@@ -291,14 +291,19 @@ Main JS modules (`web/js/`):
 - **App Key** is `APP_KEY` in `youversion.js` (from platform.youversion.com;
   a client-side app identifier, fine to ship). API header `X-YVP-App-Key`.
 - **Version:** NIV (id 111) preferred — licensed for this key (verified live
-  2026-09-30). BSB (3034) is the automatic fallback if YouVersion answers
+  2026-09-30, and for the replacement key on 2026-10-07). **The key has a rate
+  limit** (429, retry-after 300 s): checking ~480 references back to back hit
+  it, which is why the key was replaced. Pace bulk checks (≈1/s). BSB (3034) is the automatic fallback if YouVersion answers
   403 for NIV. Other English versions the key can use: ASV 12, CPDV 42,
   FBV 1932, LSV 2660, WEB 206, WMB 1209, etc.
-- Home's card is **"Today's Verse"** = YouVersion Verse of the Day
-  (`getVOTD(dayOfYear)`, local time zone). In Chat, a plain "share a verse"
-  shows a seeded verse on the gospel / God's grace (`VERSE_DEFAULT_THEME`),
-  **not** the Verse of the Day — Home already shows that (Nathaniel,
-  2026-10-07); a detected theme (shame, loneliness, …) shows the
+- Home's card is **"Today's Passage"**: one of Nathaniel's 35 curated
+  passages (`DAILY_PASSAGES` in `seedData.js`, each with a one-line
+  `description` kept for a planned 2-minute devotional — not shown yet),
+  picked by `dailyPassage.js` in each install's own shuffled order (all 35
+  before any repeat; order kept in `app_meta`), text fetched from
+  YouVersion. It replaced YouVersion's Verse of the Day (2026-10-07). In
+  Chat, a plain "share a verse" shows a seeded verse on the gospel / God's
+  grace (`VERSE_DEFAULT_THEME`); a detected theme (shame, loneliness, …) shows the
   seeded verse for that theme, fetched from YouVersion by reference
   (`referenceToPassageId`: "Psalm 139:23-24" → `PSA.139.23-24`).
 - **License requirement:** always render the version's copyright attribution

@@ -546,6 +546,49 @@ const SEED_VERSE_TOPICS = [
   { topic: "Wanting to know God's calling", refs: "Proverbs 3:5-6; Psalm 32:8; James 1:5; Romans 12:2; Ephesians 2:10" },
 ];
 
+// Home's "Today's Passage" (dailyPassage.js): one of these a day, in each person's own shuffled
+// order (Nathaniel, 2026-10-07 -- replaces YouVersion's Verse of the Day). References only; the
+// text comes from YouVersion (NIV) like every other verse in the app. `description` is kept for the
+// planned 2-minute devotional built on the day's passage -- not shown anywhere yet. Supplied by
+// Nathaniel. Not a database table on purpose: nothing about it is per-install except the order.
+const DAILY_PASSAGES = [
+  { reference: "Romans 8:31-39", description: "This passage assures believers of the unbreakable, sovereign love of God secured for us in Jesus Christ, declaring that nothing in creation can ever separate us from His grace." },
+  { reference: "Ephesians 2:4-10", description: "This text magnifies the free gift of salvation by grace alone through faith alone, reminding us that we are God's workmanship created to walk in His purposes." },
+  { reference: "Lamentations 3:22-26", description: "This passage turns our eyes toward the steadfast faithfulness of God and His daily, unending mercies amidst the struggles of life." },
+  { reference: "Isaiah 40:28-31", description: "This reading points weary believers to the unfailing strength and sovereignty of our Creator, who generously sustains those who wait upon Him." },
+  { reference: "2 Corinthians 12:9-10", description: "This scripture comforts the struggling heart with the truth that Christ's grace is sufficient and His power shines brightest in our human weakness." },
+  { reference: "Psalm 103:8-14", description: "This psalm celebrates the boundless compassion and complete forgiveness of our heavenly Father toward His children." },
+  { reference: "Zephaniah 3:14-17", description: "This passage pictures God rejoicing over His people with singing, offering deep comfort in His protective presence." },
+  { reference: "Romans 5:1-5", description: "This text highlights the peace and steadfast hope we possess through justification by faith in Christ." },
+  { reference: "Philippians 4:4-7", description: "This scripture invites us to replace anxiety with prayer, resting securely in the incomprehensible peace of God." },
+  { reference: "Colossians 1:13-18", description: "This passage exalts the supreme sovereignty and preeminence of Christ in both creation and our redemption." },
+  { reference: "Hebrews 4:14-16", description: "This text encourages us to draw near to God with confidence, knowing our compassionate Savior fully understands our weaknesses." },
+  { reference: "1 John 4:9-12", description: "This passage defines the ultimate demonstration of God's love in sending Jesus as the atoning sacrifice for our sins." },
+  { reference: "Micah 7:18-19", description: "This scripture rejoices in the incomparable mercy of God who delights in pardoning our sins and casting them away." },
+  { reference: "John 10:27-30", description: "This passage provides absolute assurance of eternal security in the sovereign grip of the Good Shepherd and the Father." },
+  { reference: "2 Thessalonians 2:16-17", description: "This text prays for hearts to be comforted and established in the enduring hope given to us by grace." },
+  { reference: "Romans 15:13", description: "This verse blesses believers to overflow with joy, peace, and abundant hope through the indwelling power of the Holy Spirit." },
+  { reference: "Ephesians 3:16-19", description: "This scripture is a profound prayer for believers to be deeply rooted and immersed in the immeasurable love of Christ." },
+  { reference: "1 Peter 1:3-5", description: "This passage praises God for our living hope and the eternal, unfading inheritance kept secure for us in heaven." },
+  { reference: "Psalm 23:1-6", description: "This beloved psalm reminds us of the constant provision, guidance, and protective presence of our divine Shepherd." },
+  { reference: "Psalm 46:1-3", description: "This text declares God to be our steadfast refuge and fearless strength in the midst of life's greatest upheavals." },
+  { reference: "Romans 8:1-4", description: "This passage proclaims our complete freedom from condemnation and the power of sin through Jesus Christ." },
+  { reference: "2 Corinthians 5:17-21", description: "This scripture explains the glorious exchange of the gospel, where our sin is placed on Christ and His righteousness is given to us." },
+  { reference: "Hebrews 13:5-6", description: "This text anchors our contentment and courage in the unbreakable promise of God's permanent presence with us." },
+  { reference: "1 John 3:1-2", description: "This passage marvels at the astonishing love of God that has adopted us as His true children with a glorious future." },
+  { reference: "Psalm 121:1-8", description: "This psalm directs our gaze upward to the sovereign Creator who sleeplessly watches over and preserves His people." },
+  { reference: "Isaiah 43:1-3", description: "This scripture reassures fearful believers of God's personal ownership, redemption, and faithful presence through every trial." },
+  { reference: "Philippians 1:6", description: "This single-verse promise assures us that God is faithful to complete the spiritual transformation He started in our lives." },
+  { reference: "Romans 12:1-2", description: "This text calls us to consecrated, transformed living motivated entirely by the rich mercies of God." },
+  { reference: "Ephesians 1:3-7", description: "This passage praises God for every spiritual blessing, eternal election, and gracious redemption we possess in Christ." },
+  { reference: "2 Peter 1:3-4", description: "This scripture reminds us that God's divine power has granted us everything we need for life and godliness through His precious promises." },
+  { reference: "Jude 1:24-25", description: "This doxology celebrates the sovereign power of our Savior who safely keeps us and presents us faultless before His glory." },
+  { reference: "Psalm 34:8-10", description: "This text invites us to experience the goodness of God and assures us that those who seek Him lack no good thing." },
+  { reference: "Romans 8:28", description: "This verse anchors our trust in God's meticulous sovereignty, knowing He orchestrates every circumstance for the ultimate good of His children." },
+  { reference: "1 Thessalonians 5:9-11", description: "This passage reminds us of our appointed salvation through Christ and encourages us to build one another up in that hope." },
+  { reference: "Lamentations 3:21-24", description: "This scripture centers our wandering thoughts on God's unending faithfulness and fresh morning mercies as the anchor for our hope." },
+];
+
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { SEED_RESOURCES, SEED_BIBLE_PLANS, SEED_VERSE_TOPICS };
+  module.exports = { SEED_RESOURCES, SEED_BIBLE_PLANS, SEED_VERSE_TOPICS, DAILY_PASSAGES };
 }
