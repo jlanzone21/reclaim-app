@@ -657,7 +657,7 @@ Refreshed weekly (about 4 minutes of background model time).
 
 ### Lectio Divina, and the passage a nudge offers
 
-Every risk nudge offers one of the 35 daily passages to **pray through**: the browser
+Every risk nudge offers one of the 41 daily passages to **pray through**: the browser
 extension's notification ("Pray through Romans 8:31-39", with the reference and its one-line
 description under the message), Android's full-screen check-in (a passage card and a button),
 and Android's fallback notification. Taking it — or tapping "Pray through it · 2 min" on Home's

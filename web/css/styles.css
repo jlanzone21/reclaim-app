@@ -1638,6 +1638,29 @@ body.lectio-open { overflow: hidden; }
   color: rgba(255, 255, 255, 0.88);
 }
 
+/* Before step 1: the passage and what it's about. */
+.lectio-intro-ref {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(28px, 7vw, 40px);
+  line-height: 1.25;
+}
+
+.lectio-intro-desc {
+  margin-top: 14px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 18px;
+  font-style: italic;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* Offline: read the passage from your own Bible. */
+.lectio-offline-note {
+  margin-top: 14px;
+  font-size: 13.5px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
 /* Contemplatio: almost nothing on the screen. */
 .lectio[data-step="4"] .lectio-instruction { color: rgba(255, 255, 255, 0.55); }
 

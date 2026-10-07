@@ -316,11 +316,11 @@ Main JS modules (`web/js/`):
   it, which is why the key was replaced. Pace bulk checks (≈1/s). BSB (3034) is the automatic fallback if YouVersion answers
   403 for NIV. Other English versions the key can use: ASV 12, CPDV 42,
   FBV 1932, LSV 2660, WEB 206, WMB 1209, etc.
-- Home's card is **"Today's Passage"**: one of Nathaniel's 35 curated
+- Home's card is **"Today's Passage"**: one of Nathaniel's 41 curated
   passages (`DAILY_PASSAGES` in `seedData.js`, each with a one-line
   `description` — shown on the overlay / nudge notifications and embedded to
   rank passages, not on Home), picked by `dailyPassage.js` in each install's
-  own shuffled order (all 35 before any repeat; order kept in `app_meta`; the
+  own shuffled order (all 41 before any repeat; six added on temptation 2026-10-07; order kept in `app_meta`; the
   NEXT round is drawn ahead so `schedule()` can hand the notifiers the coming
   weeks), text fetched from YouVersion. It replaced YouVersion's Verse of the
   Day (2026-10-07).

@@ -548,9 +548,11 @@ const SEED_VERSE_TOPICS = [
 
 // Home's "Today's Passage" (dailyPassage.js): one of these a day, in each person's own shuffled
 // order (Nathaniel, 2026-10-07 -- replaces YouVersion's Verse of the Day). References only; the
-// text comes from YouVersion (NIV) like every other verse in the app. `description` is kept for the
-// planned 2-minute devotional built on the day's passage -- not shown anywhere yet. Supplied by
-// Nathaniel. Not a database table on purpose: nothing about it is per-install except the order.
+// text comes from YouVersion (NIV) like every other verse in the app. `description` is shown before
+// the Lectio Divina meditation (lectioView.js) and on a nudge's overlay / notification, and is what the
+// embedding model ranks passages by for a nudge's situation (passageBank.js). Supplied by Nathaniel;
+// the last six (temptation) added 2026-10-07 so a temptation-moment nudge has passages about exactly
+// that. Not a database table on purpose: nothing about it is per-install except the order.
 const DAILY_PASSAGES = [
   { reference: "Romans 8:31-39", description: "This passage assures believers of the unbreakable, sovereign love of God secured for us in Jesus Christ, declaring that nothing in creation can ever separate us from His grace." },
   { reference: "Ephesians 2:4-10", description: "This text magnifies the free gift of salvation by grace alone through faith alone, reminding us that we are God's workmanship created to walk in His purposes." },
@@ -587,6 +589,12 @@ const DAILY_PASSAGES = [
   { reference: "Romans 8:28", description: "This verse anchors our trust in God's meticulous sovereignty, knowing He orchestrates every circumstance for the ultimate good of His children." },
   { reference: "1 Thessalonians 5:9-11", description: "This passage reminds us of our appointed salvation through Christ and encourages us to build one another up in that hope." },
   { reference: "Lamentations 3:21-24", description: "This scripture centers our wandering thoughts on God's unending faithfulness and fresh morning mercies as the anchor for our hope." },
+  { reference: "1 Corinthians 10:12-14", description: "This foundational passage promises that God is faithful to limit our temptations and always provides a way of escape." },
+  { reference: "Hebrews 2:14-18", description: "This passage comforts us with the truth that Jesus Himself was tempted and is therefore able to sympathize with and help us in our own struggles." },
+  { reference: "James 1:12-17", description: "This text traces the destructive path of sin from temptation to death, while reminding us that every good gift—including the strength to resist—comes from our unchanging Father." },
+  { reference: "James 4:6-10", description: "This passage gives a clear strategy for spiritual victory—humble submission to God and active resistance against the devil, who will flee at our resolve." },
+  { reference: "1 Peter 5:6-10", description: "This scripture warns us to stay alert against the enemy's schemes while assuring us that the God of all grace will strengthen and establish us." },
+  { reference: "Psalm 119:9-16", description: "This passage shows how hiding God's Word in our hearts and delighting in His statutes guards us from wandering into sin." },
 ];
 
 if (typeof module !== "undefined" && module.exports) {

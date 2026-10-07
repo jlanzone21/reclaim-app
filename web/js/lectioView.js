@@ -17,12 +17,17 @@
  * Call <partner>, Find resources, Done, "This helped / Not for me" (teaches PassageBank which passages help
  * in which situations), and -- after a nudge -- the small "This was a false alarm" link.
  *
- * The text comes from YouVersion (with the copyright attribution it requires); offline or on an API error it
- * falls back to a verse from the bundled set, so the meditation still happens. A small "In crisis? Get help"
+ * First, for 8 seconds, the passage's reference and one-line description. The text comes from YouVersion
+ * (with the copyright attribution it requires); offline or on an API error the screen keeps the passage's
+ * reference and the person reads it from their own Bible (NIV text can't be bundled) -- only with no passage
+ * named at all does it fall back to a bundled verse. A small "In crisis? Get help"
  * link stays on screen the whole time (the crisis resources are never more than a tap away).
  */
 const LectioView = (function () {
   const STEP_MS = 30000;
+  // Before step 1: the passage's reference and one-line description, a moment to settle (Nathaniel,
+  // 2026-10-07: "show the description before step 1"). Not one of the four steps, so not on the bars.
+  const INTRO_MS = 8000;
   const LOAD_TIMEOUT_MS = 8000;
   const STEPS = [
     { name: "Lectio", verb: "Read", text: "Read the passage slowly, out loud if you can, and then once more. Tap the word or phrase that catches your attention." },
@@ -34,6 +39,7 @@ const LectioView = (function () {
   let els = {};
   let hooks = {};
   let stepMs = STEP_MS;
+  let introMs = INTRO_MS;
   let s = null; // the open session
   let token = 0; // a late passage load for an earlier session must never land on a newer one
   let ticker = null;
@@ -61,7 +67,7 @@ const LectioView = (function () {
     els.root.addEventListener("pointerdown", unlockAudio);
     // A hidden tab/backgrounded app pauses the clock, so nobody comes back to find steps skipped.
     document.addEventListener("visibilitychange", () => {
-      if (!s || s.step < 0 || s.done) return;
+      if (!s || !s.startedAt || s.done) return;
       if (document.hidden) pause();
       else {
         resume();
@@ -84,7 +90,7 @@ const LectioView = (function () {
     if (s) teardown();
     const my = ++token;
     unlockAudio(); // opened from a tap on Home: that tap is the gesture
-    s = { ...o, verses: null, picked: [], step: -1, done: false, elapsed: 0, startedAt: 0, rated: false };
+    s = { ...o, fromNudge: o.source === "nudge", verses: null, offline: false, picked: [], step: -1, done: false, elapsed: 0, startedAt: 0, rated: false };
     els.root.hidden = false;
     els.closing.hidden = true;
     els.stage.hidden = false;
@@ -107,7 +113,24 @@ const LectioView = (function () {
     }
     Object.assign(s, text);
     acquireWakeLock();
-    goTo(0);
+    showIntro();
+  }
+
+  // The passage's reference and description, then step 1 on its own (same clock as the steps).
+  function showIntro() {
+    s.step = -1;
+    s.elapsed = 0;
+    s.startedAt = Date.now();
+    els.root.dataset.step = "intro";
+    els.count.textContent = "";
+    els.kicker.textContent = s.fromNudge ? "A passage for right now" : "Today's passage";
+    els.instruction.textContent = "Take a slow breath. We'll begin in a moment.";
+    const nodes = [line("lectio-intro-ref", s.reference)];
+    if (s.description) nodes.push(line("lectio-intro-desc", s.description));
+    els.body.replaceChildren(...nodes);
+    setProgress(-1, 0);
+    clearInterval(ticker);
+    ticker = setInterval(tick, 200);
   }
 
   // ---- The passage ----
@@ -130,7 +153,11 @@ const LectioView = (function () {
         }
       } catch (e) {}
     }
-    // Offline, no key, or an API error: a bundled verse, so the meditation still happens.
+    // Offline, no key, or an API error, with a passage named: still that passage -- its reference, and the
+    // person reads it from their own Bible or Bible app (Nathaniel, 2026-10-07: "it should still show the
+    // reference and point them to it"). NIV text can't be bundled.
+    if (o.reference) return { reference: o.reference, verses: null, offline: true, version: "", attribution: "", fromYouVersion: false };
+    // No passage at all: a bundled verse, so the meditation still happens.
     const v = o.verse || (typeof ResourceRepo !== "undefined" ? ResourceRepo.getScripture() : null);
     if (!v || !v.body) return null;
     return { reference: v.title, verses: [{ num: null, text: v.body }], version: "", attribution: "", fromYouVersion: false };
@@ -188,9 +215,10 @@ const LectioView = (function () {
     els.root.dataset.step = String(step + 1);
     els.count.textContent = `${step + 1} of ${STEPS.length}`;
     els.kicker.textContent = `${def.name} · ${def.verb}`;
-    els.instruction.textContent = def.text;
-    if (step === 0) renderPassage();
-    else if (step === 3) renderRest();
+    els.instruction.textContent = s.offline && OFFLINE_TEXT[step] ? OFFLINE_TEXT[step] : def.text;
+    if (step === 3) renderRest();
+    else if (s.offline) renderOffline(step);
+    else if (step === 0) renderPassage();
     else renderPhrase(step === 1 ? "lectio-phrase-large" : "lectio-phrase-small");
     setProgress(step, 0);
     clearInterval(ticker);
@@ -200,8 +228,9 @@ const LectioView = (function () {
   function tick() {
     if (!s || s.paused) return;
     const elapsed = s.elapsed + (Date.now() - s.startedAt);
-    setProgress(s.step, Math.min(1, elapsed / stepMs));
-    if (elapsed < stepMs) return;
+    const duration = s.step < 0 ? introMs : stepMs;
+    if (s.step >= 0) setProgress(s.step, Math.min(1, elapsed / stepMs));
+    if (elapsed < duration) return;
     if (s.step < STEPS.length - 1) {
       chime(false);
       goTo(s.step + 1);
@@ -272,6 +301,7 @@ const LectioView = (function () {
   // The phrase(s) they tapped, in reading order: neighbours run together, gaps get an ellipsis. Nothing
   // tapped -> the passage's first verse.
   function chosenText() {
+    if (!s.verses) return null; // offline: the words are in their own Bible
     if (!s.picked.length) return s.verses[0].text;
     const sorted = s.picked.slice().sort((a, b) => a.vi - b.vi || a.pi - b.pi);
     let out = "";
@@ -286,12 +316,28 @@ const LectioView = (function () {
 
   // "Romans 8:31-39" + the verse numbers the phrase came from -> "Romans 8:31" / "Romans 8:31-32" / "Romans 8:31, 34".
   function chosenReference() {
+    if (!s.verses) return s.reference;
     const nums = [...new Set((s.picked.length ? s.picked.map((x) => x.num) : [s.verses[0].num]).filter(Boolean).map(Number))].sort((a, b) => a - b);
     const m = /^(.*\d)\s*:\s*\d+/.exec(s.reference || "");
     if (!m || !nums.length) return s.reference;
     const contiguous = nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
     const verses = nums.length === 1 ? `${nums[0]}` : contiguous ? `${nums[0]}-${nums[nums.length - 1]}` : nums.join(", ");
     return `${m[1]}:${verses}`;
+  }
+
+  // Offline: the text couldn't be loaded, so the person reads the passage from their own Bible -- the
+  // screen holds the reference, and the steps point back to "the words that caught you".
+  const OFFLINE_TEXT = {
+    0: "Open your Bible or Bible app to this passage. Read it slowly, out loud if you can, and then once more, until a word or phrase catches your attention.",
+    1: "Stay with the words that caught you. Repeat them slowly and let them sink in. There's nothing to figure out.",
+  };
+
+  function renderOffline(step) {
+    if (step === 0) {
+      els.body.replaceChildren(line("lectio-phrase lectio-phrase-large", s.reference), line("lectio-offline-note", "The text couldn't be loaded right now, so read it from your own Bible."));
+    } else {
+      els.body.replaceChildren(line("lectio-phrase lectio-phrase-small", s.reference));
+    }
   }
 
   function renderPhrase(cls) {
@@ -338,7 +384,7 @@ const LectioView = (function () {
     const meditated = s.step >= 0;
     nodes.push(line("lectio-amen", completed ? "Amen." : "Come back to it anytime."));
     // The words they sat with, to carry out with them (what Meditatio showed: their phrase, or the first verse).
-    if (s.step >= 1 || s.picked.length) {
+    if ((s.step >= 1 || s.picked.length) && chosenText()) {
       nodes.push(line("lectio-carry", `“${chosenText()}”`), line("lectio-ref", chosenReference()));
     }
     if (meditated) nodes.push(rateRow());
@@ -537,6 +583,9 @@ const LectioView = (function () {
     // exposed for tests
     _parseVerses: parseVerses,
     _phrasesOf: phrasesOf,
-    _setStepMs: (ms) => (stepMs = ms || STEP_MS),
+    _setStepMs: (ms) => {
+      stepMs = ms || STEP_MS;
+      introMs = ms ? Math.min(ms, INTRO_MS) : INTRO_MS;
+    },
   };
 })();

@@ -27,7 +27,7 @@ const ref = (p) => p && p.reference;
 // Every passage has a reference and a description (kept for the 2-minute devotional).
 {
   const { all } = load();
-  assert.equal(all.length, 35);
+  assert.equal(all.length, 41);
   assert.ok(all.every((p) => /\d+:\d+/.test(p.reference) && p.description.length > 20));
   assert.equal(new Set(all.map((p) => p.reference)).size, all.length, "no duplicate references");
 }
@@ -71,6 +71,20 @@ const ref = (p) => p && p.reference;
   const back = load();
   back.D.today(day(10));
   assert.ok(back.D.today(day(2)), "a day before the cycle start still gets a passage");
+}
+
+// Passages ADDED (as the six on temptation were): today's passage stays put and the round in progress
+// carries on; the new ones arrive with the next round.
+{
+  const { all } = load();
+  const old = load(all.slice(0, 35));
+  const before = Array.from({ length: 35 }, (_, i) => ref(old.D.today(day(i))));
+  const grown = load(all);
+  grown.meta.daily_passage_cycle = old.meta.daily_passage_cycle;
+  const after = Array.from({ length: 35 }, (_, i) => ref(grown.D.today(day(i))));
+  assert.deepEqual(after, before, "the current round is unchanged");
+  const nextRound = Array.from({ length: 41 }, (_, i) => ref(grown.D.today(day(35 + i))));
+  assert.equal(new Set(nextRound).size, 41, "the next round has all 41");
 }
 
 // The schedule handed to the notifiers (they offer today's passage while the app is closed): it runs from

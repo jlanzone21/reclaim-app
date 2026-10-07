@@ -6,7 +6,8 @@
  * shuffled per person, not one shared sequence). The order and the day it started are kept in
  * app_meta, so the passage stays the same all day and survives restarts. Days are local calendar
  * days. After the last passage a new shuffle starts -- never opening with the passage just shown.
- * If the list itself changes (passages added or removed), a fresh cycle starts that day.
+ * If passages are added, the round in progress finishes and the next round includes them; if any are
+ * removed, a fresh cycle starts that day.
  *
  * The NEXT round is drawn ahead of time (schedule()), because the notifiers -- the browser extension
  * and Android's RiskNudgeMonitor -- offer today's passage on a nudge while the app is closed, so they
@@ -75,7 +76,11 @@ const DailyPassage = (function () {
   // The cycle that covers `day`, rolled forward (and saved) as needed.
   function cycleFor(day, refs) {
     const cycle = readCycle();
-    if (!cycle || !sameList(cycle.refs, refs) || day < cycle.start) return save({ start: day, refs: drawRound(refs, null) });
+    // Passages only ADDED (2026-10-07: six on temptation): the round in progress carries on, so today's
+    // passage doesn't change under anyone; the new ones join from the next round. A removed passage
+    // could be in the round, so that starts a fresh one.
+    const stillValid = cycle && cycle.refs.length > 0 && cycle.refs.every((r) => refs.includes(r));
+    if (!stillValid || day < cycle.start) return save({ start: day, refs: drawRound(refs, null) });
     const len = cycle.refs.length;
     if (day - cycle.start < len) return cycle;
     // The round is over. Count from where the next one should have begun, so a person who skips a few
@@ -96,7 +101,7 @@ const DailyPassage = (function () {
   }
 
   /**
-   * [{ day, ref }] from the given day through the end of the NEXT round (35-70 days), drawing the next
+   * [{ day, ref }] from the given day through the end of the NEXT round (one to two rounds of days), drawing the next
    * round now if it hasn't been. For the notifiers, which can't run any of this while the app is closed.
    */
   function schedule(date = new Date()) {
