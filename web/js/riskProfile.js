@@ -78,6 +78,9 @@ const RiskProfile = (function () {
       // and the phrase templates the on-device AI wrote -- see RiskExplainer / RiskNotificationText.
       lockScreenDetail: prefs.lock_screen_detail !== false,
       phraseBank: typeof RiskExplainer !== "undefined" ? RiskExplainer.getPhraseBank() : {},
+      noteBank: typeof RiskExplainer !== "undefined" ? RiskExplainer.getNoteBank() : {},
+      // The Bible verse shown on the full-screen check-in, chosen ahead of time by the on-device AI.
+      verseBank: typeof VerseBank !== "undefined" ? VerseBank.getBank() : {},
     };
     if (native) LocalSignals.syncRiskContext(payload).catch(() => {});
     if (extension) WebTracker.syncRiskContext(payload);

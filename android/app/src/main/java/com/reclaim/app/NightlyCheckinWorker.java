@@ -12,8 +12,16 @@ import android.os.Build;
 import androidx.annotation.NonNull;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
+import androidx.work.ExistingWorkPolicy;
+import androidx.work.OneTimeWorkRequest;
+import androidx.work.WorkManager;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
+
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 
 /**
  * A once-a-day prompt around 9:30pm -- deliberately before the "Night" risk bucket (10pm-5am,
@@ -47,10 +55,15 @@ import androidx.work.WorkerParameters;
  *                    cancels the notification -- same flag, same app.js consumer, different native
  *                    path to get there.
  *
- * Scheduled from BackgroundSamplerPlugin.enable() alongside the periodic sampler. WorkManager's
- * periodic jobs aren't wall-clock-exact -- each run is scheduled relative to when the previous one
- * actually completed, which can drift over many days under Doze/battery optimization. Fine for a
- * "roughly evening" reminder; not something this pretends to guarantee to the minute.
+ * Pinned to 9:30 pm wall-clock time (NIGHTLY_HOUR/NIGHTLY_MINUTE), not "every 24 hours": this used
+ * to be a 24-hour PeriodicWorkRequest with a one-time delay to the first 9:30, but WorkManager
+ * repeats those relative to when the previous run actually completed, so once a single run slipped
+ * (Doze, phone off) every later one stayed shifted forever -- confirmed on a real phone, where it was
+ * firing at 1:54 am, exactly 24 h apart, 4.4 h late. Now each run is a one-time job that schedules its
+ * own next one for the next 9:30 pm FIRST THING in doWork (so no early return can break the chain),
+ * and BackgroundSamplerPlugin.enable() re-anchors it every time the app opens (which also corrects a
+ * timezone change). If a run still lands more than MAX_LATE_MS after 9:30 it posts nothing -- a
+ * "how was today?" at 2 am is worse than skipping one night.
  */
 public class NightlyCheckinWorker extends Worker {
     // _v2: importance is locked in per channel ID the first time Android sees it -- bumping to
@@ -59,6 +72,56 @@ public class NightlyCheckinWorker extends Worker {
     static final String CHANNEL_ID = "reclaim_app_nightly_checkin_v2";
     private static final String OLD_CHANNEL_ID = "reclaim_app_nightly_checkin";
     static final int NOTIFICATION_ID = 3; // distinct from ForegroundAppMonitor's and RiskNudgeMonitor's
+
+    // Hard-coded on purpose (the user's decision): 9:30 pm local time, every day.
+    static final int NIGHTLY_HOUR = 21;
+    static final int NIGHTLY_MINUTE = 30;
+    private static final long MAX_LATE_MS = 3L * 60 * 60 * 1000;
+    // One unique work name per target DATE, so the next run can be enqueued from inside the current one
+    // (a single shared name would make KEEP drop it, or REPLACE cancel the running worker).
+    private static final String UNIQUE_NAME_PREFIX = "reclaim_app_nightly_checkin_";
+    private static final String LEGACY_UNIQUE_NAME = "reclaim_app_nightly_checkin"; // the old 24 h periodic
+    // The Testing panel's "send nightly check-in" bypasses the lateness guard (it runs at any hour).
+    static final String KEY_FORCE = "force";
+
+    // The next NIGHTLY_HOUR:NIGHTLY_MINUTE strictly after "now" (today if still ahead, else tomorrow).
+    private static Calendar nextTarget() {
+        Calendar target = Calendar.getInstance();
+        target.set(Calendar.HOUR_OF_DAY, NIGHTLY_HOUR);
+        target.set(Calendar.MINUTE, NIGHTLY_MINUTE);
+        target.set(Calendar.SECOND, 0);
+        target.set(Calendar.MILLISECOND, 0);
+        if (target.getTimeInMillis() <= System.currentTimeMillis()) target.add(Calendar.DATE, 1);
+        return target;
+    }
+
+    // How long ago the most recent 9:30 pm was (0..24h). A run at 9:30:05 pm is seconds late; one at
+    // 1:54 am is 4h24m late.
+    static long latenessMs() {
+        Calendar last = nextTarget();
+        last.add(Calendar.DATE, -1);
+        return System.currentTimeMillis() - last.getTimeInMillis();
+    }
+
+    /**
+     * Schedules the next nightly check-in for the next 9:30 pm and cancels the legacy periodic job.
+     * Always REPLACE, from the app-open path and from inside the worker alike: if a run ever fires BEFORE
+     * its own 9:30 pm (a forced run, a clock change) the "next" target is that same date -- the same
+     * unique name as the work currently running -- and KEEP would silently drop the new one and break the
+     * chain. REPLACE cancels the running instance (it just finishes its current pass; its result is
+     * ignored) and enqueues the fresh one.
+     */
+    static void scheduleNext(Context ctx) {
+        WorkManager wm = WorkManager.getInstance(ctx);
+        wm.cancelUniqueWork(LEGACY_UNIQUE_NAME); // no-op once it's gone
+        Calendar target = nextTarget();
+        long delay = target.getTimeInMillis() - System.currentTimeMillis();
+        OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(NightlyCheckinWorker.class)
+                .setInitialDelay(delay, TimeUnit.MILLISECONDS)
+                .build();
+        String name = UNIQUE_NAME_PREFIX + new SimpleDateFormat("yyyyMMdd", Locale.US).format(target.getTime());
+        wm.enqueueUniqueWork(name, ExistingWorkPolicy.REPLACE, request);
+    }
 
     // Read by MainActivity.onCreate()/onNewIntent() -- see class doc comment for why the "open
     // checkin" path launches the activity directly instead of going through the broadcast receiver.
@@ -93,6 +156,12 @@ public class NightlyCheckinWorker extends Worker {
     @Override
     public Result doWork() {
         Context ctx = getApplicationContext();
+        // Chain the next night FIRST, before any early return below can break it.
+        scheduleNext(ctx);
+        if (!getInputData().getBoolean(KEY_FORCE, false) && latenessMs() > MAX_LATE_MS) {
+            android.util.Log.d("NightlyCheckin", "ran " + (latenessMs() / 60000) + " min after 9:30 pm -- skipping tonight");
+            return Result.success();
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             return Result.success();

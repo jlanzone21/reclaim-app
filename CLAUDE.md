@@ -278,6 +278,24 @@ Main JS modules (`web/js/`):
   two in step) fill in live values when a notification fires. Every model output
   is checked in code and falls back to a deterministic template; the trace holds
   no screen text. The free-text feedback box runs the crisis gate first.
+- **The AI-written notification/overlay text is a "note bank"** (`refreshNoteBank`
+  in `riskExplainer.js`): for each of 8 combinations of reasons (signature letters
+  D duration / A flagged app / T hard time of day / L nobody nearby) the model
+  pre-writes ~3 COMPLETE two-sentence notes with live slots `{app} {minutes} {time}`,
+  e.g. "You've been on {app} for {minutes} minutes {time}, a hard time of day for you.
+  Take a moment to pause and check in." The native notifier / extension fills the real
+  values when a nudge fires (`RiskNotificationText` / `notificationText.js`; three
+  copies of the signature rule — keep them in step). Rewrite-and-verify only: the
+  model rewords a sentence the code wrote, output must keep the slots, open like the
+  source, and use only its words plus a small allowed vocabulary; stored notes are
+  re-validated on every read; no usable note → per-factor phrases → built-ins.
+  Keyword nudges never get a note (fixed line only). Weekly refresh, ~4 min of
+  background model time. Tuned on the Pixel 8a: free generation was unusable, the
+  rewrite with a stated goal passed 12/15 and every miss was rejected.
+- **The in-app risk alert (`RiskAlertView`) is switched OFF** (`enabled = false`;
+  the user wants only the outside-of-app overlay). It is kept intact — flip
+  `RiskAlertView.setEnabled(true)` — and a pending alert is still consumed silently on
+  boot/resume so a stale one can't appear later.
 - Setup answers (accountability partner(s), pastor, tempting times, triggers)
   reach the prompt via `personalContext.js`; the prompt tells the model to
   name the partner. Up to 2 accountability partners
@@ -313,6 +331,14 @@ Main JS modules (`web/js/`):
 
 ## 8. Android native side
 
+**Overlay ONLY, no notification** (user's decision): with the permission below granted, a
+risk nudge posts NO notification at all — nothing in the shade, nothing on a lock screen
+(the risk check only runs while the phone is unlocked and in use anyway). A notification
+is only the FALLBACK, used when the overlay can't appear (permission not granted) or fails
+to draw (`RiskOverlay.show`'s `onFailure`), so a nudge is never silently lost; the
+lock-screen-detail setting and generic text only matter for that fallback and for the
+nightly check-in.
+
 **Full-screen check-in** (`RiskOverlay.java`): on EVERY risk nudge, if the person has
 granted "Display over other apps" (`SYSTEM_ALERT_WINDOW`; a Privacy card sends them
 to the Settings page — the grant IS the consent, no separate toggle), a native
@@ -342,9 +368,23 @@ on the Pixel 8a (Android 16) that the notification's `setFullScreenIntent` is
 `FSI_REQUESTED_BUT_DENIED` and that the overlay survives Back and Home and covers
 Chrome. Android gives no way to disable Home/Recents, so it is never "inescapable":
 Back is swallowed, Home leaves it up, and it has a hard 10-minute failsafe, and dies
-instantly if the permission is revoked. Scripture is deliberately not
-embedded yet (an embedded AI scripture feature is planned; "Read a verse" only
-routes to the existing verse flow). Don't add a way to make it unescapable.
+instantly if the permission is revoked. **A Bible verse is shown on the overlay itself**, chosen ahead of time by the on-device AI
+(`web/js/verseBank.js`, `RiskVerse.java`): for each situation (the 8 reason combinations
++ K for a keyword nudge, at each of 4 times of day = 36) the 3 best verses are ranked with
+Nathaniel's embedding model against a sentence describing the situation AND the person's
+recent check-in struggles, shifted by what helped under similar conditions and by their
+thumbs elsewhere (tag ranking if the model isn't loaded), fetched from YouVersion with its
+required attribution (bundled text as fallback) and mirrored to native. "This helped" /
+"Not for me" under the verse are parked natively and turned into a rating + a
+situation-tied outcome the next time the app opens, then the bank is rebuilt; "Not for
+me" also moves on to the next verse. Situation and the person's recent struggles are scored as SEPARATE embeddings, each verse is
+corrected by its mean similarity to all queries (hubness), and the situation sentences share no
+common tail — each of those was needed on the real phone to stop one verse leading most
+situations. Learning is THIS user on THIS device — pooling
+across people would need a server, which the privacy commitments rule out. "Find
+resources" (formerly "Read a verse") opens Chat with an urge message so the resource
+picker answers. "I'm okay" has the same filling-bar wait as the in-app dismiss button.
+Don't add a way to make it unescapable.
 
 Java in `android/app/src/main/java/com/reclaim/app/`: `MainActivity`,
 Capacitor plugins (`LocalSignalsPlugin`, `AccessibilityPlugin`,
@@ -353,7 +393,7 @@ Capacitor plugins (`LocalSignalsPlugin`, `AccessibilityPlugin`,
 `LocalSignalsDb`, `TrackingAccessibilityService` (app-open events +
 allowlisted text capture), `RiskNudgeMonitor` + `RiskScorer` (weighted
 risk score vs. a threshold set by notification intensity low 90 / medium 60 /
-high 35; adaptive weight tuning), `NightlyCheckinWorker` (~9:30 pm),
+high 35; adaptive weight tuning), `NightlyCheckinWorker` (pinned to 9:30 pm wall-clock: one-time work that re-chains itself, re-anchored on every app open, and posts nothing if it runs >3 h late — it used to be a 24 h periodic job that drifted to 1:54 am),
 `BaselineSampleWorker`, `ForegroundAppMonitor` (debug tool),
 `RecentNotificationListenerService`.
 

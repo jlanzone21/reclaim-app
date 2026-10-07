@@ -17,6 +17,13 @@
  * the existing bounded nudge in the native/extension scorer -- see RiskExplainer's header.
  */
 const RiskAlertView = (function () {
+  // SWITCHED OFF (the user's decision): the full-screen overlay (RiskOverlay.java) is the only popup a
+  // risk nudge produces now, so entering the app no longer pops this up as well. Everything below is
+  // kept intact -- the AI note, the numbers, the feedback flow -- so it can come back by flipping this
+  // (or RiskAlertView.setEnabled(true)). While off, a pending alert is still CONSUMED on boot/resume so
+  // an old one can't surface later if this is switched back on.
+  let enabled = false;
+
   // Deliberately slow -- long enough to make "I'm okay" a real choice, not a reflex tap that
   // dismisses this before it's actually been read. The filling bar behind the label (CSS) is what
   // makes the wait read as "counting down" rather than "the button is broken."
@@ -76,6 +83,7 @@ const RiskAlertView = (function () {
   }
 
   function render(alert) {
+    if (!enabled) return;
     current = alert;
     els.appLine.textContent = alert.appLabel ? `You were on ${alert.appLabel}.` : "";
     renderNote(alert);
@@ -287,5 +295,9 @@ const RiskAlertView = (function () {
 
   // render is exposed for the web version, where the alert comes from WebTracker.takePending()
   // (app.js) rather than the native bridge checkPending() reads.
-  return { init, checkPending, render };
+  function setEnabled(on) {
+    enabled = !!on;
+  }
+
+  return { init, checkPending, render, setEnabled };
 })();

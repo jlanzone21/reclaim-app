@@ -52,4 +52,44 @@ const long = N.compose({
   bank: { duration: ["A".repeat(60) + " {app} {minutes}."], selfReportedTime: ["B".repeat(70) + "."] },
 });
 assert.ok(long.length <= 150, long.length);
+// ---- AI note bank: a complete pre-written note for this exact combination of reasons ----
+assert.equal(N.noteSignature(new Set(["triggerApp", "duration", "selfReportedTime"])), "DT");
+assert.equal(N.noteSignature(new Set(["socialMedia"])), "A");
+assert.equal(N.noteSignature(new Set(["duration", "recentKeyword"])), null, "keyword: never an AI note");
+assert.equal(N.noteSignature(new Set(["selfReportedTime"])), null);
+const noteBank = {
+  D: ["You've been on {app} for {minutes} minutes {time}. Take a moment to pause and check in."],
+  DT: ["You've been on {app} for {minutes} minutes {time}, a hard time of day for you. Take a moment to pause and check in."],
+  A: ["You're on {app} {time}. Please take a moment to pause and check in."],
+};
+assert.equal(
+  N.compose({ ...base, trace: [f("triggerApp"), f("duration")], noteBank }),
+  "You've been on Instagram for 22 minutes late tonight. Take a moment to pause and check in."
+);
+assert.equal(
+  N.compose({ ...base, trace: [f("duration"), f("historicalTime")], noteBank }),
+  "You've been on Instagram for 22 minutes late tonight, a hard time of day for you. Take a moment to pause and check in."
+);
+assert.equal(
+  N.compose({ ...base, trace: [f("socialMedia")], noteBank, timeBucket: "Afternoon", app: "reddit.com" }),
+  "You're on reddit.com this afternoon. Please take a moment to pause and check in."
+);
+// no note for this combination -> the per-factor phrases / built-ins, as before
+assert.equal(N.compose({ ...base, trace: [f("alone"), f("duration")], noteBank }), "You've been on Instagram for 22 minutes. It's quiet around you right now. Let's check in.");
+// a keyword nudge ignores the bank entirely (fixed line only)
+const kwNote = N.compose({ ...base, trace: [f("recentKeyword"), f("duration")], noteBank });
+assert.match(kwNote, /^Something on your screen caught our attention\./);
+assert.ok(!/pause and check in/.test(kwNote));
+// detail off -> generic, even with a bank
+assert.equal(N.compose({ ...base, trace: [f("duration")], noteBank, detail: false }), null);
+// unusable notes (digits, unknown slot, missing {minutes} for D, 3 sentences, too long) fall back
+for (const bad of ["You've been on {app} for {minutes} minutes {time}, 20 times. Check in.", "Hey {name}, {app} {minutes}. Check in.", "You're on {app} {time}. Check in.", "A. B. C {app} {minutes}.", "x".repeat(210)]) {
+  assert.equal(N.usableNote("D", bad), false, bad);
+}
+assert.equal(
+  N.compose({ ...base, trace: [f("duration")], noteBank: { D: ["You're on {app} {time}. Check in."] } }),
+  "You've been on Instagram for 22 minutes. Let's check in.",
+  "a D note without {minutes} is ignored"
+);
+assert.equal(N.usableNote("A", "You're on {app} {time}. Please take a moment to pause and check in."), true);
 console.log("notification text tests passed");

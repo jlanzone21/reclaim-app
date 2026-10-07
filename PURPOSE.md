@@ -2173,6 +2173,70 @@ reality:
     recorded). Not verified: other Android versions/OEM skins, and behavior with
     Do Not Disturb/Focus modes.
 
+- [x] **Bible verse on the overlay, "Find resources", countdown bar.** Asked for (user):
+  the "I'm okay" countdown bar from the in-app dismiss button on the popup; "Read a verse"
+  renamed "Find resources"; a Bible verse straight on the popup, chosen by the embedded AI from
+  recent experiences or experiences under similar conditions, as another way for the AI to learn
+  from users. Built on Nathaniel's embedding model (PR #6, merged in): `verseBank.js` ranks the
+  bundled verses by meaning against a sentence describing the situation + the person's recent
+  struggles, adjusted by situation-tied outcomes and his thumbs-learned taste; the top 3 for each
+  of 36 situations are stored with YouVersion text + attribution and synced to native
+  (`RiskVerse.java`); "This helped" / "Not for me" are parked natively and learned on the next app
+  open. **Interpretation call:** "learn from users" is done per user, on device -- pooling
+  experience across people would need a server, which the app's privacy commitments rule out;
+  say so if you meant otherwise. "Find resources" opens Chat with "I'm tempted right now and I
+  need some help." (resource picker answers). Verified in tests: a stubbed embedder and
+  YouVersion (meaning-based ranking, per-person differences, outcome promotion/demotion with
+  decay, hub correction, fallbacks, feedback round trip) and the pure native picking against a
+  Java harness. **Verified on the Pixel 8a:** the overlay shows the AI-chosen verse with the full
+  NIV attribution, "Find resources", and the filling "I'm okay" bar; YouVersion's HTML extracts
+  to clean plain text; "Not for me" swaps in the next verse and parks the feedback; on app open
+  it becomes a thumbs rating + a situation-tied outcome and the bank rebuilds (the verse marked
+  helpful led that situation, the one marked "not for me" dropped out); "Find resources" opens
+  Chat and Nathaniel's picker answers. **What the real model taught us:** the first version
+  gave 7 distinct verses for 36 situations with one comfort verse leading 4 of 5, because the
+  person's constant struggles swamped the situation in one combined sentence and some verses
+  are embedding "hubs". Fixes, each measured on the phone: score situation and personal context
+  separately; correct each verse by its mean similarity to all queries; drop the closing line
+  shared by every situation sentence. Result: 6 different verses lead, spread 8/8/8/6/4/2, and
+  they fit (temptation moments get the temptation verses; "long on an app, alone" gets "he will
+  never leave you"). Still only ~10 distinct verses across all situations from the 62 bundled
+  ones -- it widens as feedback accumulates. Also: the chat keyboard now closes on send on touch
+  screens (verified on the phone: open before send, closed 1.2 s after, stays closed when the
+  reply finishes; desktop still refocuses).
+
+- [x] **Overlay only: no risk notification on Android.** Asked for (user): when the
+  full-screen check-in is available, send no notification at all. Built: with the
+  permission granted, `postNotification` shows only the overlay; the notification is a
+  fallback used when the permission isn't granted or the overlay fails to draw (the
+  overlay now reports failure). Verified on the Pixel 8a: permission granted -> overlay up,
+  0 notifications posted, "I'm okay" dismissed it and applied the fair verdict; permission
+  revoked -> no overlay, notification posted with the AI note text; tapping that
+  notification cleared it and the in-app popup stayed off. Because the risk check only
+  runs while the phone is unlocked, the lock-screen-detail setting now only affects that
+  fallback (and the nightly check-in is unaffected).
+
+- [x] **AI note bank, pinned nightly check-in, in-app alert off.** Asked for:
+  make sure the AI really produces personalized, specific notification text ("you
+  were on Instagram late at night"). Testing on the phone showed the honest state:
+  the phrase bank was nearly empty and its one real rewrite changed the meaning, so
+  notifications were effectively templates. Built a **note bank**: per combination
+  of reasons (8), the model pre-writes complete notes with {app}/{minutes}/{time}
+  slots, filled live by the Java notifier / extension (same rewrite-and-verify
+  method; measured 12/15 on the phone with every miss rejected; a structural check
+  was added after one passed with a spliced clause). Verified on the Pixel 8a:
+  20 notes generated in ~4 min; the real notification and overlay read "You've been
+  on Chrome for 22 minutes late tonight, a hard time of day for you. Please take a
+  moment to pause and check in.", with 3 AI variants rotating. Also: the nightly
+  check-in was found firing at 1:54 am (24 h periodic jobs re-anchor to the last
+  actual run; one late run shifted it permanently) -- now pinned to 9:30 pm via a
+  self-rescheduling one-time job, re-anchored on app open, skipped if >3 h late
+  (verified: a forced early run skipped and re-chained). And the in-app risk alert is
+  switched off (kept behind a flag) so the overlay is the only popup (verified: no
+  popup on resume; the pending alert is consumed). Not verified: Instagram's real app
+  label in a note (not installed on the test phone; the Java composer is tested with
+  the label), other Android versions.
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing

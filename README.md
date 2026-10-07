@@ -645,7 +645,36 @@ app (`web/js/riskExplainer.js`):
 Tests: `npm test` (extension scorer/notifier, and `tests/riskExplainer.test.js`
 with a stubbed model).
 
+### AI-written notification text (the "note bank")
+
+The model can't run while the app is closed, so while the app is open it pre-writes a
+few complete two-sentence notes for each combination of reasons that can fire, with live
+slots for the app, the minutes and the time of day. When a nudge fires, the native
+notifier (or the extension) fills the real values in, so the person sees e.g. "You've
+been on Instagram for 22 minutes late tonight, a hard time of day for you. Take a moment
+to pause and check in." — in both the notification and the full-screen check-in. Notes are
+rewrites of a sentence the code wrote, checked word-by-word, re-checked on every read, and
+fall back to per-factor phrases and built-ins. Keyword nudges always use one fixed line.
+Refreshed weekly (about 4 minutes of background model time).
+
+### The Bible verse on the full-screen check-in
+
+The verse on the overlay is chosen by the on-device AI ahead of time (`web/js/verseBank.js`),
+because the overlay is native and has no model of its own. For each situation a nudge can be in,
+the app describes it in a sentence — the time of day, what's going on, and what this person has
+been struggling with lately (their recent check-ins and the triggers they named) — embeds it with
+the same small embedding model the chat uses, and ranks the bundled verses by closeness in
+meaning. What helped under similar conditions raises a verse, "Not for me" lowers it, and the
+person's thumbs elsewhere in the app nudge it too. The three best per situation are stored with
+their text and YouVersion's required attribution and handed to the native overlay, which just
+picks one. "This helped" / "Not for me" under the verse feed back into this the next time the app
+opens. Everything stays on the phone.
+
 ### The full-screen check-in (Android)
+
+With the permission granted this is the **only** thing a risk nudge produces: no notification
+is posted. A notification is the fallback when the overlay can't be shown (permission not
+granted, or it fails to draw).
 
 A notification is easy to swipe away mid-slip, so when a risk nudge fires and the
 person has granted "Display over other apps" (a card in Privacy opens the Settings

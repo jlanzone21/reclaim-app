@@ -557,8 +557,137 @@ Reply with only the one word.`;
     return refreshing;
   }
 
+  // ---- 3b. The note bank: complete AI-written notes for each combination of reasons ----
+  //
+  // This is what makes the notification / full-screen text actually AI-written AND specific. The model
+  // can't run while the app is closed, so while the app is open it pre-writes a few COMPLETE two-sentence
+  // notes for each combination of reasons that can fire, with live slots -- {app}, {minutes}, {time} --
+  // which the native notifier (RiskNotificationText.java) / the extension fill with the real values the
+  // moment a nudge fires: "You've been on Instagram for 22 minutes late tonight, a hard time of day for
+  // you. Take a moment to pause and check in." Same rewrite-and-verify method as the alert note (the
+  // model only rewords a sentence the code wrote; every output is checked word-by-word), measured on the
+  // real phone with the slots: 12 of 15 passed and every failure was correctly rejected.
+  //
+  // Signature letters (same in RiskNotificationText.java and extension/lib/notificationText.js):
+  //   D duration (names the app too, so it replaces A)   A flagged app / flagged social media
+  //   T a hard time of day                               L nobody nearby
+  // Keyword nudges never get a note -- they keep their one fixed line.
+  const NOTE_SIGS = ["D", "DT", "DL", "DTL", "A", "AT", "AL", "ATL"];
+  const NOTE_KEY = "reclaim_note_bank_v1";
+  const NOTE_SAMPLES = 3;
+
+  function noteSignature(ids) {
+    const fired = new Set(ids);
+    if (["recentKeywordSevere", "recentKeyword", "recentKeywordMild"].some((k) => fired.has(k))) return null;
+    const d = fired.has("duration");
+    const a = fired.has("triggerApp") || fired.has("socialMedia");
+    if (!d && !a) return null;
+    return (d ? "D" : "A") + (fired.has("selfReportedTime") || fired.has("historicalTime") ? "T" : "") + (fired.has("alone") ? "L" : "");
+  }
+
+  // The sentence the model is asked to reword for a signature: facts only, with the live slots.
+  function noteBase(sig) {
+    const head = sig.startsWith("D") ? "You've been on {app} for {minutes} minutes {time}" : "You're on {app} {time}";
+    const tail = (sig.includes("T") ? ", a hard time of day for you" : "") + (sig.includes("L") ? ", and no one else seems to be nearby" : "");
+    return `${head}${tail}.`;
+  }
+
+  const NOTE_SYSTEM = `You rewrite a short note from a caring recovery app. The app is checking in because it wants the person to pause for a moment. It is NOT a greeting and NOT praise: never wish them a good time or say anything is great. Keep every fact exactly as given, add nothing new (no feelings, reasons, guesses, names or numbers), keep any {app}, {minutes} or {time} placeholder exactly as written, then add one short, gentle sentence inviting them to pause and check in. Two sentences total. Output only the two sentences.`;
+
+  // Returns the cleaned note or null. Checked against the base sentence it was written from.
+  function validateNote(sig, raw) {
+    const base = noteBase(sig);
+    let s = String(raw).replace(/\s*\n+\s*/g, " ").trim();
+    if (!s || /[^\x20-\x7E\u2019\u2014]/.test(s)) return null;
+    if (!/\bcheck/i.test(s)) s += " Let's check in."; // the model often forgets the invitation; add the fixed one
+    if (s.length < 25 || s.length > 200) return null;
+    if (/\{[^}]*\}/.test(s.replace(PLACEHOLDERS, ""))) return null;
+    if ((base.match(PLACEHOLDERS) || []).some((p) => !s.includes(p))) return null;
+    if (/\d/.test(s)) return null;
+    const parts = splitSentences(s);
+    if (!parts.length || parts.length > 2 || !parts.every(isSafe)) return null;
+    if (!vocabOk(s, `${base} ${EXPLAIN_GOAL_WORDS}`)) return null;
+    // The vocabulary check can't see structure: on the real phone a note passed that read "...{time}, and a
+    // hard time of day for you, no one else seems to be nearby." So it must also OPEN the way its source
+    // sentence does ("You've been on {app} for {minutes} minutes {time}" / "You're|You are on {app} {time}")
+    // and may not splice a clause on with "and a ...".
+    const head = base.split(/[,.]/)[0];
+    const heads = [head, head.replace("You're", "You are")];
+    if (!heads.some((h) => s.startsWith(h))) return null;
+    if (/\band a hard time\b/i.test(s)) return null;
+    return s;
+  }
+
+  function readNoteBank() {
+    try {
+      const stored = JSON.parse(localStorage.getItem(NOTE_KEY) || "null");
+      return stored && stored.bank ? stored : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Re-validated on every read, like the phrase bank: whatever no longer passes today's rules is dropped.
+  function getNoteBank() {
+    const stored = readNoteBank();
+    if (!stored) return {};
+    const clean = {};
+    for (const sig of NOTE_SIGS) {
+      const ok = [...new Set((stored.bank[sig] || []).map((n) => validateNote(sig, n)).filter(Boolean))];
+      if (ok.length) clean[sig] = ok;
+    }
+    return clean;
+  }
+
+  let refreshingNotes = null;
+
+  // Writes (or weekly rewrites) the bank, one small model call per sample, then mirrors it to the
+  // background notifier. Best-effort and quiet: stops at the first failure, keeps what it has, and the
+  // notifier falls back to per-factor phrases for any combination without a note.
+  function refreshNoteBank({ force = false } = {}) {
+    if (refreshingNotes) return refreshingNotes;
+    const stored = readNoteBank();
+    const fresh = !!stored && Date.now() - stored.at < BANK_MAX_AGE_MS;
+    const nativeOrExt =
+      (typeof LocalSignals !== "undefined" && LocalSignals.available()) || (typeof WebTracker !== "undefined" && WebTracker.available());
+    if (!nativeOrExt || typeof LocalModel === "undefined" || !LocalModel.isReady() || (!force && fresh)) return Promise.resolve(false);
+    refreshingNotes = (async () => {
+      const bank = { ...getNoteBank() };
+      let wrote = 0;
+      try {
+        for (const sig of NOTE_SIGS) {
+          const have = new Set(bank[sig] || []);
+          for (let i = 0; i < NOTE_SAMPLES; i++) {
+            const raw = await withTimeout(ask(NOTE_SYSTEM, `${noteBase(sig)}\n${EXPLAIN_GOAL}`, { maxTokens: 70, temperature: i === 0 ? 0.3 : 0.7 }), MODEL_WAIT_MS);
+            const note = validateNote(sig, raw);
+            if (note && !have.has(note)) {
+              have.add(note);
+              wrote++;
+              bank[sig] = [...have].slice(0, 4); // kept as each one lands, so a failure part-way loses nothing
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Note bank refresh stopped early:", err);
+      }
+      if (wrote) {
+        try {
+          localStorage.setItem(NOTE_KEY, JSON.stringify({ bank, at: Date.now() }));
+        } catch (e) {}
+        if (typeof RiskProfile !== "undefined") RiskProfile.syncToNative();
+      }
+      return wrote > 0;
+    })().finally(() => {
+      refreshingNotes = null;
+    });
+    return refreshingNotes;
+  }
+
   return {
     FACTOR_GUIDE,
+    getNoteBank,
+    refreshNoteBank,
+    noteSignature,
     explain,
     templateSummary,
     numbersFor,
@@ -574,6 +703,9 @@ Reply with only the one word.`;
     _attributeFactors: attributeFactors,
     // exposed for tests
     _validatePhrase: validatePhrase,
+    _noteBase: noteBase,
+    _validateNote: validateNote,
+    _NOTE_SIGS: NOTE_SIGS,
     _grounded: grounded,
     _vocabOk: vocabOk,
     _safeSentences: safeSentences,

@@ -91,8 +91,8 @@ const LocalSignals = (function () {
   // detail popup that's no longer pending anyway.
   async function getPendingVerseRequest() {
     if (!available()) return false;
-    const { pending } = await plugin().getPendingVerseRequest();
-    return !!pending;
+    const { pending, kind } = await plugin().getPendingVerseRequest();
+    return pending ? kind || "verse" : false;
   }
 
   // RiskScorer's adaptive-tuning loop, both halves: correlates this check-in against whichever
@@ -111,6 +111,14 @@ const LocalSignals = (function () {
   async function recordRiskFeedback({ alertId, valid, factors }) {
     if (!available()) return null;
     return plugin().recordRiskFeedback({ alertId, valid, factors: factors || [] });
+  }
+
+  // "This helped" / "Not for me" taps on the verse shown on the full-screen check-in, parked natively until
+  // the app opens -- see VerseBank.processFeedback. Each: {ref, text, sig, bucket, rating, at}. Consumed once.
+  async function takePendingVerseFeedback() {
+    if (!available()) return [];
+    const { feedback } = await plugin().getPendingVerseFeedback();
+    return feedback || [];
   }
 
   // Words the person typed on the full-screen check-in's flag page (native can't run the model, so
@@ -181,6 +189,7 @@ const LocalSignals = (function () {
     recordCheckinOutcome,
     recordRiskFeedback,
     takePendingFeedbackNotes,
+    takePendingVerseFeedback,
     getNotificationStats,
     debugRunBackgroundCheck,
     debugSendNightlyCheckin,
