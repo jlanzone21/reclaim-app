@@ -46,11 +46,15 @@ import androidx.core.content.ContextCompat;
  * That's Android's own anti-abuse design (enforced since Android 10), not a bug here, and not
  * something worked around -- see this session's discussion of why not.
  *
- * The notification/lock-screen text is deliberately generic (GENERIC_TEXTS below) -- never names
- * the app or pattern that triggered it, since anyone glancing at a locked phone could see that
- * text. The specific "here's what we noticed" detail (RiskScorer's userReasons) is written to
- * LocalSignalsDb's app_meta instead, read back and shown by app.js only once the app is actually
- * open -- which requires deliberately unlocking the phone first. See PURPOSE.md.
+ * The notification text says specifically why (RiskNotificationText: "You've been on Instagram for
+ * 22 minutes. Let's check in."), written from RiskScorer's trace with wording the on-device AI
+ * authored while the app was open -- that is the default, a deliberate reversal of the earlier
+ * always-generic text, decided by the user. A Privacy setting ("lock-screen detail", app_meta
+ * "lock_screen_detail") switches back to the generic GENERIC_TEXTS below for anyone who doesn't
+ * want it readable on a locked phone. Either way the keyword factors only ever say "something on
+ * your screen caught our attention" -- never the word or what was seen. The fuller breakdown
+ * (userReasons + the trace) goes to app_meta and is shown, with an AI-written explanation, once
+ * the app is open. See PURPOSE.md.
  */
 @SuppressWarnings("deprecation") // UsageEvents.Event.MOVE_TO_FOREGROUND/BACKGROUND, see ForegroundAppMonitor
 final class RiskNudgeMonitor {
@@ -94,6 +98,9 @@ final class RiskNudgeMonitor {
     private RiskNudgeMonitor() {}
 
     static void checkAndNotify(Context ctx) {
+        // Free-text feedback from the overlay's flag page that the app never got to read (see
+        // RiskFeedbackNotes): after a while it applies to everything that fired.
+        RiskFeedbackNotes.flushStale(ctx);
         if (!hasUsageAccess(ctx) || !hasNotificationPermission(ctx)) return;
 
         Session session = currentSession(ctx);
@@ -126,10 +133,16 @@ final class RiskNudgeMonitor {
     // part of the real detection path. Runs the real scorer against whatever's actually
     // foreground right now, but skips the score threshold and the dedup check so a real
     // notification can be seen on demand instead of waiting for real conditions to align.
-    static void debugForceNotify(Context ctx) {
+    static void debugForceNotify(Context ctx, String packageOverride, int minutesOverride) {
         Session session = currentSession(ctx);
         String packageName = session != null ? session.packageName : ctx.getPackageName();
         long sessionMinutes = session != null ? (System.currentTimeMillis() - session.startedAt) / 60000 : 0;
+        // Optional overrides, so a test can score "N minutes on <that app>" without actually sitting
+        // in it (the Testing panel's own timers can't fire while the app is backgrounded).
+        if (packageOverride != null && !packageOverride.isEmpty()) {
+            packageName = packageOverride;
+            sessionMinutes = Math.max(0, minutesOverride);
+        }
         RiskScorer.Result result = RiskScorer.score(ctx, packageName, sessionMinutes);
         Log.d(TAG, "[debug] score=" + result.score + " threshold=" + result.threshold + " [" + result.reason + "]");
         postNotification(ctx, packageName, result);
@@ -200,13 +213,10 @@ final class RiskNudgeMonitor {
         return mode == android.app.AppOpsManager.MODE_ALLOWED;
     }
 
-    // Deliberately generic everywhere it could be seen before the phone is unlocked (the
-    // notification banner, and the lock screen if a full-screen intent actually takes over) --
-    // never names the app or the specific pattern. The real "here's what we noticed" detail only
-    // shows once the app is actually open, which requires deliberately unlocking first. See
-    // PURPOSE.md's "Decisions worth remembering". Several equally-generic phrasings, picked at
-    // random per post, purely so this doesn't read as the exact same robotic string every time --
-    // none of them may reveal any more than the original single string did.
+    // The generic fallback, used only when the user has turned "lock-screen detail" OFF (default
+    // is ON -- see the class doc comment) or no specific text could be composed. Never names the
+    // app or the pattern, so none of these may reveal anything. Several phrasings, picked at
+    // random per post, purely so this doesn't read as the exact same robotic string every time.
     private static final String[] GENERIC_TEXTS = {
             "Reclaim wants to check in with you.",
             "Got a second to check in?",
@@ -227,7 +237,10 @@ final class RiskNudgeMonitor {
         }
 
         LocalSignalsDb db = LocalSignalsDb.getInstance(ctx);
-        db.setMeta("pending_risk_alert", buildPendingAlertJson(ctx, packageName, result));
+        // One id for this nudge everywhere (pending alert, overlay): a verdict given on either
+        // surface is then recognized as the same alert and counts once.
+        long alertId = System.currentTimeMillis();
+        db.setMeta("pending_risk_alert", buildPendingAlertJson(ctx, packageName, result, alertId));
         // Read (and cleared) by LocalSignalsPlugin.recordCheckinOutcome once a check-in actually
         // happens -- see RiskScorer's class doc comment for the adaptive-tuning loop this feeds.
         db.setMeta("pending_notification_factors", buildPendingFactorsJson(result));
@@ -249,7 +262,7 @@ final class RiskNudgeMonitor {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(ctx, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle("Reclaim")
-                .setContentText(GENERIC_TEXTS[new java.util.Random().nextInt(GENERIC_TEXTS.length)])
+                .setContentText(notificationText(ctx, db, packageName, result))
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setCategory(NotificationCompat.CATEGORY_REMINDER)
                 .setContentIntent(openAppIntent)
@@ -305,6 +318,59 @@ final class RiskNudgeMonitor {
 
         nm.notify(NOTIFICATION_ID, builder.build());
         Log.d(TAG, "posted risk nudge notification");
+
+        // The notification above stays as the fallback and the record; when the person has granted
+        // "Display over other apps", a full-screen check-in covers whatever they're doing as well --
+        // the whole point, since a notification is easy to ignore mid-slip. See RiskOverlay.
+        if (RiskOverlay.canShow(ctx)) {
+            RiskOverlay.Spec spec = new RiskOverlay.Spec();
+            spec.text = overlayText(ctx, db, packageName, result);
+            spec.appLabel = appLabel(ctx, packageName);
+            spec.alertId = alertId;
+            spec.factors = result.factors;
+            // Always shown on the overlay: the person judges for themselves whether it's a false alarm.
+            for (int i = 0; i < result.userReasons.length(); i++) spec.reasons.add(result.userReasons.optString(i));
+            spec.partnerNames[0] = db.getMeta("accountability_name");
+            spec.partnerPhones[0] = db.getMeta("accountability_phone");
+            spec.partnerNames[1] = db.getMeta("accountability_name_2");
+            spec.partnerPhones[1] = db.getMeta("accountability_phone_2");
+            RiskOverlay.show(ctx, spec);
+        }
+    }
+
+    // Specific text (default) from the trace + the AI's phrase bank, or the generic fallback when
+    // lock-screen detail is off or nothing specific could be composed.
+    private static String notificationText(Context ctx, LocalSignalsDb db, String packageName, RiskScorer.Result result) {
+        return composeText(ctx, db, packageName, result, !"0".equals(db.getMeta("lock_screen_detail")), true);
+    }
+
+    // The overlay is drawn over an UNLOCKED, in-use screen (see RiskOverlay), so the lock-screen
+    // privacy setting doesn't apply -- it always gets the specific sentence.
+    private static String overlayText(Context ctx, LocalSignalsDb db, String packageName, RiskScorer.Result result) {
+        String s = composeText(ctx, db, packageName, result, true, false);
+        return s != null ? s : "Reclaim wants to check in with you.";
+    }
+
+    private static String composeText(Context ctx, LocalSignalsDb db, String packageName, RiskScorer.Result result,
+                                      boolean detail, boolean genericFallback) {
+        String text = null;
+        if (detail && result.trace != null) {
+            org.json.JSONObject bank = null;
+            try {
+                String raw = db.getMeta("phrase_bank");
+                if (raw != null && !raw.isEmpty()) bank = new org.json.JSONObject(raw);
+            } catch (org.json.JSONException e) {
+                // Malformed bank -- RiskNotificationText falls back to its built-in phrases.
+            }
+            text = RiskNotificationText.compose(
+                    result.trace.optJSONArray("factors"),
+                    appLabel(ctx, packageName),
+                    result.trace.optLong("sessionMinutes"),
+                    result.trace.optString("timeBucket"),
+                    bank, true, new java.util.Random());
+        }
+        if (text == null && genericFallback) return GENERIC_TEXTS[new java.util.Random().nextInt(GENERIC_TEXTS.length)];
+        return text;
     }
 
     // ACTION_DIAL, not ACTION_CALL: opens the phone's own dialer pre-filled, doesn't place the
@@ -362,12 +428,18 @@ final class RiskNudgeMonitor {
     // The specific, plain-language detail (which app, which reasons) never appears in the
     // notification itself -- only here, read back by app.js once the app is actually open. See
     // GENERIC_TEXTS above.
-    private static String buildPendingAlertJson(Context ctx, String packageName, RiskScorer.Result result) {
+    private static String buildPendingAlertJson(Context ctx, String packageName, RiskScorer.Result result, long alertId) {
         try {
             org.json.JSONObject alert = new org.json.JSONObject();
             alert.put("appLabel", appLabel(ctx, packageName));
             alert.put("reasons", result.userReasons);
             alert.put("occurredAt", LocalSignalsDb.isoNow());
+            // What the in-app explanation is written from, and what the user's verdict on this
+            // alert is applied to -- see RiskScorer's class doc ("Explainability") and
+            // LocalSignalsPlugin.recordRiskFeedback. `id` makes a verdict idempotent per alert.
+            alert.put("id", alertId);
+            alert.put("factors", result.factors);
+            alert.put("trace", result.trace);
             return alert.toString();
         } catch (org.json.JSONException e) {
             return null;

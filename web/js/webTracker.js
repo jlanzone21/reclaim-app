@@ -111,6 +111,9 @@ const WebTracker = (function () {
   const recordCheckinOutcome = (type, timestampMs, tags) =>
     call("RECORD_OUTCOME", { type, timestamp: timestampMs, tags: tags || [] }, null);
 
+  // Same as LocalSignals.recordRiskFeedback, for the extension's scorer.
+  const recordRiskFeedback = ({ alertId, valid, factors }) => call("RISK_FEEDBACK", { alertId, valid, factors: factors || [] }, null);
+
   // { riskAlert, nightly, verse } -- each consumed once (the extension clears them on read), the
   // same pending-flag pattern LocalSignals uses on Android.
   const takePending = () => call("TAKE_PENDING", {}, { riskAlert: null, nightly: null, verse: false });
@@ -138,6 +141,7 @@ const WebTracker = (function () {
     editList,
     syncRiskContext,
     recordCheckinOutcome,
+    recordRiskFeedback,
     takePending,
     onPending,
     onAvailable,

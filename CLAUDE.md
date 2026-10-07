@@ -33,8 +33,14 @@ Non-negotiables (see PURPOSE.md for the full reasoning):
   `agentIsCrisis` in `web/js/agentTools.js`), runs before any model call, and
   should over-trigger rather than under-trigger. Gaps are bugs.
 - **Allowlist, not blocklist,** for what on-screen text may be read.
-- Lock-screen/notification text stays **generic** ("Reclaim wants to check in
-  with you.") — details only show once the app is open.
+- Risk-nudge notification text says **why** by default ("You've been on
+  Instagram for 22 minutes. Let's check in.") — the user's decision, reversing
+  the earlier always-generic rule. A Privacy setting, "Say why on the lock
+  screen" (`lock_screen_detail`, default ON), switches back to generic wording
+  ("Got a second to check in?"). Either way the text **never** includes the
+  matched keyword or anything that was on screen — the keyword factors only
+  ever say "Something on your screen caught our attention." (fixed line, never
+  AI-written). Don't loosen that.
 
 Note: the claude.ai project's original goal doc describes "a small specialized
 LLM that runs on our server" and "a machine learning model trained by user
@@ -256,6 +262,20 @@ Main JS modules (`web/js/`):
   data — a duplicated copy once caused a fix to silently not reach Basic mode.
   When a tool's output shape changes, update **both** `app.js`
   `renderToolResult` and `resourcesAgent.js` reply text.
+- **The AI also explains risk nudges** (`riskExplainer.js`), grounded in
+  RiskScorer's **trace** (every factor, fired or not, with its values — see
+  RiskScorer.java "Explainability"; mirrored in `extension/lib/riskScorer.js`).
+  Three jobs: (1) the note at the top of the alert screen; (2) reading the
+  user's own words about whether a nudge was fair into a *proposed* verdict that
+  the user confirms before the existing bounded ±2 weight nudge runs
+  (`recordRiskFeedback` / extension `RISK_FEEDBACK`) — the model never moves
+  weights itself, and its factor picks are re-validated against what actually
+  fired; (3) writing phrase templates ({app}/{minutes}/{time}) ahead of time,
+  because the model can't run while the app is closed — native
+  `RiskNotificationText.java` / `extension/lib/notificationText.js` (keep the
+  two in step) fill in live values when a notification fires. Every model output
+  is checked in code and falls back to a deterministic template; the trace holds
+  no screen text. The free-text feedback box runs the crisis gate first.
 - Setup answers (accountability partner(s), pastor, tempting times, triggers)
   reach the prompt via `personalContext.js`; the prompt tells the model to
   name the partner. Up to 2 accountability partners
@@ -290,6 +310,39 @@ Main JS modules (`web/js/`):
   but ask first.
 
 ## 8. Android native side
+
+**Full-screen check-in** (`RiskOverlay.java`): on EVERY risk nudge, if the person has
+granted "Display over other apps" (`SYSTEM_ALERT_WINDOW`; a Privacy card sends them
+to the Settings page — the grant IS the consent, no separate toggle), a native
+overlay window covers whatever is on screen with: the same specific sentence as
+the notification, the plain-language reasons (ALWAYS shown, so people can judge a
+false alarm themselves — there is deliberately no "why" button), Call <partner>,
+Read a verse, "I'm okay" (5 s wait), and small underlined text links at the bottom:
+"This was a false alarm". (A 988 link was there and was removed at the user's
+request; while the overlay is up it covers the app's own crisis button, so the
+only ways out are "I'm okay", the flag page, Home, and the failsafe.) **Default verdict is
+"fair"**: any way of answering the main screen reinforces the factors that fired
+(bounded ±2 via `RiskScorer.applyFeedback`, once per alert id); only the flag link
+changes that. It opens a second page: tap which parts didn't fit and/or type why,
+Send — or Skip, which still counts as a false alarm on everything that fired. Picked
+reasons / Skip adjust immediately; typed words with no reasons picked wait in
+`RiskFeedbackNotes` for the on-device AI (the overlay can't run the model), which
+on the next app open asks one YES/NO per fired factor ("does this person say THIS
+part was wrong?") and applies the false alarm to the YES factors (all fired if none /
+no model), then keeps the note as context for the chat model
+(`RiskExplainer.processFeedbackNotes` / `feedbackContext`). The crisis gate runs
+before any model call on typed words. Unreinforced timeouts record nothing. Known
+tradeoff: because unflagged nudges now count as "fair", weights drift upward over
+time (bounded at 1.5× default); watch for it. It is an overlay window, not an activity, on
+purpose: Android 10+ blocks background activity starts, full-screen intents are
+denied to non-call apps on 14+, and 15+ narrowed the overlay exemption — verified
+on the Pixel 8a (Android 16) that the notification's `setFullScreenIntent` is
+`FSI_REQUESTED_BUT_DENIED` and that the overlay survives Back and Home and covers
+Chrome. Android gives no way to disable Home/Recents, so it is never "inescapable":
+Back is swallowed, Home leaves it up, and it has a hard 10-minute failsafe, and dies
+instantly if the permission is revoked. Scripture is deliberately not
+embedded yet (an embedded AI scripture feature is planned; "Read a verse" only
+routes to the existing verse flow). Don't add a way to make it unescapable.
 
 Java in `android/app/src/main/java/com/reclaim/app/`: `MainActivity`,
 Capacitor plugins (`LocalSignalsPlugin`, `AccessibilityPlugin`,

@@ -105,6 +105,23 @@ const LocalSignals = (function () {
     await plugin().recordCheckinOutcome({ type, timestamp: timestampMs, tags: tags || [] });
   }
 
+  // The person's verdict on a risk alert (see RiskExplainer): nudges the weights of the factors
+  // that fired, once per alert. Resolves {adjusted: string[], duplicate: boolean} -- adjusted is
+  // the factors that are actually tunable, so the UI can say truthfully what changed.
+  async function recordRiskFeedback({ alertId, valid, factors }) {
+    if (!available()) return null;
+    return plugin().recordRiskFeedback({ alertId, valid, factors: factors || [] });
+  }
+
+  // Words the person typed on the full-screen check-in's flag page (native can't run the model, so
+  // they wait here for RiskExplainer.processFeedbackNotes). Each: {alertId, app, text, factors,
+  // applied, at}. Consumed once.
+  async function takePendingFeedbackNotes() {
+    if (!available()) return [];
+    const { notes } = await plugin().getPendingFeedbackNotes();
+    return notes || [];
+  }
+
   // How many nightly/risk notifications have been sent vs. actually responded to (any action tap
   // or opening the app counts -- see NotificationTracking.java). Shape:
   // {"nightly":{"sent":N,"responded":N},"risk":{"sent":N,"responded":N}}, either key possibly
@@ -130,9 +147,11 @@ const LocalSignals = (function () {
     await plugin().debugSendNightlyCheckin();
   }
 
-  async function debugSendRiskNudge() {
+  // packageName/minutes (optional): score "N minutes on <that app>" instead of the real foreground
+  // session -- lets a test fire a nudge for another app while this one is backgrounded.
+  async function debugSendRiskNudge(packageName, minutes) {
     if (!available()) return;
-    await plugin().debugSendRiskNudge();
+    await plugin().debugSendRiskNudge({ packageName: packageName || "", minutes: minutes || 0 });
   }
 
   async function debugClearRiskNudgeCooldown() {
@@ -160,6 +179,8 @@ const LocalSignals = (function () {
     getPendingNightlyAction,
     getPendingVerseRequest,
     recordCheckinOutcome,
+    recordRiskFeedback,
+    takePendingFeedbackNotes,
     getNotificationStats,
     debugRunBackgroundCheck,
     debugSendNightlyCheckin,

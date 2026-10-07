@@ -45,6 +45,13 @@ const PermissionsView = (function () {
       grant: () => NativeAccessibility.openPermissionSettings(),
     },
     {
+      id: "overlay",
+      title: "Full-screen check-ins (display over other apps)",
+      reason: "When Reclaim notices risky signs, it covers your screen with a check-in you answer — a call to your accountability partner, \"I'm okay,\" or \"false alarm\" — instead of a notification that's easy to swipe away. It only draws Reclaim's own screen: nothing is read or sent. Turn it off any time by revoking this in Android settings.",
+      module: NativeOverlay,
+      grant: () => NativeOverlay.openPermissionSettings(),
+    },
+    {
       id: "post_notifications",
       title: "Notifications",
       reason: "Lets Reclaim occasionally check in with a notification — for example, asking whether a detected app session actually matches what you experienced, to verify the tracking is accurate.",

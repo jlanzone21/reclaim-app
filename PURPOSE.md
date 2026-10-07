@@ -2080,6 +2080,93 @@ reality:
 - [x] **Embedding model no longer reads everyday small talk as a feeling.** Found while testing the dropped Qwen step above: fresh small talk got confident cards -- "I just got back from the gym" -> relapse, "my phone battery is low" -> shame, "who won the game" -> a verse -- and a later fresh set added "came back from a hike" / "I'm back from church" -> relapse and good streak news -> relapse. Causes and fixes in `localEmbedder.js`: (1) the "none" examples were nearly all greetings and app questions; a broad 40-line everyday list fixed the false positives but cut real feelings caught from 26/28 to 21/28, so instead 12 targeted lines (good news, "back from...", devices -- `EVERYDAY_NONE`); (2) batching the example messages when embedding them padded them and shifted results (one false positive came and went with batch composition), so examples are now embedded one at a time, like a person's message; (3) "streak" news still read as relapse (the relapse examples mention streaks), so a narrow `GOOD_NEWS` guard drops an *inferred* theme when the message has good-news words and no setback words; (4) theme bar 0.035 (was 0.04), which won one feeling back at no small-talk cost. Each step was tested on a held-out set written fresh for it. Verified with the real model through the app's own `analyze()` (`scripts/embedding-calibration.js`, now 38 feelings / 64 small talk / 12 asks): 32/38 feelings caught (27 exact) and 1/64 small talk let through, vs 35/38 and 7 of the first 59 before; asks unchanged at 5/12 (2 wrong kinds). Tradeoff accepted: a few more real feelings get the model's short reply instead of cards, in exchange for not answering "I just got back from the gym" with relapse resources.
 
 - [x] **Plain verse requests show a verse on God's grace, not the Verse of the Day.** Asked for (Nathaniel, 2026-10-07): Home already shows YouVersion's Verse of the Day, so Chat shouldn't repeat it; default to a verse on the gospel / God's grace. `agentFindVerse` now uses the seeded verses tagged "grace" (`VERSE_DEFAULT_THEME`, 8 verses incl. Ephesians 2:8-9, Romans 5:20, Hebrews 4:15-16), still fetched and shown through YouVersion and ranked by learned preferences in AI mode; the intro reads "Here's a verse about God's grace for you." A message with a theme or a verse-topic match is unchanged; Home is unchanged. Applies to Basic mode too (shared `executeAgentTool`). Verified in the browser pane: AI mode (model mocked) and Basic mode both returned grace verses (Hebrews 4:15-16, Romans 5:20, 2 Peter 3:18) while Home showed Psalm 55:22 as Today's Verse.
+
+- [x] **AI-written, specific risk nudges + AI-assisted feedback.** Asked
+  for: let the on-device AI see how `RiskScorer` acted and which values made
+  it trigger (or not), write personal text from that ("it's late and you've
+  been scrolling"), and let the user say whether a nudge was valid so the
+  scorer can adjust. Built:
+  - `RiskScorer.score()` (Java) and the extension's port now return a
+    **trace**: every factor with fired/points/values and the plain-English
+    detail, plus the convergence and recent-Reclaim-use adjustments. No
+    screen text, never the matched keyword (only the severity tier).
+  - **Reversal, decided by the user:** the notification text is now specific
+    by default (reverses the earlier "permanently generic" decision above).
+    New Privacy setting "Say why on the lock screen", default ON, restores
+    generic text. Keyword factors keep a fixed, never-AI line ("Something on
+    your screen caught our attention."). The model can't run in the
+    background, so it writes phrase templates ahead of time while the app is
+    open (weekly refresh, one small call per factor, each validated) and
+    native/extension code fills live values ({app}/{minutes}/{time}).
+  - Alert screen: AI note (template shown first, replaced if the model's
+    version passes every check; all-or-nothing on the two sentences asked
+    for), a "See the numbers" breakdown, and feedback — buttons or free text.
+  - **Decision (user override of my recommendation):** the AI interprets the
+    free-text feedback. Guardrails kept: it only *proposes* {verdict, factors};
+    code restricts factors to ones that fired in that alert; the user
+    confirms; the existing bounded ±2 nudge (not the model) changes weights;
+    once per alert; the SEVERE keyword tier stays fixed and the UI says so.
+    The text box runs the crisis gate before any model call.
+  - Verified: extension tests (scorer, notifier, background incl. detail-off,
+    phrase bank, feedback idempotency); `tests/riskExplainer.test.js` with a
+    stubbed model (ungrounded numbers, claims, unsafe sentences, bad JSON,
+    out-of-range factor numbers); the Java composer run standalone against
+    the same cases; the Java compiles (`compileDebugJavaWithJavac`); the
+    alert screen exercised in a browser with a stubbed model/bridge.
+    **Not verified:** on a phone with the real Qwen model (quality of its
+    notes/phrases, latency, KV-cache cost of switching prompts), the real
+    notification text on a device, or `RiskScorer.score()`'s Java trace at
+    runtime (it compiles and mirrors the tested JS).
+
+- [x] **Full-screen check-in on every risk nudge.** Asked for: make the
+  notification act like an Authenticator-style takeover that covers the current
+  screen and forces an answer, with the notification's options (scripture,
+  accountability partner, I'm okay, false flag). Decisions (user): every nudge;
+  on by default once permission is granted (the system permission is the
+  consent); the scripture passage is deferred for a planned embedded-AI scripture
+  feature (a plain "Read a verse" route stays). Built `RiskOverlay.java`, a native
+  `TYPE_APPLICATION_OVERLAY` window launched from the background worker, with a
+  Privacy card for `SYSTEM_ALERT_WINDOW`. Why an overlay and not an activity:
+  background activity starts are blocked (Android 10+), the earlier full-screen
+  intent is denied on this phone (`FSI_REQUESTED_BUT_DENIED`), and Android 15+
+  narrowed the overlay exemption for starting activities.
+  - **Revised after first use (user critique):** no "Why am I seeing this?"
+    button -- the reasons are always shown on the overlay. "False alarm" is
+    small text at the bottom, and the default verdict is "fair": any normal
+    answer reinforces the fired factors, only the flag changes that. The flag
+    opens a separate page (tap which parts were wrong, type why, or Skip, which
+    still counts as a false alarm). Typed words feed the AI loop: native parks
+    them (the overlay can't run the model), and on the next app open the model
+    answers one YES/NO per fired factor to attribute the verdict (all fired
+    factors if it says NO to everything or is unavailable; a 12 h worker
+    fallback applies it if the app is never opened), the crisis gate runs
+    first, and the notes become context for the chat model. Tradeoff to
+    watch: unflagged nudges now count as "fair", so weights drift up (bounded).
+    Verified: Java compiles, `npm test` incl. the note pipeline against a
+    stubbed model. **Not verified on the phone** (it was disconnected): the new
+    overlay layout, the flag page and its keyboard, and how well the real model
+    answers the per-factor YES/NO.
+  - Safety, because it can cover the phone: Android can't disable Home, so this
+    is "stays up until answered", not inescapable; Back is swallowed; a 10-minute
+    failsafe removes it (a 988 link was included and then removed at the user's
+    request -- note the overlay covers the app's own crisis button while up); "I'm okay" is the
+    only way past it besides Home and is delayed 5 s; revoking the permission
+    removes it. Only drawn when the worker found the phone unlocked and in use.
+  - Verified on the Pixel 8a (Android 16): the overlay shows from the real
+    worker path with the real Java trace and text ("That's 22 minutes on Chrome
+    now. Let's check in."), covers Chrome, survives Back and Home, early taps on
+    "I'm okay" are ignored then it dismisses and cancels the notification,
+    "false alarm" lowers the right weights (30→28) with the same alert id as the
+    in-app dialog, and "Why am I seeing this?" opens the in-app alert with the
+    AI note. **Bugs this found:** Capacitor's `getDouble` returns its default
+    for a JS integer too big for an int, so every in-app verdict was silently
+    dropped (now `optLong`); a bare one-fact alert made Qwen cheer ("I hope
+    you're having a wonderful time") so the AI note almost never passed (6/6
+    once the purpose is stated in the prompt). The 10-minute failsafe
+    was then confirmed on the phone (overlay gone at the 10:00 mark, no verdict
+    recorded). Not verified: other Android versions/OEM skins, and behavior with
+    Do Not Disturb/Focus modes.
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing

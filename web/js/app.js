@@ -241,6 +241,7 @@
     checkPendingNightlyAction();
     const wentToVerse = await checkPendingVerseRequest();
     if (!wentToVerse && typeof RiskAlertView !== "undefined") RiskAlertView.checkPending();
+    if (typeof RiskExplainer !== "undefined") RiskExplainer.processFeedbackNotes();
   });
 
   navItems.forEach((btn) => {
@@ -268,6 +269,16 @@
   });
 
   LocalModel.onChange(renderAiStatus);
+  // Once the model is up, let it write (or weekly refresh) the notification phrase templates --
+  // delayed so it never competes with the person's first message or the alert screen's own note.
+  // Only does anything where something posts notifications (Android / the extension); see
+  // RiskExplainer.refreshPhraseBank.
+  let phraseBankScheduled = false;
+  LocalModel.onChange((s) => {
+    if (s.state !== "ready" || phraseBankScheduled) return;
+    phraseBankScheduled = true;
+    setTimeout(() => RiskExplainer.refreshPhraseBank(), 45000);
+  });
   LocalModel.init();
   DB.init()
     .then(() => {
@@ -299,6 +310,8 @@
       checkPendingVerseRequest().then((wentToVerse) => {
         if (!wentToVerse) RiskAlertView.checkPending();
       });
+      // Words typed on the full-screen check-in's flag page wait for the AI -- see RiskExplainer.
+      RiskExplainer.processFeedbackNotes();
     })
     .catch((err) => {
       console.error("Failed to initialize local database", err);

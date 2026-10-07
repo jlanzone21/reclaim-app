@@ -53,6 +53,15 @@ import java.util.Set;
  * on-device LLM -- a handful of check-ins is nowhere near enough to train anything, and nudging a
  * number is a math problem, not a language one. Bounded per-factor so a small, sparse data set
  * can't swing a weight far off its starting point in one or two events.
+ *
+ * Explainability: every score() also records a structured trace (Result.trace) -- for EACH factor
+ * whether it fired, how many points it added, and the concrete values behind that, plus the
+ * convergence/protective adjustments and the final score vs. threshold. The on-device LLM reads
+ * this (via the pending alert, see RiskNudgeMonitor) to write the user-facing explanation, so it
+ * works from what the arithmetic actually did rather than guessing. The trace holds NO on-screen
+ * text and never the matched keyword -- only the severity tier -- same line the notification text
+ * itself draws. A third adaptive-tuning input exists for the same reason: the user's own verdict on
+ * an alert ("fair" / "false alarm") reaches adjustWeights via LocalSignalsPlugin.recordRiskFeedback.
  */
 final class RiskScorer {
     private RiskScorer() {}
@@ -137,13 +146,15 @@ final class RiskScorer {
         final String reason; // internal, logcat-only -- not shown to the user
         final JSONArray userReasons; // plain-language, shown in-app once opened -- see PendingRiskAlert
         final JSONArray factors; // machine-readable names of which factors fired, for adjustWeights
+        final JSONObject trace; // every factor (fired or not) with its values -- see class doc, "Explainability"
 
-        Result(int score, int threshold, String reason, JSONArray userReasons, JSONArray factors) {
+        Result(int score, int threshold, String reason, JSONArray userReasons, JSONArray factors, JSONObject trace) {
             this.score = score;
             this.threshold = threshold;
             this.reason = reason;
             this.userReasons = userReasons;
             this.factors = factors;
+            this.trace = trace;
         }
 
         boolean triggers() {
@@ -172,6 +183,8 @@ final class RiskScorer {
         StringBuilder reason = new StringBuilder();
         JSONArray userReasons = new JSONArray();
         JSONArray factors = new JSONArray();
+        JSONArray trace = new JSONArray();
+        JSONArray adjustments = new JSONArray();
 
         if (db.isAllowlisted(currentPackage)) {
             int w = weights.get("triggerApp");
@@ -180,6 +193,9 @@ final class RiskScorer {
             factors.put("triggerApp");
             reason.append("trigger-app(+").append(w).append(") ");
             userReasons.put("You're on an app you flagged as a trigger.");
+            traceFactor(trace, "triggerApp", true, w, "the foreground app is on the user's trigger list");
+        } else {
+            traceFactor(trace, "triggerApp", false, 0, "the foreground app is not on the user's trigger list");
         }
 
         // Gradual, not a cliff: rate is derived from the cap so "reaches full weight after 15
@@ -193,6 +209,10 @@ final class RiskScorer {
             factors.put("duration");
             reason.append("duration=").append(sessionMinutes).append("m(+").append(durationPoints).append(") ");
             userReasons.put("You've been there for " + sessionMinutes + " minutes.");
+            traceFactor(trace, "duration", true, durationPoints,
+                    sessionMinutes + " minutes in the app so far (reaches the full " + durationCap + " points at 15 minutes)");
+        } else {
+            traceFactor(trace, "duration", false, 0, "the session has only just started (" + sessionMinutes + " minutes)");
         }
 
         String currentBucket = timeBucket(Calendar.getInstance().get(Calendar.HOUR_OF_DAY));
@@ -204,6 +224,9 @@ final class RiskScorer {
             factors.put("selfReportedTime");
             reason.append("self-reported-time(+").append(w).append(") ");
             userReasons.put("It's a time of day you told us is hard for you.");
+            traceFactor(trace, "selfReportedTime", true, w, "it is currently " + currentBucket + ", a time the user listed as tempting");
+        } else {
+            traceFactor(trace, "selfReportedTime", false, 0, "it is currently " + currentBucket + ", not a time the user listed as tempting");
         }
 
         Set<String> riskyBuckets = parseJsonArray(db.getMeta("risky_time_buckets"));
@@ -214,6 +237,9 @@ final class RiskScorer {
             factors.put("historicalTime");
             reason.append("historical-time(+").append(w).append(") ");
             userReasons.put("This time of day has been difficult for you before, based on your check-ins.");
+            traceFactor(trace, "historicalTime", true, w, currentBucket + " is a time of day where the user's past slips cluster");
+        } else {
+            traceFactor(trace, "historicalTime", false, 0, currentBucket + " is not a time of day where the user's past slips cluster (or there isn't enough check-in history yet)");
         }
 
         Set<String> commonTriggers = parseJsonArray(db.getMeta("common_triggers"));
@@ -226,18 +252,29 @@ final class RiskScorer {
             factors.put("socialMedia");
             reason.append("social-media(+").append(w).append(") ");
             userReasons.put("It's a social media app, which you've flagged as a trigger.");
+            traceFactor(trace, "socialMedia", true, w, "a social media app, and the user flagged social media as a trigger");
+        } else {
+            traceFactor(trace, "socialMedia", false, 0, SOCIAL_MEDIA_PACKAGES.contains(currentPackage)
+                    ? "a social media app, but the user hasn't flagged social media as a trigger"
+                    : "not a social media app");
         }
 
         // "0" specifically (not "1-2" etc.) -- a real signal of physical solitude, not just "not
         // many people nearby." null (no scan yet, or permission not granted) never fires this --
         // missing data means "unknown," not "alone imagined as the safer default."
-        if ("0".equals(db.mostRecentNearbyDeviceBucket())) {
+        String nearbyBucket = db.mostRecentNearbyDeviceBucket();
+        if ("0".equals(nearbyBucket)) {
             int w = weights.get("alone");
             points += w;
             factorCount++;
             factors.put("alone");
             reason.append("alone(+").append(w).append(") ");
             userReasons.put("No one else seems to be nearby right now.");
+            traceFactor(trace, "alone", true, w, "the latest nearby-device scan found no other devices");
+        } else {
+            traceFactor(trace, "alone", false, 0, nearbyBucket == null
+                    ? "no nearby-device scan is available, so this is unknown (not assumed to mean alone)"
+                    : "the latest nearby-device scan found other devices around");
         }
 
         // The strongest signal available: not a usage-pattern proxy like the factors above, but an
@@ -266,6 +303,7 @@ final class RiskScorer {
             factors.put("recentKeywordSevere");
             reason.append("recent-keyword-severe(+").append(w).append(") ");
             userReasons.put("Something explicit was just seen on this app -- this matters enough to flag right away.");
+            traceFactor(trace, "recentKeywordSevere", true, w, "on-screen text in this app recently matched the most serious keyword tier (within " + RECENT_KEYWORD_SEVERE_WINDOW_MIN + " minutes); this tier always triggers");
         } else if ("moderate".equals(keywordSeverity)) {
             int w = (int) Math.round(weights.get("recentKeyword") * intensityMult);
             points += w;
@@ -273,6 +311,7 @@ final class RiskScorer {
             factors.put("recentKeyword");
             reason.append("recent-keyword(+").append(w).append(") ");
             userReasons.put("Something on this screen recently matched a word or phrase you'd flagged.");
+            traceFactor(trace, "recentKeyword", true, w, "on-screen text in this app recently matched the moderate keyword tier (within " + RECENT_KEYWORD_WINDOW_MIN + " minutes)");
         } else if ("mild".equals(keywordSeverity)) {
             int w = (int) Math.round(weights.get("recentKeywordMild") * intensityMult);
             points += w;
@@ -280,6 +319,9 @@ final class RiskScorer {
             factors.put("recentKeywordMild");
             reason.append("recent-keyword-mild(+").append(w).append(") ");
             userReasons.put("Something on this screen recently had a word or phrase worth noticing.");
+            traceFactor(trace, "recentKeywordMild", true, w, "on-screen text in this app recently matched the mildest keyword tier (within " + RECENT_KEYWORD_MILD_WINDOW_MIN + " minutes)");
+        } else {
+            traceFactor(trace, "recentKeyword", false, 0, "no keyword match on this app's screen within its recency window");
         }
 
         // Convergence bonus: any single factor above is weak evidence on its own (being on social
@@ -295,6 +337,7 @@ final class RiskScorer {
             points += convergenceBonus;
             reason.append("convergence=").append(factorCount).append("factors(+").append(convergenceBonus).append(") ");
             userReasons.put("Several small things are lining up right now, which together matter more than any one alone.");
+            traceAdjustment(adjustments, "convergence", convergenceBonus, factorCount + " different kinds of signal were true at the same time");
         }
 
         // Protective, not a risk factor: recently having actually opened Reclaim itself is a good
@@ -305,12 +348,92 @@ final class RiskScorer {
         // Subtracted, not a threshold change, so it still shows up in the log/reason trail.
         int minutesSinceOpen = LocalSignalsDb.minutesSince(db.getMeta("last_reclaim_open_at"));
         if (minutesSinceOpen >= 0 && minutesSinceOpen <= RECENT_RECLAIM_WINDOW_MIN) {
+            int pointsBefore = points;
             points = Math.max(0, points - RECENT_RECLAIM_PROTECTION);
+            traceAdjustment(adjustments, "recentReclaimUse", points - pointsBefore,
+                    "the user opened Reclaim " + minutesSinceOpen + " minutes ago, which is a protective sign");
             reason.append("recent-reclaim-use(-").append(RECENT_RECLAIM_PROTECTION).append(") ");
         }
 
         int threshold = thresholdForIntensity(intensity);
-        return new Result(points, threshold, reason.toString().trim(), userReasons, factors);
+        JSONObject traceObj = new JSONObject();
+        try {
+            traceObj.put("platform", "android");
+            traceObj.put("score", points);
+            traceObj.put("threshold", threshold);
+            traceObj.put("intensity", intensity == null || intensity.isEmpty() ? "medium" : intensity);
+            traceObj.put("timeBucket", currentBucket);
+            traceObj.put("sessionMinutes", sessionMinutes);
+            traceObj.put("factors", trace);
+            traceObj.put("adjustments", adjustments);
+        } catch (JSONException e) {
+            // Plain ints/strings, can't happen -- an empty trace just means a less detailed explanation.
+        }
+        Result result = new Result(points, threshold, reason.toString().trim(), userReasons, factors, traceObj);
+        try {
+            traceObj.put("highRisk", result.isHighRisk());
+        } catch (JSONException e) {
+            // Same as above.
+        }
+        return result;
+    }
+
+    // One row of Result.trace, for a factor whether or not it fired -- "didn't fire, and here's why"
+    // is as much of the explanation as "fired" (see class doc, "Explainability"). detail is plain
+    // English meant for the LLM and the in-app "see the numbers" view, never shown on a lock screen.
+    private static void traceFactor(JSONArray trace, String id, boolean fired, int points, String detail) {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("id", id);
+            o.put("fired", fired);
+            o.put("points", points);
+            o.put("detail", detail);
+            trace.put(o);
+        } catch (JSONException e) {
+            // Plain values, can't happen.
+        }
+    }
+
+    // The fixed, non-adaptive pieces (convergence bonus, recent-Reclaim-use protection): signed
+    // points, so a protective subtraction reads as negative.
+    private static void traceAdjustment(JSONArray adjustments, String id, int points, String detail) {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("id", id);
+            o.put("points", points);
+            o.put("detail", detail);
+            adjustments.put(o);
+        } catch (JSONException e) {
+            // Plain values, can't happen.
+        }
+    }
+
+    // The user's verdict on one alert, applied once: shared by the in-app feedback
+    // (LocalSignalsPlugin.recordRiskFeedback) and the full-screen overlay's "false alarm" button
+    // (RiskOverlay), so both go through the same idempotency guard and the same bounded nudge.
+    // Returns the factor names actually tuned, or null if this alert's verdict was already recorded
+    // (or has no id) -- a double tap, or the overlay and the app dialog both being answered.
+    static JSONArray applyFeedback(Context ctx, long alertId, JSONArray factors, boolean valid) {
+        LocalSignalsDb db = LocalSignalsDb.getInstance(ctx);
+        String id = String.valueOf(alertId);
+        if (alertId == 0 || id.equals(db.getMeta("last_risk_feedback_alert_id"))) return null;
+        db.setMeta("last_risk_feedback_alert_id", id);
+        JSONArray adjustable = adjustableFactors(factors);
+        adjustWeights(ctx, adjustable, valid);
+        return adjustable;
+    }
+
+    // Which of these factor names the adaptive system can actually tune -- the keyword SEVERE tier,
+    // for one, is deliberately fixed. Used to tell the user, truthfully, what their feedback on an
+    // alert changed (LocalSignalsPlugin.recordRiskFeedback).
+    static JSONArray adjustableFactors(JSONArray names) {
+        JSONArray out = new JSONArray();
+        if (names == null) return out;
+        for (int i = 0; i < names.length(); i++) {
+            String name = names.optString(i, null);
+            if (name != null && WEIGHT_SPECS.containsKey(name)) out.put(name);
+        }
+        return out;
     }
 
     private static final int RECENT_RECLAIM_WINDOW_MIN = 30;
