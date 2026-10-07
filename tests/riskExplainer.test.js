@@ -12,8 +12,8 @@ const plain = (x) => JSON.parse(JSON.stringify(x));
 const deepEqual = (a, b, msg) => assert.deepEqual(plain(a), plain(b), msg);
 const js = (f) => fs.readFileSync(path.join(__dirname, "..", "web", "js", f), "utf8");
 
-function load({ modelState = "ready", reply = () => "", nativeAvailable = true, notes = [] } = {}) {
-  const calls = { model: [], feedback: [], nudges: [], sync: 0, crisisClicks: 0 };
+function load({ modelState = "ready", reply = () => "", nativeAvailable = true, webAvailable = false, notes = [] } = {}) {
+  const calls = { model: [], feedback: [], nudges: [], webNudges: [], sync: 0, crisisClicks: 0 };
   const store = {};
   const sandbox = {
     console: { log: console.log, warn() {}, error: console.error },
@@ -37,7 +37,7 @@ function load({ modelState = "ready", reply = () => "", nativeAvailable = true, 
     // the app's crisis gate (agentTools.js) and the crisis button the overlay-feedback path opens
     agentIsCrisis: (t) => /kill myself|end it all|suicid/i.test(t),
     document: { getElementById: (id) => (id === "crisisBtn" ? { click: () => calls.crisisClicks++ } : null) },
-    WebTracker: { available: () => false },
+    WebTracker: { available: () => webAvailable, nudgeWeights: async (factors, increase) => calls.webNudges.push({ factors, increase }) },
     UserPreferencesStore: { get: () => ({ accountability_name: "Sam" }) },
     RiskProfile: { syncToNative: () => calls.sync++ },
   };
@@ -473,6 +473,15 @@ const alert = {
   deepEqual(await m.R.learnFromWords("got sucked into Instagram again tonight", "checkin"), ["socialMedia", "triggerApp"]);
   assert.equal(m.calls.nudges.length, 2);
   assert.equal(JSON.parse(m.store.reclaim_learned_from_words).length, 2, "each use is logged");
+  // the web version: the browser extension holds the weights, so the nudge goes there instead
+  m = load({ nativeAvailable: false, webAvailable: true, reply: () => "ALONE" });
+  deepEqual(await m.R.learnFromWords("scrolling in my room by myself again", "checkin"), ["alone"]);
+  deepEqual(m.calls.webNudges, [{ factors: ["alone"], increase: true }]);
+  assert.equal(m.calls.nudges.length, 0);
+  // neither (plain browser, no extension): nothing to nudge, and the model isn't asked
+  m = load({ nativeAvailable: false, reply: () => "ALONE" });
+  deepEqual(await m.R.learnFromWords("scrolling in my room by myself again", "checkin"), []);
+  assert.equal(m.calls.model.length, 0);
 
   console.log("risk explainer tests passed");
 })().catch((e) => {

@@ -324,6 +324,19 @@ async function boot() {
   await t.tick();
   assert.equal(t.local.pendingAlert.passage.ref, "Psalm 23:1-6");
 
+  // Learning from words (RiskExplainer.learnFromWords): the same bounded step, adjustable factors only,
+  // and -- unlike an alert verdict -- not once-only (each note or message is its own signal).
+  t = await boot();
+  // ("alone" isn't a factor here -- a browser can't scan for nearby devices -- so it's ignored.)
+  let nw = (await t.op("NUDGE_WEIGHTS", { factors: ["socialMedia", "alone", "recentKeywordSevere", "bogus"], increase: true })).result;
+  assert.deepEqual(JSON.parse(JSON.stringify(nw.adjusted)), ["socialMedia"]);
+  assert.equal(t.local.weights.socialMedia, 12);
+  await t.op("NUDGE_WEIGHTS", { factors: ["socialMedia"] });
+  assert.equal(t.local.weights.socialMedia, 14, "raise by default, every time");
+  await t.op("NUDGE_WEIGHTS", { factors: ["socialMedia"] });
+  assert.equal(t.local.weights.socialMedia, 15, "bounded at the factor's max");
+  assert.equal((await t.op("NUDGE_WEIGHTS", { factors: ["socialMedia"] }, "https://evil.example/")).ok, false, "only the app may ask");
+
   // Feedback on an alert: bounded +/- nudge to adjustable factors only, once per alert id.
   t = await boot();
   await t.op("SET_ENABLED", { enabled: true });

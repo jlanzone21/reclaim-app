@@ -637,6 +637,15 @@ async function runOp(op, payload, { fromPopup }) {
       await save("weights", RiskScorer.adjustWeights(await load("weights", null), adjustable, !!payload.valid));
       return { ok: true, result: { adjusted: adjustable, duplicate: false } };
     }
+    case "NUDGE_WEIGHTS": {
+      // Factors the on-device AI judged the person's own words (a slipped check-in's note, a chat
+      // message) to be about -- RiskExplainer.learnFromWords. Same bounded +/- step as everything else;
+      // the model only picked the category, this does the adjusting. Mirrors
+      // LocalSignalsPlugin.nudgeWeights.
+      const adjustable = (Array.isArray(payload.factors) ? payload.factors : []).filter((f) => RiskScorer.WEIGHT_SPECS[f]);
+      if (adjustable.length) await save("weights", RiskScorer.adjustWeights(await load("weights", null), adjustable, payload.increase !== false));
+      return { ok: true, result: { adjusted: adjustable } };
+    }
     case "TAKE_PENDING": {
       const [riskAlert, nightly, verse, reach] = await Promise.all([
         load("pendingAlert", null),

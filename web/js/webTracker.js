@@ -111,6 +111,9 @@ const WebTracker = (function () {
   const recordCheckinOutcome = (type, timestampMs, tags) =>
     call("RECORD_OUTCOME", { type, timestamp: timestampMs, tags: tags || [] }, null);
 
+  // Same as LocalSignals.nudgeWeights (RiskExplainer.learnFromWords), for the extension's scorer.
+  const nudgeWeights = (factors, increase) => call("NUDGE_WEIGHTS", { factors: factors || [], increase: increase !== false }, null);
+
   // Same as LocalSignals.recordRiskFeedback, for the extension's scorer.
   const recordRiskFeedback = ({ alertId, valid, factors }) => call("RISK_FEEDBACK", { alertId, valid, factors: factors || [] }, null);
 
@@ -143,6 +146,7 @@ const WebTracker = (function () {
     syncRiskContext,
     recordCheckinOutcome,
     recordRiskFeedback,
+    nudgeWeights,
     takePending,
     onPending,
     onAvailable,

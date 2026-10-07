@@ -2391,3 +2391,10 @@ reality:
   end to end a check-in note raised `alone` 15 -> 17. The overlay verse card now has smile / neutral
   / frown buttons (48dp) instead of text links; verified on the phone (frown parks -1 and shows the
   next verse, neutral records nothing). Not done: the browser extension has no equivalent.
+  **Merged into Nathaniel's branch (2026-10-07):** the overlay verse card and its faces were not
+  kept -- the overlay shows the Lectio Divina passage card instead (Nathaniel's decision; see that
+  entry). **Now on the web too:** the extension takes the same bounded nudge (op `NUDGE_WEIGHTS`,
+  `WebTracker.nudgeWeights`), and `learnFromWords` uses whichever scorer is present. ALONE does
+  nothing there (a browser can't see nearby devices, so the extension has no `alone` factor).
+  Verified in tests (the web path, the extension's bounds and sender check); not yet with the real
+  model in a browser.
