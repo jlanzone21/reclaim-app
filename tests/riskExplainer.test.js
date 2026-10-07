@@ -205,6 +205,22 @@ const alert = {
   deepEqual(m.calls.feedback[0], { alertId: 1700000000000, valid: false, factors: ["triggerApp", "duration", "selfReportedTime"] });
   assert.equal(await load({ nativeAvailable: false }).R.recordFeedback(alert, true, ["duration"]), null);
 
+  // ---- flagFalseAlarm: the in-app check-in screen's "This was a false alarm", same rules as the
+  // overlay's flag page: picked parts as given; typed words alone -> the model's one-word category;
+  // Skip -> everything that fired; typed words kept as chat context ----
+  m = load({});
+  await m.R.flagFalseAlarm(alert, { factors: ["duration", "notARealFactor"] });
+  deepEqual(m.calls.feedback[0], { alertId: 1700000000000, valid: false, factors: ["duration"] }, "picked parts, limited to what fired");
+  assert.equal(m.calls.model.length, 0, "picked parts need no model call");
+  m = load({ reply: () => "LENGTH" });
+  await m.R.flagFalseAlarm(alert, { text: "I had only just opened it" });
+  deepEqual(m.calls.feedback[0].factors, ["duration"], "words alone: the model picks the part");
+  assert.match(m.R.feedbackContext(), /only just opened it/, "the words become chat context");
+  m = load({});
+  await m.R.flagFalseAlarm(alert, {});
+  deepEqual(m.calls.feedback[0].factors, ["triggerApp", "duration", "selfReportedTime"], "Skip: everything that fired");
+  assert.equal(m.R.feedbackContext(), "", "no words, no context");
+
   // ---- Phrase bank: the model may only REWORD a fixed base phrase ----
   const spec = (id) => m.R._BANK_SPECS.find((s) => s.id === id);
   const v = (id, line) => m.R._validatePhrase(spec(id), line);

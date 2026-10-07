@@ -7,10 +7,14 @@
  *
  * What's shown: an AI-written note (RiskExplainer.explain -- grounded in the scorer's trace, with a
  * deterministic template standing in until/unless the model delivers), the plain-language reasons,
- * a "see the numbers" breakdown of exactly what the scorer did, and the feedback controls: two
- * buttons, or the person's own words which the model turns into a proposed verdict that they
- * confirm before anything changes. The weights themselves are only ever moved by the existing
- * bounded nudge in the native/extension scorer -- see RiskExplainer's header.
+ * a "see the numbers" breakdown of exactly what the scorer did, and the answers.
+ *
+ * Feedback works like the full-screen overlay's (RiskOverlay.java), by decision (Nathaniel,
+ * 2026-10-07: the "Was this a fair nudge?" question it used to ask shouldn't be there): no
+ * question; answering normally -- Call, Find resources, I'm okay -- counts as a fair nudge; a small
+ * "This was a false alarm" link opens the flag page (tap parts, type why, or Skip, which still
+ * counts as a false alarm on everything that fired). The weights themselves are only ever moved by
+ * the existing bounded nudge in the native/extension scorer -- see RiskExplainer's header.
  */
 const RiskAlertView = (function () {
   // Deliberately slow -- long enough to make "I'm okay" a real choice, not a reflex tap that
@@ -21,7 +25,9 @@ const RiskAlertView = (function () {
   let els = {};
   let dismissTimer = null;
   let current = null; // the alert being shown -- what feedback is about
-  let proposal = null; // the model's pending interpretation of what the person typed
+  let feedbackOk = false; // this alert can take a verdict (has an id and fired factors)
+  let flagged = false; // they opened the false-alarm page
+  let verdictSent = false; // a verdict for this alert has gone out (once per alert)
   let renderToken = 0; // a late AI note for a previous alert must never overwrite a newer one
 
   function init() {
@@ -38,31 +44,22 @@ const RiskAlertView = (function () {
       numbers: document.getElementById("riskAlertNumbers"),
       numbersBody: document.getElementById("riskAlertNumbersBody"),
       feedback: document.getElementById("riskAlertFeedback"),
-      fair: document.getElementById("riskFeedbackFair"),
-      falseAlarm: document.getElementById("riskFeedbackFalse"),
-      which: document.getElementById("riskFeedbackWhich"),
+      flag: document.getElementById("riskFeedbackFlag"),
       chips: document.getElementById("riskFeedbackChips"),
-      falseDone: document.getElementById("riskFeedbackFalseDone"),
       text: document.getElementById("riskFeedbackText"),
       send: document.getElementById("riskFeedbackSend"),
-      proposalBox: document.getElementById("riskFeedbackProposal"),
-      proposalText: document.getElementById("riskFeedbackProposalText"),
-      apply: document.getElementById("riskFeedbackApply"),
-      nope: document.getElementById("riskFeedbackNope"),
+      skip: document.getElementById("riskFeedbackSkip"),
       result: document.getElementById("riskFeedbackResult"),
     };
-    els.fair.addEventListener("click", () => submit(true, null));
-    els.falseAlarm.addEventListener("click", showWhich);
-    els.falseDone.addEventListener("click", () => submit(false, selectedChips()));
-    els.send.addEventListener("click", sendFreeText);
-    els.apply.addEventListener("click", () => proposal && submit(proposal.verdict === "fair", proposal.factors));
-    els.nope.addEventListener("click", () => {
-      proposal = null;
-      els.proposalBox.hidden = true;
-      els.text.focus();
+    els.flag.addEventListener("click", showFlagPage);
+    els.send.addEventListener("click", () => sendFalseAlarm({ skip: false }));
+    els.skip.addEventListener("click", () => sendFalseAlarm({ skip: true }));
+    els.dismiss.addEventListener("click", () => {
+      answered();
+      close();
     });
-    els.dismiss.addEventListener("click", close);
     els.chat.addEventListener("click", () => {
+      answered();
       close();
       // No exposed cross-module navigation API -- app.js's showView is private to its own IIFE,
       // same reasoning PreferencesView's "Add one now" button used for the preferences overlay.
@@ -80,7 +77,6 @@ const RiskAlertView = (function () {
 
   function render(alert) {
     current = alert;
-    proposal = null;
     els.appLine.textContent = alert.appLabel ? `You were on ${alert.appLabel}.` : "";
     renderNote(alert);
     renderNumbers(alert);
@@ -156,25 +152,28 @@ const RiskAlertView = (function () {
     els.numbersBody.appendChild(table);
   }
 
-  // ---- Feedback: buttons, or the person's own words ----
+  // ---- Feedback: like the overlay -- answering is "fair", the small link flags a false alarm ----
 
   function resetFeedback(alert) {
     // Needs an alert id and the fired factors (older pending alerts, written before this existed,
     // have neither) -- otherwise there's nothing to attach a verdict to, so don't offer one.
-    const ok = !!(alert.id && RiskExplainer.fired(alert).length);
-    els.feedback.hidden = !ok;
-    els.which.hidden = true;
-    els.proposalBox.hidden = true;
+    feedbackOk = !!(alert.id && RiskExplainer.fired(alert).length);
+    flagged = false;
+    verdictSent = false;
+    els.flag.hidden = !feedbackOk;
+    els.feedback.hidden = true;
     els.result.hidden = true;
     els.text.value = "";
     setFeedbackEnabled(true);
   }
 
   function setFeedbackEnabled(on) {
-    [els.fair, els.falseAlarm, els.falseDone, els.send, els.apply, els.nope, els.text].forEach((el) => (el.disabled = !on));
+    [els.send, els.skip, els.text].forEach((el) => (el.disabled = !on));
   }
 
-  function showWhich() {
+  function showFlagPage() {
+    flagged = true;
+    els.flag.hidden = true;
     els.chips.innerHTML = "";
     RiskExplainer.fired(current)
       .filter((f) => RiskExplainer.FACTOR_GUIDE[f.id] && RiskExplainer.FACTOR_GUIDE[f.id].adjustable)
@@ -187,44 +186,21 @@ const RiskAlertView = (function () {
         btn.addEventListener("click", () => btn.classList.toggle("selected"));
         els.chips.appendChild(btn);
       });
-    els.which.hidden = false;
+    els.feedback.hidden = false;
   }
 
   function selectedChips() {
     return Array.from(els.chips.querySelectorAll(".selected")).map((b) => b.dataset.id);
   }
 
-  async function sendFreeText() {
-    const said = els.text.value.trim();
-    if (!said) return;
-    // Their words may be about something much bigger than a false alarm -- the same hard gate chat
-    // uses runs first, before any model call, and never depends on the model.
-    if (typeof agentIsCrisis === "function" && agentIsCrisis(said)) {
-      showResult(CRISIS_REPLY);
-      const crisisBtn = document.getElementById("crisisBtn");
-      if (crisisBtn) crisisBtn.click();
-      return;
-    }
-    els.send.disabled = true;
-    els.send.textContent = "Reading what you wrote…";
-    const read = await RiskExplainer.interpretFeedback(current, said);
-    els.send.disabled = false;
-    els.send.textContent = "Tell Reclaim";
-    if (!read) {
-      showResult("I couldn't tell for sure what you meant — the two buttons above are the surest way to tell me.");
-      return;
-    }
-    proposal = read;
-    const which = read.factors.map((id) => RiskExplainer.labelOf(id).toLowerCase());
-    const understood =
-      read.verdict === "fair"
-        ? "So this was a fair nudge."
-        : which.length
-          ? `So this was a false alarm, and these didn't fit: ${which.join("; ")}.`
-          : "So this was a false alarm.";
-    els.proposalText.textContent = `${read.reply} ${understood} Is that right?`;
-    els.proposalBox.hidden = false;
-    els.result.hidden = true;
+  // Answering the screen normally (Call, Find resources, I'm okay). Unflagged, that's the default
+  // verdict, "fair" -- reinforces what fired, as on the overlay. If they opened the false-alarm page
+  // but left without sending, they still said it was wrong: it counts as that page's Skip.
+  function answered() {
+    if (!feedbackOk || verdictSent) return;
+    verdictSent = true;
+    if (flagged) sendFalseAlarm({ skip: !els.text.value.trim() && !selectedChips().length, quiet: true });
+    else RiskExplainer.recordFeedback(current, true, null).catch(() => {});
   }
 
   function showResult(message) {
@@ -232,18 +208,34 @@ const RiskAlertView = (function () {
     els.result.hidden = false;
   }
 
-  // Applies a verdict (once) and says truthfully what changed.
-  async function submit(valid, factors) {
+  // The flag page's Send / Skip: a false alarm, however much detail came with it (once per alert).
+  async function sendFalseAlarm({ skip, quiet = false }) {
+    const factors = skip ? [] : selectedChips();
+    const said = skip ? "" : els.text.value.trim();
+    verdictSent = true;
     setFeedbackEnabled(false);
-    els.proposalBox.hidden = true;
-    els.which.hidden = true;
+    // Their words may be about something much bigger than a false alarm -- the same hard gate chat
+    // uses runs first, before any model call, and never depends on the model. The flag still counts.
+    if (said && typeof agentIsCrisis === "function" && agentIsCrisis(said)) {
+      RiskExplainer.recordFeedback(current, false, factors).catch(() => {});
+      if (!quiet) showResult(CRISIS_REPLY);
+      const crisisBtn = document.getElementById("crisisBtn");
+      if (crisisBtn) crisisBtn.click();
+      return;
+    }
+    if (said && !quiet) {
+      els.send.textContent = "Reading what you wrote…";
+    }
     let outcome = null;
     try {
-      outcome = await RiskExplainer.recordFeedback(current, valid, factors);
+      outcome = await RiskExplainer.flagFalseAlarm(current, { factors, text: said });
     } catch (e) {
       outcome = null;
     }
+    els.send.textContent = "Send";
+    if (quiet) return;
     if (!outcome) {
+      verdictSent = false;
       setFeedbackEnabled(true);
       showResult("I couldn't save that just now — please try again.");
       return;
@@ -251,7 +243,7 @@ const RiskAlertView = (function () {
     const names = (outcome.adjusted || []).map((id) => RiskExplainer.labelOf(id).toLowerCase());
     if (outcome.duplicate) showResult("You've already told me about this one.");
     else if (!names.length) showResult("Thanks — noted. (This kind of alert is one I never change, so nothing was adjusted.)");
-    else showResult(`Thanks. Next time I'll treat these as ${valid ? "a bit more" : "a bit less"} important: ${names.join("; ")}.`);
+    else showResult(`Thanks. Next time I'll treat these as a bit less important: ${names.join("; ")}.`);
   }
 
   // Same tel: mechanism as the crisis modal/Home's accountability card -- a real anchor click,
@@ -262,6 +254,7 @@ const RiskAlertView = (function () {
     btn.className = "modal-continue";
     btn.textContent = "Call " + (partner.name || "them");
     btn.onclick = () => {
+      answered(); // calling counts as answering, as on the overlay
       const a = document.createElement("a");
       a.href = `tel:${partner.phone.replace(/[^\d+]/g, "")}`;
       document.body.appendChild(a);

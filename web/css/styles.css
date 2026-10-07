@@ -1726,9 +1726,23 @@ a.resource-contact:active {
 .risk-feedback-row { display: flex; gap: 8px; margin-bottom: 8px; }
 .risk-feedback-row > button { flex: 1; }
 .risk-feedback-hint { margin: 4px 0 8px; font-size: 12.5px; color: var(--text-muted); }
-.risk-feedback-proposal { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-size: 13px; }
-.risk-feedback-proposal p { margin: 0 0 8px; }
 .risk-feedback-result { margin: 8px 0 0; font-size: 13px; color: var(--text); }
+.risk-feedback { margin-bottom: 8px; }
+/* "This was a false alarm": small underlined words, not a button, same as the full-screen overlay --
+   answering normally already counts as fair, so this is only for when it was wrong. */
+.risk-flag-link {
+  display: block;
+  margin: 12px auto 0;
+  padding: 4px 8px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12.5px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.risk-flag-link[hidden] { display: none; }
 
 /* Risk-alert "I'm okay" countdown -- a filling shaded bar behind the label so the 10s wait before
    it's clickable reads as "counting down," not "broken." See riskAlertView.js. */

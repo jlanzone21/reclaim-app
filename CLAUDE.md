@@ -265,9 +265,11 @@ Main JS modules (`web/js/`):
 - **The AI also explains risk nudges** (`riskExplainer.js`), grounded in
   RiskScorer's **trace** (every factor, fired or not, with its values — see
   RiskScorer.java "Explainability"; mirrored in `extension/lib/riskScorer.js`).
-  Three jobs: (1) the note at the top of the alert screen; (2) reading the
-  user's own words about whether a nudge was fair into a *proposed* verdict that
-  the user confirms before the existing bounded ±2 weight nudge runs
+  Three jobs: (1) the note at the top of the alert screen; (2) working out
+  which part of a flagged false alarm the person's own words point at (the
+  alert screen and the overlay both work this way now: no "was this fair?"
+  question, answering counts as fair, a small false-alarm link — Nathaniel,
+  2026-10-07), before the existing bounded ±2 weight nudge runs
   (`recordRiskFeedback` / extension `RISK_FEEDBACK`) — the model never moves
   weights itself, and its factor picks are re-validated against what actually
   fired; (3) writing phrase templates ({app}/{minutes}/{time}) ahead of time,
