@@ -633,10 +633,14 @@ app (`web/js/riskExplainer.js`):
   cover the first run. The Privacy setting "Say why on the lock screen"
   (default on) turns this off for generic text. Keyword factors always use one
   fixed line, never AI wording.
-- **Feedback.** "Yes, fair" / "No, false alarm" (optionally which reasons
-  didn't fit), or free text: the model proposes a verdict, the user confirms,
-  and only then does the existing bounded ±2 nudge run on the factors that
-  fired. Once per alert (`alertId`).
+- **Feedback.** Same as the full-screen check-in below: no "was this fair?"
+  question. Answering the alert screen normally (Call, Find resources, I'm
+  okay) counts as fair; a small "This was a false alarm" link opens a page to
+  tap which parts were wrong and/or type why, or Skip (a false alarm on
+  everything that fired). Typed words with nothing tapped go to the model's
+  one-word attribution (`RiskExplainer.flagFalseAlarm`, same rules as the
+  overlay's notes) and are kept as chat context. The existing bounded ±2 nudge
+  is what changes weights, once per alert (`alertId`).
 
 Tests: `npm test` (extension scorer/notifier, and `tests/riskExplainer.test.js`
 with a stubbed model).

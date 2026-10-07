@@ -550,27 +550,16 @@
       </details>
       <p style="font-size:12.5px; color:var(--text-muted);">
         This is our best guess, not a judgment — you know your own situation better than we do.
-        Tell us how it landed and Reclaim will learn what actually matters to you.
       </p>
+      <!-- The false-alarm page: same as the full-screen overlay's (RiskOverlay.java). No "was this
+           fair?" question -- answering normally counts as fair (riskAlertView.js). -->
       <div class="risk-feedback" id="riskAlertFeedback" hidden>
-        <div class="field-label" style="margin-top:0;">Was this a fair nudge?</div>
-        <div class="risk-feedback-row">
-          <button type="button" class="secondary-btn" id="riskFeedbackFair">Yes, fair</button>
-          <button type="button" class="secondary-btn" id="riskFeedbackFalse">No, false alarm</button>
-        </div>
-        <div id="riskFeedbackWhich" hidden>
-          <p class="risk-feedback-hint">Which part didn't fit? (Optional — skip to say none of it did.)</p>
-          <div class="tag-grid" id="riskFeedbackChips"></div>
-          <button type="button" class="modal-continue" id="riskFeedbackFalseDone">Done</button>
-        </div>
-        <textarea id="riskFeedbackText" class="field-input field-textarea" rows="2" placeholder="Or tell me in your own words…"></textarea>
-        <button type="button" class="secondary-btn" id="riskFeedbackSend" style="width:100%; margin-top:8px;">Tell Reclaim</button>
-        <div id="riskFeedbackProposal" class="risk-feedback-proposal" hidden>
-          <p id="riskFeedbackProposalText"></p>
-          <div class="risk-feedback-row">
-            <button type="button" class="modal-continue" id="riskFeedbackApply" style="margin:0;">Yes, that's right</button>
-            <button type="button" class="secondary-btn" id="riskFeedbackNope">Not quite</button>
-          </div>
+        <p class="risk-feedback-hint">Tap the parts that were wrong, or tell us in your own words. Or just skip — we'll still count this as a false alarm.</p>
+        <div class="tag-grid" id="riskFeedbackChips"></div>
+        <textarea id="riskFeedbackText" class="field-input field-textarea" rows="2" placeholder="What was off? (optional)"></textarea>
+        <div class="risk-feedback-row" style="margin-top:8px;">
+          <button type="button" class="modal-continue" id="riskFeedbackSend" style="margin:0;">Send</button>
+          <button type="button" class="secondary-btn" id="riskFeedbackSkip">Skip</button>
         </div>
         <p class="risk-feedback-result" id="riskFeedbackResult" role="status" hidden></p>
       </div>
@@ -580,6 +569,7 @@
         <span class="dismiss-countdown-fill" id="riskAlertDismissFill"></span>
         <span class="dismiss-countdown-label">I'm okay</span>
       </button>
+      <button type="button" class="risk-flag-link" id="riskFeedbackFlag" hidden>This was a false alarm</button>
     </div>
   </div>
 

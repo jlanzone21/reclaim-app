@@ -392,6 +392,22 @@ Reply with only the one word.`;
     return notes.map((n) => `"${n.text}"${n.about && n.about.length ? ` (about: ${n.about.join(", ").toLowerCase()})` : ""}`).join("; ");
   }
 
+  // A false alarm flagged on the in-app check-in screen (riskAlertView.js), which follows the
+  // overlay's flag page (Nathaniel, 2026-10-07: no "was this fair?" question there either). Same
+  // rules as processFeedbackNotes, applied at once since the app is open: parts they picked are
+  // taken as given; typed words with nothing picked go to attributeFactors; nothing at all (Skip)
+  // means every factor that fired. Typed words are kept as chat context. The caller runs the crisis
+  // gate on the words first. Resolves recordFeedback's {adjusted, duplicate}, or null.
+  async function flagFalseAlarm(alert, { factors = [], text = "" } = {}) {
+    const ids = fired(alert).map((f) => f.id);
+    const said = String(text || "").trim();
+    let used = factors.length ? factors.filter((id) => ids.includes(id)) : ids;
+    if (said && !factors.length) used = await attributeFactors(said, ids);
+    const outcome = await recordFeedback(alert, false, used);
+    if (said) keepNote({ text: said, app: alert.appLabel || "" }, used);
+    return outcome;
+  }
+
   // Resolves {processed, attributed}. Never rejects. Called when the app opens / resumes.
   async function processFeedbackNotes() {
     if (typeof LocalSignals === "undefined" || !LocalSignals.available()) return { processed: 0, attributed: 0 };
@@ -550,6 +566,7 @@ Reply with only the one word.`;
     labelOf,
     interpretFeedback,
     recordFeedback,
+    flagFalseAlarm,
     getPhraseBank,
     refreshPhraseBank,
     processFeedbackNotes,
