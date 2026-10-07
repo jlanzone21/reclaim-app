@@ -185,7 +185,7 @@ const ResourcePicker = (function () {
     }
 
     // "in-the-moment" is a coping-tool tag; a verse or devotional added for an urge should be about temptation
-    // (otherwise it fell back to an unrelated Today's Verse).
+    // (otherwise it fell back to the theme-less default verse).
     const urgeTheme = (tool) => (tool === "coping_toolkit" ? "in-the-moment" : "temptation");
     picks.forEach((p, i) => {
       p.theme = themedTool(p.resource) ? feeling || (theme === "in-the-moment" || p.resource === "coping_toolkit" ? urgeTheme(p.resource) : null) : null;
@@ -261,7 +261,7 @@ const ResourcePicker = (function () {
     const about = theme && theme !== "in-the-moment" ? ` about ${theme}` : "";
     switch (tool) {
       case "scripture_search":
-        return output && output.todaysVerse ? "today's verse from YouVersion" : `a verse${about}`;
+        return output && output.graceDefault ? "a verse about God's grace" : `a verse${about}`;
       case "devotional_finder":
         return `a short devotional${about}`;
       case "bible_plan_finder":

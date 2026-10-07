@@ -1,5 +1,6 @@
-// Reclaim's AI agent: a keyword match picks at most one resource card, the app introduces it, and the on-device model (LocalModel)
-// writes a short reply that is streamed one checked sentence at a time.
+// Reclaim's AI agent: ResourcePicker chooses up to 3 kinds of resource card from keywords, the embedding model and the
+// person's thumbs up/down, the app introduces them, and with no cards the on-device model (LocalModel) writes a short
+// reply that is streamed one checked sentence at a time.
 const RECLAIM_HISTORY_CHARS = 5000; // ~1.3k tokens of the model's 4k context; past this the history is cut back to the last exchanges
 const RECLAIM_HISTORY_KEEP = 4;
 const RECLAIM_CLIP_CHARS = 400;
@@ -10,7 +11,7 @@ const clip = (text, n = RECLAIM_CLIP_CHARS) => (text.length > n ? `${text.slice(
 
 // The app, not the model, introduces each card: a small model asked to talk about specific resources misquotes or refuses them.
 function cardIntro(name, theme, output) {
-  if (name === "scripture_search" && output && output.todaysVerse) return "Here's today's verse from YouVersion.";
+  if (name === "scripture_search" && output && output.graceDefault) return "Here's a verse about God's grace for you.";
   const about = theme && theme !== "in-the-moment" ? ` about ${theme}` : "";
   return AGENT_TOOL_DEFS.find((t) => t.name === name).intro.replace("{about}", about);
 }
@@ -134,7 +135,8 @@ class ReclaimAgent {
         cosine: LocalEmbedder.cosine,
       };
       // Up to 3 kinds of resource and 4 items, chosen from the message plus what this person has rated helpful
-      // (resourcePicker.js). Instant arithmetic, no chat-model call.
+      // (resourcePicker.js). Instant arithmetic, no chat-model call -- having the chat model pick when unsure was tried
+      // and dropped (see PURPOSE.md).
       const picks = ResourcePicker.pick(userText, previous, { ...learned, inferred: analysis });
       const results = await Promise.all(
         picks.map(async (p) => {

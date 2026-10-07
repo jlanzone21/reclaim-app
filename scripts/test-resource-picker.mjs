@@ -68,7 +68,7 @@ test("cold start: an urge gets coping tools plus a verse", () => {
   }
 });
 
-test("a verse asked for with no feeling stays Today's Verse", () => {
+test("a verse asked for with no feeling has no theme (agentFindVerse then defaults to God's grace)", () => {
   assert.equal(pick("can you share a verse")[0].theme, null);
 });
 

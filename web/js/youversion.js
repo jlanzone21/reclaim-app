@@ -3,7 +3,8 @@
  * their SDK expects: YouVersion's transformed passage HTML inside a data-slot="yv-bible-renderer"
  * container, their Bible stylesheets, and the version's copyright attribution -- which the license
  * requires be shown every time the text is. Used by the Home "Today's Verse" card (YouVersion's own
- * Verse of the Day) and by Chat whenever someone asks for a verse (app.js renderToolResult).
+ * Verse of the Day -- Home only; Chat never repeats it) and by Chat whenever someone asks for a
+ * verse (app.js renderToolResult).
  *
  * The SDK itself (@youversion/platform-core) is vendored as a plain script at
  * js/vendor/youversion-platform.js -- see scripts/vendor-youversion.mjs -- matching this project's

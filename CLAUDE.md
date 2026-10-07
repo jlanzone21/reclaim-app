@@ -274,7 +274,9 @@ Main JS modules (`web/js/`):
   FBV 1932, LSV 2660, WEB 206, WMB 1209, etc.
 - Home's card is **"Today's Verse"** = YouVersion Verse of the Day
   (`getVOTD(dayOfYear)`, local time zone). In Chat, a plain "share a verse"
-  shows today's verse; a detected theme (shame, loneliness, …) shows the
+  shows a seeded verse on the gospel / God's grace (`VERSE_DEFAULT_THEME`),
+  **not** the Verse of the Day — Home already shows that (Nathaniel,
+  2026-10-07); a detected theme (shame, loneliness, …) shows the
   seeded verse for that theme, fetched from YouVersion by reference
   (`referenceToPassageId`: "Psalm 139:23-24" → `PSA.139.23-24`).
 - **License requirement:** always render the version's copyright attribution

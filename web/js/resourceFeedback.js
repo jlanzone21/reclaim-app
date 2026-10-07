@@ -84,9 +84,6 @@ const ResourceFeedback = (function () {
     const add = (k) => {
       if (k) keywords.add(normalizeKeyword(k));
     };
-    // Today's Verse is YouVersion's pick; any tags on it belong to an unrelated local verse that
-    // agentFindVerse spreads in as a fallback, so only the tool itself is learned from it.
-    if (item.todaysVerse) return [];
     (Array.isArray(item.tags) ? item.tags : []).forEach(add);
     add(item.method);
     add(item.topic);

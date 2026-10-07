@@ -301,10 +301,13 @@ function pickVerseTopicReference(userText) {
 // app.js renderToolResult). `query` (the raw message, when available) is checked against the
 // 100-topic list first -- the closest real-circumstance match wins and is resolved live through
 // YouVersion by reference. Failing that: a detected theme keeps its hand-picked verse from
-// seedData.js, just fetched from YouVersion; a plain "share a verse" gets YouVersion's Verse of
-// the Day -- the same "Today's Verse" Home shows. No app key / offline / API error -> the local
-// verse, as before -- this is why the topic match is tried first but never replaces that fallback
-// chain, only sits in front of it.
+// seedData.js, just fetched from YouVersion. A plain "share a verse" (no theme, no topic) gets a
+// seeded verse on the gospel / God's grace (VERSE_DEFAULT_THEME) -- not YouVersion's Verse of the
+// Day, which it used to return: Home already shows that one (Nathaniel, 2026-10-07). No app key /
+// offline / API error -> the local verse, as before -- this is why the topic match is tried first
+// but never replaces that fallback chain, only sits in front of it.
+const VERSE_DEFAULT_THEME = "grace";
+
 async function agentFindVerse(theme, query, rank) {
   const topicPick = pickVerseTopicReference(query);
   if (topicPick && typeof YouVersion !== "undefined" && YouVersion.available()) {
@@ -313,18 +316,14 @@ async function agentFindVerse(theme, query, rank) {
     if (display) return { title: display.reference, body: null, youversion: display, topic: topicPick.topic };
   }
 
-  const local = ResourceRepo.getScripture(theme, rank);
-  if (typeof YouVersion === "undefined" || !YouVersion.available()) return local;
-  const display = theme && local ? await YouVersion.getVerse(local.title) : await YouVersion.getTodaysVerse();
-  if (!display) return local;
-  return {
-    ...(local || {}),
-    title: display.reference,
-    // Local body only matches when it's the same verse; today's verse has no local text.
-    body: theme && local ? local.body : null,
-    todaysVerse: !theme,
-    youversion: display,
-  };
+  // graceDefault: the intro says "a verse about God's grace" instead of naming no theme.
+  const graceDefault = !theme;
+  const local = ResourceRepo.getScripture(theme || VERSE_DEFAULT_THEME, rank);
+  if (!local) return null;
+  if (typeof YouVersion === "undefined" || !YouVersion.available()) return { ...local, graceDefault };
+  const display = await YouVersion.getVerse(local.title);
+  if (!display) return { ...local, graceDefault };
+  return { ...local, title: display.reference, youversion: display, graceDefault };
 }
 
 function agentStreamText(text, onTextDelta) {

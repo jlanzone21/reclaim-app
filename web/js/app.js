@@ -605,7 +605,6 @@
       // copyright attribution the YouVersion license requires -- else the local verse text.
       if (output.youversion && typeof YouVersion !== "undefined") {
         const card = el("div", "resource-item resource-item-yv");
-        if (output.todaysVerse) card.appendChild(el("div", "resource-kicker", "Today's Verse"));
         card.appendChild(YouVersion.render(output.youversion));
         addFeedbackRow(card, name, output, ctx);
         wrap.appendChild(card);
