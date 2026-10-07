@@ -183,15 +183,16 @@ Reply in 1 or 2 short, plain sentences.
 // async because small_group_finder/sermon_library/article_finder/counseling_directory all read
 // live from Supabase now (see ResourceRepo) -- every other branch below still resolves
 // synchronously, `await`ing a non-promise is a no-op.
-// `options` ({ limit, rank }) comes only from the on-device AI agent: `limit` is this tool's share of
-// a multi-type reply's item budget and `rank` orders candidates by the person's learned preferences
-// (resourcePicker.js). Basic mode never passes it, so its results are exactly what they were.
+// `options` ({ limit, rank, verseTopic }) comes only from the on-device AI agent: `limit` is this
+// tool's share of a multi-type reply's item budget, `rank` orders candidates by the person's learned
+// preferences (resourcePicker.js), and `verseTopic` is a meaning-based verse topic decision (see
+// agentFindVerse). Basic mode never passes it, so its results are exactly what they were.
 async function executeAgentTool(name, input, options = {}) {
   const theme = input && input.theme ? input.theme : null;
-  const { limit, rank } = options;
+  const { limit, rank, verseTopic } = options;
   switch (name) {
     case "scripture_search":
-      return agentFindVerse(theme, input && input.query ? input.query : null, rank);
+      return agentFindVerse(theme, input && input.query ? input.query : null, rank, verseTopic);
     case "devotional_finder":
       return ResourceRepo.getDevotional(theme, rank);
     case "bible_plan_finder":
@@ -287,14 +288,17 @@ function matchVerseTopic(userText) {
   return bestScore >= 1 ? best : null; // require at least one real word match, not just a coincidental partial
 }
 
-// One reference at random from the matched topic's semicolon-separated list -- varies which verse
+// One reference at random from a topic row's semicolon-separated list -- varies which verse
 // comes back for the same topic across conversations, same spirit as randomByTheme (resourceRepo.js).
-function pickVerseTopicReference(userText) {
-  const row = matchVerseTopic(userText);
+function verseTopicReference(row) {
   if (!row) return null;
   const refs = row.refs.split(";").map((r) => r.trim()).filter(Boolean);
   if (!refs.length) return null;
   return { topic: row.topic, reference: refs[Math.floor(Math.random() * refs.length)] };
+}
+
+function pickVerseTopicReference(userText) {
+  return verseTopicReference(matchVerseTopic(userText));
 }
 
 // Every verse Chat shows goes through the YouVersion Bible display (youversion.js, rendered by
@@ -306,10 +310,15 @@ function pickVerseTopicReference(userText) {
 // Day, which it used to return: Home already shows that one (Nathaniel, 2026-10-07). No app key /
 // offline / API error -> the local verse, as before -- this is why the topic match is tried first
 // but never replaces that fallback chain, only sits in front of it.
+//
+// `verseTopic` comes from the AI agent when the embedding model is loaded: a topic matched by
+// meaning ({ topic, refs }), or null for "no topic" -- it then replaces the word-overlap match,
+// which fired on single generic words ("help" -> "Helping someone who is struggling"). Left
+// undefined (Basic mode, or no embedding model), the word-overlap match runs as before.
 const VERSE_DEFAULT_THEME = "grace";
 
-async function agentFindVerse(theme, query, rank) {
-  const topicPick = pickVerseTopicReference(query);
+async function agentFindVerse(theme, query, rank, verseTopic) {
+  const topicPick = verseTopic === undefined ? pickVerseTopicReference(query) : verseTopicReference(verseTopic);
   if (topicPick && typeof YouVersion !== "undefined" && YouVersion.available()) {
     const display = await YouVersion.getVerse(topicPick.reference);
     // topic: what a thumbs up/down on this verse teaches (resourceFeedback.js).

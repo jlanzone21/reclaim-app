@@ -249,6 +249,19 @@ const ResourcePicker = (function () {
     };
   }
 
+  /**
+   * The verse topic the AI agent hands agentFindVerse for a pick: undefined when there's no
+   * embedding model (agentFindVerse then keeps its old word-overlap match), null for "no topic",
+   * or the meaning-matched { topic, refs }. A topic is only used when the verse is about a feeling
+   * (the pick has a theme) or a verse is what was asked for: when a verse merely rides along with
+   * another ask, the match is about the ask's wording -- "find me a recovery group" matched
+   * "Recovering from a mistake", "give me a bible reading plan" matched "Understanding God's plan".
+   */
+  function verseTopicFor(pick, analysis) {
+    if (pick.resource !== "scripture_search" || !analysis) return undefined;
+    return pick.theme || pick.explicit ? analysis.verseTopic || null : null;
+  }
+
   // ---- The app's own intro sentence for a multi-kind reply (the model never describes cards) ----
 
   function count(output) {
@@ -261,7 +274,8 @@ const ResourcePicker = (function () {
     const about = theme && theme !== "in-the-moment" ? ` about ${theme}` : "";
     switch (tool) {
       case "scripture_search":
-        return output && output.graceDefault ? "a verse about God's grace" : `a verse${about}`;
+        if (output && output.graceDefault) return "a verse about God's grace";
+        return `a verse${about || (output && output.topic ? ` about ${output.topic.toLowerCase()}` : "")}`;
       case "devotional_finder":
         return `a short devotional${about}`;
       case "bible_plan_finder":
@@ -293,5 +307,5 @@ const ResourcePicker = (function () {
     return `I found ${list}.`;
   }
 
-  return { pick, ranker, intro, THEME_TYPES, MAX_TYPES, MAX_ITEMS };
+  return { pick, ranker, intro, verseTopicFor, THEME_TYPES, MAX_TYPES, MAX_ITEMS };
 })();

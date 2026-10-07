@@ -466,8 +466,11 @@ await agent.send(userText, {
        feeling or ask the keywords missed (`inferred`; an inferred ask is
        treated as explicit). The ranker also scores closeness in meaning to
        the message and to a "taste" vector built from rated items (same
-       60-day fade). Resource vectors are computed once and cached in
-       IndexedDB. It never gates anything -- crisis check, fixed answers and
+       60-day fade). It also matches a verse to one of the 100 verse topics
+       by meaning (a topic must stand out, z >= 3, and is only used for a
+       verse about a feeling or an asked-for verse), replacing the
+       word-overlap topic match in AI mode. Resource vectors are computed
+       once and cached in IndexedDB. It never gates anything -- crisis check, fixed answers and
        keyword asks run first -- and if it can't load, the person is told
        once and picking uses keywords + thumbs. Re-check its thresholds
        with `scripts/embedding-calibration.js` (pasted into the app's

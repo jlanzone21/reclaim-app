@@ -268,6 +268,7 @@ const LocalEmbedder = (function () {
         await embedRaw(["warm up"]);
         themeClasses = await buildClasses(THEME_EXAMPLES, "theme");
         askClasses = await buildClasses(ASK_EXAMPLES, "ask");
+        verseTopics = await buildVerseTopics();
         setState("ready");
         indexResources().catch((err) => console.warn("Embedding index incomplete:", err));
       } catch (err) {
@@ -279,6 +280,42 @@ const LocalEmbedder = (function () {
       }
     })();
     return starting;
+  }
+
+  // ---- The 100 verse topics (verse_topics in db.js), matched by meaning ----
+  //
+  // Replaces the word-overlap matchVerseTopic (agentTools.js) in AI mode, which fired on single
+  // generic words: "I'm about to look, help" -> "Helping someone who is struggling" (Romans 12:15
+  // shown as a verse about temptation). Topics are embedded like the example messages (query
+  // prefix, one at a time) -- without the prefix the matches were clearly worse. A topic counts
+  // only when it stands out from the other 99: how many standard deviations the best similarity
+  // is above their mean. Measured 2026-10-07: at 3.0, 11/11 clear-cut feeling messages got the
+  // right topic ("God feels so distant" 5.3, "how do I tell my wife about my porn problem?" ->
+  // Marriage problems 3.5, "I'm addicted and I can't stop" -> Addiction 4.5), "help" -> Helping
+  // (2.9) didn't pass, and a plain "can you share a verse" (2.5) didn't either. Two loose word-ish
+  // matches did pass ("find me a recovery group" -> Recovering from a mistake 3.1, "give me a
+  // bible reading plan" -> Understanding God's plan 5.0), so callers only use a topic for a verse
+  // about a feeling or an explicit verse ask (ResourcePicker.verseTopicFor).
+  const TOPIC_Z = 3.0;
+  let verseTopics = null; // [{ topic, refs, v }]
+
+  async function buildVerseTopics() {
+    const rows = typeof ResourceRepo !== "undefined" ? ResourceRepo.getVerseTopics() : [];
+    const key = (topic) => `ex1:topic:${topic}`;
+    await ensure(rows.map((r) => ({ key: key(r.topic), text: r.topic })), { query: true, chunk: 1 });
+    return rows.map((r) => ({ topic: r.topic, refs: r.refs, v: vectors.get(key(r.topic)).v }));
+  }
+
+  // { topic, refs, z } for the topic that clearly stands out, else null.
+  function matchVerseTopicByMeaning(queryVec) {
+    if (!verseTopics || verseTopics.length < 10) return null;
+    const sims = verseTopics.map((t) => cosine(queryVec, t.v));
+    const mean = sims.reduce((a, b) => a + b, 0) / sims.length;
+    const sd = Math.sqrt(sims.reduce((a, s) => a + (s - mean) ** 2, 0) / sims.length) || 1;
+    let best = 0;
+    for (let i = 1; i < sims.length; i++) if (sims[i] > sims[best]) best = i;
+    const z = (sims[best] - mean) / sd;
+    return z >= TOPIC_Z ? { topic: verseTopics[best].topic, refs: verseTopics[best].refs, z } : null;
   }
 
   function isReady() {
@@ -312,6 +349,7 @@ const LocalEmbedder = (function () {
         ask: a.margin >= ASK_MARGIN ? a.label : null,
         themeMargin: t.margin,
         askMargin: a.margin,
+        verseTopic: matchVerseTopicByMeaning(queryVec),
       };
     } catch (err) {
       console.warn("Embedding failed for this message; continuing without it:", err);

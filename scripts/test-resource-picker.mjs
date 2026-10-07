@@ -248,4 +248,19 @@ test("ranker: taste pulls toward what resembles past helpful ratings; unindexed 
   }
 });
 
+test("verse topics matched by meaning apply only to a verse about a feeling or an asked-for verse", () => {
+  const topicFor = (p, a) => JSON.parse(JSON.stringify({ t: picker.verseTopicFor(p, a) })).t;
+  const marriage = { topic: "Marriage problems", refs: "Ephesians 4:2-3" };
+  const analysis = { verseTopic: marriage };
+  // A verse for a feeling, or one that was asked for, gets the matched topic.
+  assert.deepEqual(topicFor({ resource: "scripture_search", theme: "shame", explicit: false }, analysis), marriage);
+  assert.deepEqual(topicFor({ resource: "scripture_search", theme: null, explicit: true }, analysis), marriage);
+  // A verse only riding along with another ask doesn't (its match is about the ask's wording).
+  assert.equal(topicFor({ resource: "scripture_search", theme: null, explicit: false }, analysis), null);
+  // Model loaded but no topic stood out -> null (no word-overlap fallback); no model -> undefined (old behaviour).
+  assert.equal(topicFor({ resource: "scripture_search", theme: "shame", explicit: false }, { verseTopic: null }), null);
+  assert.equal(picker.verseTopicFor({ resource: "scripture_search", theme: "shame", explicit: true }, null), undefined);
+  assert.equal(picker.verseTopicFor({ resource: "devotional_finder", theme: "shame" }, analysis), undefined);
+});
+
 console.log(`\n${passed} passed`);

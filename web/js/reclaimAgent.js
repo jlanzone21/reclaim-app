@@ -12,7 +12,9 @@ const clip = (text, n = RECLAIM_CLIP_CHARS) => (text.length > n ? `${text.slice(
 // The app, not the model, introduces each card: a small model asked to talk about specific resources misquotes or refuses them.
 function cardIntro(name, theme, output) {
   if (name === "scripture_search" && output && output.graceDefault) return "Here's a verse about God's grace for you.";
-  const about = theme && theme !== "in-the-moment" ? ` about ${theme}` : "";
+  let about = theme && theme !== "in-the-moment" ? ` about ${theme}` : "";
+  // A verse matched to one of the 100 topics with no theme named ("a verse about my marriage") says which.
+  if (!about && name === "scripture_search" && output && output.topic) about = ` about ${output.topic.toLowerCase()}`;
   return AGENT_TOOL_DEFS.find((t) => t.name === name).intro.replace("{about}", about);
 }
 
@@ -142,7 +144,8 @@ class ReclaimAgent {
         picks.map(async (p) => {
           const input = p.theme ? { theme: p.theme, query: userText } : { query: userText };
           const rank = ResourcePicker.ranker(p.resource, p.theme, learned.profile, learned.preferredMethods, semantic);
-          const output = await executeAgentTool(p.resource, input, { limit: p.limit, rank });
+          const verseTopic = ResourcePicker.verseTopicFor(p, analysis); // verse topic matched by meaning (localEmbedder.js)
+          const output = await executeAgentTool(p.resource, input, { limit: p.limit, rank, verseTopic });
           return { ...p, input, output, unreachable: unreachableLabel(p.resource, output) };
         })
       );
