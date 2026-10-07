@@ -434,6 +434,9 @@ await agent.send(userText, {
      verse), nudged by the coping methods picked in onboarding and then by
      the person's **thumbs up/down** (below). A kind they've rated down stops
      being added unasked; a liked kind is added only if it fits the theme.
+     A direct ask with no feeling or urge named gets only what was asked
+     for (an urge needs urge language; "accountability" counts as an ask,
+     not a feeling).
      Small talk and "are you…?" questions get no cards; a short "yes" is
      matched against the last reply. The accountability partner is never
      added or dropped by learning -- it shows whenever asked for.
@@ -441,7 +444,8 @@ await agent.send(userText, {
      and shows them as cards. Within a kind, `ResourcePicker.ranker` orders
      candidates instead of shuffling: theme match first, then liked keywords,
      the onboarding method, distance for groups, and a little randomness so
-     close calls vary. The app writes the intro itself: the tool's own
+     close calls vary. Items already shown in the conversation rank lower,
+     so liked items rotate. The app writes the intro itself: the tool's own
      `intro` for one kind, or one combined sentence for several ("I found a
      verse about loneliness and a recovery group you could look into.").
      Basic mode passes no ranker, so it keeps its old single-card, random

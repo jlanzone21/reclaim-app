@@ -91,6 +91,9 @@ class ReclaimAgent {
     // previous conversation word for word, so this must never be edited or re-clipped between turns.
     this.modelHistory = [];
     this.recentShown = []; // last few replies as shown; small models copy their own earlier sentences word for word
+    // Resource keys shown in this conversation, ranked lower next time so liked items rotate. "Clear conversation"
+    // makes a new agent, which starts it over.
+    this.shownKeys = new Set();
     this.fallback = new ResourcesAgent();
     this._idCounter = 0;
   }
@@ -143,7 +146,7 @@ class ReclaimAgent {
       const results = await Promise.all(
         picks.map(async (p) => {
           const input = p.theme ? { theme: p.theme, query: userText } : { query: userText };
-          const rank = ResourcePicker.ranker(p.resource, p.theme, learned.profile, learned.preferredMethods, semantic);
+          const rank = ResourcePicker.ranker(p.resource, p.theme, learned.profile, learned.preferredMethods, semantic, this.shownKeys);
           const verseTopic = ResourcePicker.verseTopicFor(p, analysis); // verse topic matched by meaning (localEmbedder.js)
           const output = await executeAgentTool(p.resource, input, { limit: p.limit, rank, verseTopic });
           return { ...p, input, output, unreachable: unreachableLabel(p.resource, output) };
@@ -158,6 +161,9 @@ class ReclaimAgent {
           // feedback: thumbs up/down on these cards (resourceFeedback.js) -- AI mode only; Basic mode never sets it.
           handlers.onToolCallStart({ id, name: r.resource, input: r.input, feedback: true });
           handlers.onToolCallEnd({ id, output: r.output });
+          if (r.resource !== "accountability_match") {
+            ResourcePicker.itemsOf(r.output).forEach((item) => this.shownKeys.add(ResourceFeedback.describe(r.resource, item).key));
+          }
         }
         const sentences = [];
         if (shownResults.length === 1) sentences.push(cardIntro(shownResults[0].resource, shownResults[0].theme, shownResults[0].output));

@@ -10,8 +10,9 @@
  * - Up to 3 kinds and 4 items per reply (2 at most of any one kind).
  * - Explicit asks are always honored, whatever the person has rated. Learning only decides which
  *   kinds get added unasked and the order within a kind.
- * - Unasked kinds are only added when the message asks for something or names a feeling/urge, and
- *   only kinds that fit that theme -- small talk still gets no cards.
+ * - Unasked kinds are only added when the message names a feeling or urge, and only kinds that fit
+ *   it -- a direct ask gets just what was asked for (2026-10-07), small talk gets no cards.
+ * - Items already shown in this conversation rank lower, so liked items rotate (2026-10-07).
  * - Before any ratings: a theme -> kinds default map, nudged by the coping methods picked in
  *   onboarding. Ratings take over from there.
  * - A little randomness, so close calls vary and people find things they haven't rated.
@@ -51,9 +52,10 @@ const ResourcePicker = (function () {
   // A kind outside the map whose own content is tagged with the theme (e.g. a devotional on
   // "temptation") -- relevant, but it only gets added if the person has clearly liked it.
   const TAGGED_PRIOR = 0.4;
-  // An explicit ask with no feeling named ("find me a group") has no theme to match, so only a
-  // clearly liked kind rides along: needs a net score of about +0.4 (two or more thumbs up).
-  const NO_THEME_PRIOR = 0.2;
+  // Theme words that are really requests, not feelings (see pick).
+  const REQUEST_THEMES = new Set(["accountability"]);
+  // What makes a coping request an urge happening now (see pick).
+  const URGE_WORDS = /\b(?:urges?|crav\w*|tempt\w*|about to|(?:want|going) to (?:look|watch)|the pull|give in|giving in|act out)\b/;
   const EXTRA_THRESHOLD = 0.6;
   const PREF_WEIGHT = 1.0;
   const ONBOARDING_BONUS = 0.2;
@@ -78,10 +80,15 @@ const ResourcePicker = (function () {
 
   // Item ranking weights: theme match outranks everything learned, so a liked keyword never pulls
   // in something off-topic; preferences, meaning and the onboarding method decide among on-topic
-  // items. ITEM_THEME has to exceed the widest swing of the rest: method 0.5 + 2 x (prefs 0.8 +
-  // meaning 0.8 + taste 0.6 + noise 0.1) = 5.1 -- at 1.0, an off-topic liked item beat an
-  // on-topic disliked one in the offline test.
-  const ITEM_THEME = 6.0;
+  // items. ITEM_THEME has to exceed the widest swing of the rest: method 0.5 + already shown 2.0 +
+  // 2 x (prefs 0.8 + meaning 0.8 + taste 0.6 + noise 0.1) = 7.1 -- at 1.0, an off-topic liked item
+  // beat an on-topic disliked one in the offline test.
+  const ITEM_THEME = 8.0;
+  // Already shown in this conversation: in the multi-like test one liked group came back in 5 of
+  // 10 replies (all its keywords were liked). Bigger than a typical liked-keyword lead (~1), so
+  // unseen on-topic items rotate in; smaller than a theme match, so a shown item still beats
+  // anything off-topic.
+  const ITEM_SHOWN = 2.0;
   const ITEM_METHOD = 0.5;
   const ITEM_PREF = 0.8;
   const ITEM_NOISE = 0.2;
@@ -106,17 +113,13 @@ const ResourcePicker = (function () {
     return !!(type && typeof ResourceRepo !== "undefined" && ResourceRepo.hasTheme(type, theme));
   }
 
-  // How well an unasked kind fits: theme relevance + learned preference + onboarding + noise.
+  // How well an unasked kind fits the theme: relevance + learned preference + onboarding + noise.
   function typeScore(tool, theme, profile, preferredMethods) {
     let prior = 0;
-    if (theme) {
-      const mapped = (THEME_TYPES[theme] || []).indexOf(tool);
-      if (mapped >= 0) prior = MAP_PRIOR[mapped] ?? MAP_PRIOR[MAP_PRIOR.length - 1];
-      else if (hasTaggedContent(tool, theme)) prior = TAGGED_PRIOR;
-      else return null; // nothing to say about this theme -- never offered unasked
-    } else {
-      prior = NO_THEME_PRIOR;
-    }
+    const mapped = (THEME_TYPES[theme] || []).indexOf(tool);
+    if (mapped >= 0) prior = MAP_PRIOR[mapped] ?? MAP_PRIOR[MAP_PRIOR.length - 1];
+    else if (hasTaggedContent(tool, theme)) prior = TAGGED_PRIOR;
+    else return null; // nothing to say about this theme -- never offered unasked
     const onboarding = preferredMethods.some((m) => METHOD_TO_TOOL[m] === tool) ? ONBOARDING_BONUS : 0;
     return prior + PREF_WEIGHT * toolScore(profile, tool) + onboarding + noise(TYPE_NOISE);
   }
@@ -161,13 +164,19 @@ const ResourcePicker = (function () {
     // "the craving won't go away" read as "hope" and pulled in hope content instead of urge help.
     const urgeNow = explicit.includes("coping_toolkit");
     const feeling = aboutAi ? null : agentInferTheme(lower) || (urgeNow ? null : hint.theme) || null;
-    // An urge happening now counts as a theme for unasked additions even without a feeling word.
-    const theme = feeling || (urgeNow ? "in-the-moment" : null);
+    // An urge happening now counts as a theme for unasked additions even without a feeling word --
+    // but only with urge language: "a verse and a coping tool please" asks for coping tools without
+    // describing an urge, and is a direct ask like any other.
+    const theme = feeling || (urgeNow && URGE_WORDS.test(lower) ? "in-the-moment" : null);
     if (!explicit.length && !feeling) return [];
 
     const picks = explicit.slice(0, MAX_TYPES).map((name) => ({ resource: name, explicit: true }));
 
-    if (picks.length < MAX_TYPES) {
+    // Unasked kinds come only with a feeling or an urge (decision, 2026-10-07): a direct ask gets
+    // what was asked for. With four kinds liked, every "find me a counselor" or "can you share a
+    // verse" came back as a three-kind bundle. "accountability" doesn't count as a feeling here --
+    // it's a theme word only because it's how people ask for their partner.
+    if (picks.length < MAX_TYPES && theme && !REQUEST_THEMES.has(theme)) {
       const taken = new Set(picks.map((p) => p.resource));
       const candidates = AGENT_TOOL_DEFS.map((t) => t.name)
         .filter((name) => name !== "accountability_match" && !taken.has(name))
@@ -215,14 +224,16 @@ const ResourcePicker = (function () {
    * A rank(rows) function for ResourceRepo: best-first by theme match, onboarding method, learned
    * keyword preferences, distance (groups with a saved home location), and a little noise -- plus,
    * when the embedding model is ready (`semantic`: { queryVec, taste, vectorFor(key), cosine }),
-   * closeness in meaning to the message and to what they've rated helpful.
+   * closeness in meaning to the message and to what they've rated helpful. `shown`: resource keys
+   * already shown in this conversation, which rank lower.
    */
-  function ranker(tool, theme, profile, preferredMethods = [], semantic = null) {
+  function ranker(tool, theme, profile, preferredMethods = [], semantic = null, shown = null) {
     const keywordScores = profile ? profile.keywords : {};
     const score = (item, meaning, taste) => {
       let s = 0;
       const tags = Array.isArray(item.tags) ? item.tags : [];
       if (theme && tags.includes(theme)) s += ITEM_THEME;
+      if (shown && shown.has(ResourceFeedback.describe(tool, item).key)) s -= ITEM_SHOWN;
       if (item.method && preferredMethods.includes(item.method)) s += ITEM_METHOD;
       // Average over the keywords they've actually rated, so unrated tags don't dilute a clear signal.
       const rated = ResourceFeedback.keywordsFor(tool, item)
@@ -264,9 +275,15 @@ const ResourcePicker = (function () {
 
   // ---- The app's own intro sentence for a multi-kind reply (the model never describes cards) ----
 
+  // The items a tool's output shows: its list, or the single item (verse, devotional).
+  function itemsOf(output) {
+    if (!output) return [];
+    const list = output.plans || output.articles || output.mechanisms || output.groups || output.sermons || output.centers || output.contacts;
+    return Array.isArray(list) ? list : [output];
+  }
+
   function count(output) {
-    const list = output && (output.plans || output.articles || output.mechanisms || output.groups || output.sermons || output.centers || output.contacts);
-    return Array.isArray(list) ? list.length : 1;
+    return itemsOf(output).length;
   }
 
   function phrase(tool, theme, output) {
@@ -307,5 +324,5 @@ const ResourcePicker = (function () {
     return `I found ${list}.`;
   }
 
-  return { pick, ranker, intro, verseTopicFor, THEME_TYPES, MAX_TYPES, MAX_ITEMS };
+  return { pick, ranker, intro, verseTopicFor, itemsOf, THEME_TYPES, MAX_TYPES, MAX_ITEMS };
 })();

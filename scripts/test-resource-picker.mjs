@@ -122,14 +122,24 @@ test("liked kinds are added only when they fit the theme", () => {
   }
 });
 
-test("an explicit ask with no feeling adds only a clearly liked kind", () => {
-  for (const p of many(() => pick("find me a sermon"))) assert.deepEqual(names(p), ["sermon_library"]);
-  const oneThumb = profile({ devotional_finder: 0.33 });
-  for (const p of many(() => pick("find me a sermon", "", { profile: oneThumb }))) assert.deepEqual(names(p), ["sermon_library"]);
-  const clearlyLiked = profile({ devotional_finder: 0.6 });
-  for (const p of many(() => pick("find me a sermon", "", { profile: clearlyLiked }))) {
-    assert.deepEqual(names(p), ["sermon_library", "devotional_finder"]);
+test("a direct ask with no feeling gets just what was asked for, however much else is liked", () => {
+  const lovesEverything = profile({ devotional_finder: 0.9, small_group_finder: 0.9, coping_toolkit: 0.9, sermon_library: 0.9, scripture_search: 0.9 });
+  for (const p of many(() => pick("find me a sermon", "", { profile: lovesEverything }))) assert.deepEqual(names(p), ["sermon_library"]);
+  for (const p of many(() => pick("can you share a verse", "", { profile: lovesEverything }))) assert.deepEqual(names(p), ["scripture_search"]);
+  for (const p of many(() => pick("find me a counselor", "", { profile: lovesEverything }))) assert.deepEqual(names(p), ["counseling_directory"]);
+  // An ask the embedding model inferred is still just that ask.
+  for (const p of many(() => pick("anyone I could talk to professionally", "", { profile: lovesEverything, inferred: { ask: "counseling_directory" } }))) {
+    assert.deepEqual(names(p), ["counseling_directory"]);
   }
+  // Asking for coping tools isn't the same as describing an urge.
+  for (const p of many(() => pick("a verse and a coping tool please", "", { profile: lovesEverything }))) {
+    assert.deepEqual(names(p).sort(), ["coping_toolkit", "scripture_search"]);
+  }
+  // "accountability" is how people ask for their partner, not a feeling: no extras with it.
+  for (const p of many(() => pick("I need my accountability partner", "", { profile: lovesEverything }))) assert.deepEqual(names(p), ["accountability_match"]);
+  // A feeling or an urge alongside the ask still brings fitting extras.
+  for (const p of many(() => pick("find me a group, I'm so lonely", "", { profile: lovesEverything }))) assert.ok(p.length > 1, names(p).join());
+  for (const p of many(() => pick("I'm about to look", "", { profile: lovesEverything }))) assert.ok(p.length > 1, names(p).join());
 });
 
 test("the accountability partner is never added unasked, always shown when asked, never trimmed", () => {
@@ -246,6 +256,21 @@ test("ranker: taste pulls toward what resembles past helpful ratings; unindexed 
     assert.equal(order[0], "Like");
     assert.equal(order[2], "Unlike");
   }
+});
+
+test("ranker: items already shown in this conversation give way to unseen on-topic ones, never to off-topic ones", () => {
+  const rows = [
+    { title: "Liked and shown", tags: ["shame", "breathing"] },
+    { title: "Unseen", tags: ["shame"] },
+    { title: "Off-topic unseen liked", tags: ["hope", "breathing"] },
+  ];
+  const p = profile({}, { breathing: 0.9 });
+  const shown = new Set(["local:coping_toolkit:Liked and shown"]);
+  for (const order of many(() => ranker("coping_toolkit", "shame", p, [], null, shown)(rows).map((r) => r.title))) {
+    assert.deepEqual(order, ["Unseen", "Liked and shown", "Off-topic unseen liked"]);
+  }
+  // Without the shown set the liked one leads, as before.
+  for (const order of many(() => ranker("coping_toolkit", "shame", p)(rows).map((r) => r.title))) assert.equal(order[0], "Liked and shown");
 });
 
 test("verse topics matched by meaning apply only to a verse about a feeling or an asked-for verse", () => {
