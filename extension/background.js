@@ -277,6 +277,13 @@ function createNotification(id, options) {
 }
 let lastNotificationError = null;
 
+// A site whose hostname itself matches the keyword list is never NAMED in the notification or
+// in-page banner (both are glanceable by anyone near the screen) -- "this site" instead. The full
+// name still goes to the in-app alert (pendingAlert.appLabel), which only shows once unlocked.
+function speakableSite(domain) {
+  return Shared.findKeywords(String(domain).replace(/[.\-]/g, " ")).length ? "this site" : domain;
+}
+
 async function postRiskNotification(domain, result) {
   const context = await load("riskContext", {});
   const escalate = await recordSentAndShouldEscalate("risk");
@@ -312,10 +319,11 @@ async function postRiskNotification(domain, result) {
   const specific = result.trace
     ? NotificationText.compose({
         trace: result.trace.factors,
-        app: domain,
+        app: speakableSite(domain),
         minutes: result.trace.sessionMinutes,
         timeBucket: result.trace.timeBucket,
         bank: context.phraseBank,
+        noteBank: context.noteBank,
         detail: context.lockScreenDetail !== false,
       })
     : null;
@@ -578,6 +586,7 @@ async function runOp(op, payload, { fromPopup }) {
         // AI-written phrase templates (web/js/riskExplainer.js); NotificationText re-validates
         // each one before use, so only the shape is checked here.
         phraseBank: c.phraseBank && typeof c.phraseBank === "object" ? c.phraseBank : {},
+        noteBank: c.noteBank && typeof c.noteBank === "object" ? c.noteBank : {},
       });
       return { ok: true };
     }

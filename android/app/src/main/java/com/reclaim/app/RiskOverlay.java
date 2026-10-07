@@ -14,6 +14,7 @@ import android.os.Looper;
 import android.provider.Settings;
 import android.text.InputType;
 import android.util.Log;
+import android.view.animation.LinearInterpolator;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -115,17 +116,26 @@ final class RiskOverlay {
         long alertId;
         JSONArray factors; // every factor that fired (ids)
         List<String> reasons = new ArrayList<>(); // plain-language, RiskScorer.Result.userReasons
+        List<RiskVerse.Verse> verses = new ArrayList<>(); // the AI's picks for this situation, best first
+        String sig = "K";
+        String bucket = "";
         String[] partnerNames = new String[2];
         String[] partnerPhones = new String[2];
     }
 
     // Safe from any thread (the background Worker calls this). A second nudge while one is already
-    // up is ignored -- never stack screens.
-    static void show(Context ctx, Spec spec) {
+    // up is ignored -- never stack screens. `onFailure` runs (on the main thread) only if the overlay
+    // could NOT be drawn -- permission gone, or the window manager refused -- so the caller can fall back
+    // to a notification; it is not run when an overlay is already showing (a check-in is already up).
+    static void show(Context ctx, Spec spec, Runnable onFailure) {
         Context app = ctx.getApplicationContext();
         MAIN.post(() -> {
             try {
-                if (!canShow(app) || current != null) return;
+                if (current != null) return;
+                if (!canShow(app)) {
+                    if (onFailure != null) onFailure.run();
+                    return;
+                }
                 WindowManager wm = (WindowManager) app.getSystemService(Context.WINDOW_SERVICE);
                 if (wm == null) return;
                 feedbackGiven = false;
@@ -141,6 +151,13 @@ final class RiskOverlay {
                 // posted is the fallback, so this must never throw into the Worker.
                 Log.w(TAG, "couldn't show overlay", e);
                 current = null;
+                if (onFailure != null) {
+                    try {
+                        onFailure.run();
+                    } catch (Exception inner) {
+                        Log.w(TAG, "fallback notification failed too", inner);
+                    }
+                }
             }
         });
     }
@@ -289,6 +306,15 @@ final class RiskOverlay {
             col.addView(new View(c), new LinearLayout.LayoutParams(1, dp(c, 10)));
         }
 
+        // The Bible verse the on-device AI chose for this situation (and this person), right on the screen.
+        if (!spec.verses.isEmpty()) {
+            final LinearLayout card = new LinearLayout(c);
+            card.setOrientation(LinearLayout.VERTICAL);
+            card.setPadding(0, dp(c, 4), 0, dp(c, 8));
+            renderVerse(c, spec, card, new int[] {0});
+            col.addView(card, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+
         for (int i = 0; i < 2; i++) {
             final String phone = spec.partnerPhones[i];
             if (phone == null || phone.trim().isEmpty()) continue;
@@ -303,21 +329,21 @@ final class RiskOverlay {
             col.addView(call);
         }
 
-        Button verse = button(c, "Read a verse", false);
-        verse.setOnClickListener(v -> {
+        // Opens the app's Chat with a "I need some help right now" message already sent, so the app's
+        // own resource picker (coping tools, a verse, people to reach) answers -- see MainActivity.
+        Button resources = button(c, "Find resources", false);
+        resources.setOnClickListener(v -> {
             Intent open = new Intent(c, MainActivity.class);
             open.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-            open.putExtra(RiskNudgeMonitor.EXTRA_ACTION, RiskNudgeMonitor.ACTION_OPEN_VERSE);
+            open.putExtra(RiskNudgeMonitor.EXTRA_ACTION, RiskNudgeMonitor.ACTION_OPEN_RESOURCES);
             launch(c, open);
             answer(c, spec);
         });
-        col.addView(verse);
+        col.addView(resources);
 
-        final Button okay = button(c, "I'm okay (" + OKAY_WAIT_SECONDS + ")", false);
-        okay.setEnabled(false);
-        okay.setAlpha(0.55f);
-        okay.setOnClickListener(v -> answer(c, spec));
-        col.addView(okay);
+        final OkayButton okay = okayButton(c);
+        okay.root.setOnClickListener(v -> answer(c, spec));
+        col.addView(okay.root);
         startOkayCountdown(okay);
 
         // Small and at the bottom, words not a button: the default is "fair", so this is only for
@@ -330,25 +356,119 @@ final class RiskOverlay {
         return col;
     }
 
-    // "I'm okay" is deliberately slow for the first few seconds -- long enough to make it a choice,
-    // not a reflex tap that clears the screen before it's been read. Mirrors RiskAlertView's wait.
-    private static void startOkayCountdown(Button okay) {
-        final int[] left = {OKAY_WAIT_SECONDS};
-        countdown = new Runnable() {
-            @Override
-            public void run() {
-                left[0]--;
-                if (left[0] <= 0) {
-                    okay.setText("I'm okay");
-                    okay.setEnabled(true);
-                    okay.setAlpha(1f);
-                    return;
-                }
-                okay.setText("I'm okay (" + left[0] + ")");
-                MAIN.postDelayed(this, 1000);
-            }
+    // One verse, with its attribution and two small word-links to teach the AI: "This helped" and "Not for me"
+    // (which also moves on to the next verse). Both are parked natively and read by the app next time it opens
+    // (RiskFeedbackNotes.addVerseFeedback -> VerseBank.processFeedback).
+    private static void renderVerse(Context c, Spec spec, LinearLayout card, int[] idx) {
+        card.removeAllViews();
+        if (idx[0] >= spec.verses.size()) {
+            card.setVisibility(View.GONE);
+            return;
+        }
+        final RiskVerse.Verse v = spec.verses.get(idx[0]);
+
+        LinearLayout row = new LinearLayout(c);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        View bar = new View(c);
+        bar.setBackgroundColor(ORANGE);
+        row.addView(bar, new LinearLayout.LayoutParams(dp(c, 3), ViewGroup.LayoutParams.MATCH_PARENT));
+
+        LinearLayout body = new LinearLayout(c);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setPadding(dp(c, 12), 0, 0, 0);
+        TextView verse = text(c, "\u201C" + v.text + "\u201D", 17, WHITE, false);
+        verse.setTypeface(Typeface.defaultFromStyle(Typeface.ITALIC));
+        verse.setLineSpacing(0, 1.2f);
+        body.addView(verse);
+        TextView ref = text(c, "\u2014 " + v.ref, 13, MUTED, true);
+        ref.setPadding(0, dp(c, 6), 0, 0);
+        body.addView(ref);
+        if (!v.attribution.isEmpty()) {
+            TextView attr = text(c, v.attribution, 11, Color.parseColor("#8aa0b8"), false);
+            attr.setPadding(0, dp(c, 2), 0, 0);
+            body.addView(attr);
+        }
+
+        final LinearLayout links = new LinearLayout(c);
+        links.setOrientation(LinearLayout.HORIZONTAL);
+        links.setPadding(0, dp(c, 6), 0, 0);
+        final TextView helped = smallLink(c, "This helped");
+        final TextView notForMe = smallLink(c, "Not for me");
+        helped.setOnClickListener(x -> {
+            RiskFeedbackNotes.addVerseFeedback(c, v.ref, v.text, spec.sig, spec.bucket, 1);
+            links.removeAllViews();
+            TextView thanks = text(c, "Thanks \u2014 I'll remember that.", 12, MUTED, false);
+            thanks.setPadding(0, dp(c, 4), 0, dp(c, 4));
+            links.addView(thanks);
+        });
+        notForMe.setOnClickListener(x -> {
+            RiskFeedbackNotes.addVerseFeedback(c, v.ref, v.text, spec.sig, spec.bucket, -1);
+            idx[0]++;
+            renderVerse(c, spec, card, idx); // on to the next verse the AI picked, if there is one
+        });
+        links.addView(helped);
+        TextView dot = text(c, "  \u00B7  ", 12, MUTED, false);
+        dot.setPadding(0, dp(c, 4), 0, dp(c, 4));
+        links.addView(dot);
+        links.addView(notForMe);
+        body.addView(links);
+
+        row.addView(body, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        card.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+    }
+
+    // A small underlined word-link (not a button), left-aligned, for use inline.
+    private static TextView smallLink(Context c, String s) {
+        TextView t = text(c, s, 12, MUTED, false);
+        t.setPaintFlags(t.getPaintFlags() | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
+        t.setPadding(0, dp(c, 4), dp(c, 2), dp(c, 4));
+        return t;
+    }
+
+    // "I'm okay" with the filling bar: same idea as the in-app dismiss button (a translucent bar fills left
+    // to right behind the label over OKAY_WAIT_SECONDS, then the button wakes up) -- long enough to make it
+    // a choice, not a reflex tap that clears the screen before it's been read, and the bar makes the wait
+    // read as "counting down" rather than "the button is broken".
+    private static final class OkayButton {
+        FrameLayout root;
+        View fill;
+        TextView label;
+    }
+
+    private static OkayButton okayButton(Context c) {
+        OkayButton b = new OkayButton();
+        b.root = new FrameLayout(c);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(c, 14));
+        bg.setColor(Color.TRANSPARENT);
+        bg.setStroke(dp(c, 1), MUTED);
+        b.root.setBackground(bg);
+        b.root.setClipToOutline(true); // the bar is clipped to the rounded corners
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(c, 54));
+        lp.topMargin = dp(c, 10);
+        b.root.setLayoutParams(lp);
+
+        b.fill = new View(c);
+        b.fill.setBackgroundColor(Color.argb(90, 185, 200, 216));
+        b.fill.setPivotX(0f);
+        b.fill.setScaleX(0f);
+        b.root.addView(b.fill, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        b.label = text(c, "I'm okay", 16, WHITE, true);
+        b.label.setGravity(Gravity.CENTER);
+        b.label.setAlpha(0.6f);
+        b.root.addView(b.label, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        b.root.setEnabled(false);
+        return b;
+    }
+
+    private static void startOkayCountdown(OkayButton okay) {
+        okay.fill.animate().scaleX(1f).setDuration(OKAY_WAIT_SECONDS * 1000L).setInterpolator(new LinearInterpolator()).start();
+        countdown = () -> {
+            okay.root.setEnabled(true);
+            okay.label.setAlpha(1f);
         };
-        MAIN.postDelayed(countdown, 1000);
+        MAIN.postDelayed(countdown, OKAY_WAIT_SECONDS * 1000L);
     }
 
     // ---- Flag page ---------------------------------------------------------------------------

@@ -238,6 +238,22 @@ async function boot() {
   await t.op("RECORD_OUTCOME", { type: "resisted", timestamp: Date.now(), tags: [] });
   assert.equal(t.local.weights.triggerApp, 32, "outside the 6h window: untouched");
 
+  // The notification may name the site ("You've been on reddit.com for 16 minutes") -- but never an
+  // explicit one: a hostname that itself matches the keyword list is called "this site" on the lock
+  // screen / in the banner (the full name is still stored for the in-app alert, shown once unlocked).
+  t = await boot();
+  await t.op("SET_ENABLED", { enabled: true });
+  await t.op("SYNC_RISK_CONTEXT", { intensity: "medium" });
+  await t.focus("https://www.pornhub.com/");
+  t.session.current.start -= 16 * 60 * 1000;
+  await t.tick();
+  assert.equal(t.state.notifications.length, 1, "a severe-keyword host triggers");
+  const explicitNote = t.state.notifications[0];
+  assert.ok(!/porn/i.test(explicitNote.title + explicitNote.message), "lock-screen text names an explicit site: " + explicitNote.message);
+  assert.match(explicitNote.message, /this site/, explicitNote.message);
+  assert.match(explicitNote.message, /16 minutes/, explicitNote.message);
+  assert.equal(t.local.pendingAlert.appLabel, "pornhub.com", "the in-app alert (shown once unlocked) still has the real name");
+
   // Lock-screen detail OFF (Privacy setting): back to the generic wording, nothing specific.
   t = await boot();
   await t.op("SET_ENABLED", { enabled: true });

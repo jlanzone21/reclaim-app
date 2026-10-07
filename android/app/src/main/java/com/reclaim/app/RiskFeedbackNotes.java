@@ -24,6 +24,7 @@ import org.json.JSONObject;
  */
 final class RiskFeedbackNotes {
     private static final String KEY = "pending_feedback_notes";
+    private static final String VERSE_KEY = "pending_verse_feedback";
     private static final long STALE_MS = 12L * 60 * 60 * 1000;
     private static final int MAX_NOTES = 20;
     private static final int MAX_TEXT = 400;
@@ -59,6 +60,43 @@ final class RiskFeedbackNotes {
         JSONArray kept = new JSONArray();
         for (int i = Math.max(0, all.length() - MAX_NOTES); i < all.length(); i++) kept.put(all.opt(i));
         db.setMeta(KEY, kept.toString());
+    }
+
+    // "This helped" (+1) / "Not for me" (-1) on the verse shown on the overlay, parked for the app to turn
+    // into a rating + a situation-tied outcome (VerseBank.processFeedback). Capped; newest kept.
+    static synchronized void addVerseFeedback(Context ctx, String ref, String text, String sig, String bucket, int rating) {
+        LocalSignalsDb db = LocalSignalsDb.getInstance(ctx);
+        JSONArray all = new JSONArray();
+        try {
+            String raw = db.getMeta(VERSE_KEY);
+            if (raw != null && !raw.isEmpty()) all = new JSONArray(raw);
+            JSONObject o = new JSONObject();
+            o.put("ref", ref);
+            o.put("text", text == null ? "" : text);
+            o.put("sig", sig == null ? "K" : sig);
+            o.put("bucket", bucket == null ? "" : bucket);
+            o.put("rating", rating > 0 ? 1 : -1);
+            o.put("at", System.currentTimeMillis());
+            all.put(o);
+        } catch (JSONException e) {
+            return;
+        }
+        JSONArray kept = new JSONArray();
+        for (int i = Math.max(0, all.length() - MAX_NOTES); i < all.length(); i++) kept.put(all.opt(i));
+        db.setMeta(VERSE_KEY, kept.toString());
+    }
+
+    static synchronized JSONArray takeAllVerseFeedback(Context ctx) {
+        LocalSignalsDb db = LocalSignalsDb.getInstance(ctx);
+        JSONArray all = new JSONArray();
+        try {
+            String raw = db.getMeta(VERSE_KEY);
+            if (raw != null && !raw.isEmpty()) all = new JSONArray(raw);
+        } catch (JSONException e) {
+            // malformed -- start clean
+        }
+        db.setMeta(VERSE_KEY, "");
+        return all;
     }
 
     // Everything waiting, cleared on read -- the app handles each note exactly once.

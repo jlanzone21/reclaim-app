@@ -115,6 +115,10 @@ public class LocalSignalsPlugin extends Plugin {
         db().setMeta("lock_screen_detail", Boolean.FALSE.equals(call.getBoolean("lockScreenDetail", true)) ? "0" : "1");
         com.getcapacitor.JSObject bank = call.getObject("phraseBank");
         db().setMeta("phrase_bank", bank != null ? bank.toString() : "{}");
+        com.getcapacitor.JSObject notes = call.getObject("noteBank");
+        db().setMeta("note_bank", notes != null ? notes.toString() : "{}");
+        com.getcapacitor.JSObject verses = call.getObject("verseBank");
+        db().setMeta("verse_bank", verses != null ? verses.toString() : "{}");
         call.resolve();
     }
 
@@ -163,7 +167,8 @@ public class LocalSignalsPlugin extends Plugin {
         String flag = db().getMeta("pending_verse_request");
         if (flag != null) db().setMeta("pending_verse_request", "");
         JSObject result = new JSObject();
-        result.put("pending", "1".equals(flag));
+        result.put("pending", "1".equals(flag) || "resources".equals(flag));
+        result.put("kind", "resources".equals(flag) ? "resources" : "verse");
         call.resolve(result);
     }
 
@@ -247,6 +252,14 @@ public class LocalSignalsPlugin extends Plugin {
         call.resolve(result);
     }
 
+    // "This helped" / "Not for me" taps on the overlay's verse, waiting for VerseBank.processFeedback. Consumed once.
+    @PluginMethod
+    public void getPendingVerseFeedback(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("feedback", RiskFeedbackNotes.takeAllVerseFeedback(getContext()));
+        call.resolve(result);
+    }
+
     // For Insights -- see NotificationTracking's own comment for exactly what "sent"/"responded"
     // count. Shape: {"nightly":{"sent":N,"responded":N},"risk":{"sent":N,"responded":N}}, missing
     // a type entirely (or the whole object empty) if nothing of that type has posted yet.
@@ -288,7 +301,9 @@ public class LocalSignalsPlugin extends Plugin {
     @PluginMethod
     public void debugSendNightlyCheckin(PluginCall call) {
         androidx.work.WorkManager.getInstance(getContext())
-                .enqueue(new androidx.work.OneTimeWorkRequest.Builder(NightlyCheckinWorker.class).build());
+                .enqueue(new androidx.work.OneTimeWorkRequest.Builder(NightlyCheckinWorker.class)
+                        .setInputData(new androidx.work.Data.Builder().putBoolean(NightlyCheckinWorker.KEY_FORCE, true).build())
+                        .build());
         call.resolve();
     }
 

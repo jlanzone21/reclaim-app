@@ -190,14 +190,19 @@
   // but ordering it first keeps that guarantee explicit here too, not just implicit in native.
   async function checkPendingVerseRequest() {
     if (typeof LocalSignals === "undefined" || !LocalSignals.available()) return false;
-    const pending = await LocalSignals.getPendingVerseRequest();
-    if (!pending) return false;
-    return submitVerseRequest();
+    const kind = await LocalSignals.getPendingVerseRequest();
+    if (!kind) return false;
+    return submitVerseRequest(kind === "resources" ? RESOURCES_REQUEST : VERSE_REQUEST);
   }
 
   // Shared by the Android notification action and the browser extension's: land in Chat with a
   // scripture request already sent (or on Home if the chat model isn't downloaded yet).
-  function submitVerseRequest() {
+  // The messages the overlay's / notification's buttons send on the person's behalf. "Find resources" is an urge
+  // happening now, so the resource picker answers with coping tools, a verse and people to reach.
+  const VERSE_REQUEST = "Can you share a Bible verse with me?";
+  const RESOURCES_REQUEST = "I'm tempted right now and I need some help.";
+
+  function submitVerseRequest(message = VERSE_REQUEST) {
     if (chatLocked()) {
       // The auto-submit below would be refused while the model isn't downloaded; Home's "Today's
       // Verse" card is the same verse from YouVersion, so land there instead.
@@ -205,7 +210,7 @@
       return true;
     }
     showView("chat");
-    input.value = "Can you share a Bible verse with me?";
+    input.value = message;
     autoResize();
     updateSendState();
     form.requestSubmit();
@@ -242,6 +247,7 @@
     const wentToVerse = await checkPendingVerseRequest();
     if (!wentToVerse && typeof RiskAlertView !== "undefined") RiskAlertView.checkPending();
     if (typeof RiskExplainer !== "undefined") RiskExplainer.processFeedbackNotes();
+    if (typeof VerseBank !== "undefined") VerseBank.processFeedback();
   });
 
   navItems.forEach((btn) => {
@@ -277,8 +283,15 @@
   LocalModel.onChange((s) => {
     if (s.state !== "ready" || phraseBankScheduled) return;
     phraseBankScheduled = true;
-    setTimeout(() => RiskExplainer.refreshPhraseBank(), 45000);
+    setTimeout(() => RiskExplainer.refreshNoteBank().then(() => RiskExplainer.refreshPhraseBank()).then(() => VerseBank.refresh()), 45000);
   });
+  // The verse for the full-screen check-in is ranked with Nathaniel's embedding model; a bank built before it
+  // was ready is rebuilt as soon as it is (VerseBank.refresh decides whether that's needed).
+  if (typeof LocalEmbedder !== "undefined") {
+    LocalEmbedder.onChange((st) => {
+      if (st === "ready") setTimeout(() => VerseBank.refresh(), 8000);
+    });
+  }
   LocalModel.init();
   DB.init()
     .then(() => {
@@ -312,6 +325,7 @@
       });
       // Words typed on the full-screen check-in's flag page wait for the AI -- see RiskExplainer.
       RiskExplainer.processFeedbackNotes();
+      VerseBank.processFeedback();
     })
     .catch((err) => {
       console.error("Failed to initialize local database", err);
@@ -790,11 +804,17 @@
       .replace(/\*([^*\n]+)\*/g, "$1");
   }
 
+  // A touch screen (phone/tablet) has an on-screen keyboard that covers the reply; a computer doesn't.
+  const isTouchDevice = () => !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+
   async function handleSend(text) {
     hideEmptyState();
     addUserMessage(text);
     input.value = "";
     autoResize();
+    // Sending puts the keyboard away so the whole reply is readable. Every way of sending (Enter, the send
+    // button, a suggestion chip, the overlay's auto-sent messages) goes through here.
+    if (isTouchDevice()) input.blur();
     busy = true;
     updateSendState();
 
@@ -841,7 +861,9 @@
     } finally {
       busy = false;
       updateSendState();
-      input.focus();
+      // Back to the box for the next message -- but only where there's a physical keyboard: refocusing on a
+      // phone would pop the keyboard straight back up over the reply that just finished.
+      if (!isTouchDevice()) input.focus();
     }
   }
 

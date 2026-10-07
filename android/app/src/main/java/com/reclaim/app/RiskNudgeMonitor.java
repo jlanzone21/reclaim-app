@@ -46,6 +46,10 @@ import androidx.core.content.ContextCompat;
  * That's Android's own anti-abuse design (enforced since Android 10), not a bug here, and not
  * something worked around -- see this session's discussion of why not.
  *
+ * With "Display over other apps" granted, a risk nudge is the full-screen RiskOverlay ONLY -- no
+ * notification is posted (nothing in the shade or on a lock screen). Everything below about the
+ * notification describes the FALLBACK, used when the overlay can't appear.
+ *
  * The notification text says specifically why (RiskNotificationText: "You've been on Instagram for
  * 22 minutes. Let's check in."), written from RiskScorer's trace with wording the on-device AI
  * authored while the app was open -- that is the default, a deliberate reversal of the earlier
@@ -90,6 +94,11 @@ final class RiskNudgeMonitor {
     // sent, skipping the usual risk-alert detail popup, so the button does what it actually says
     // instead of just reopening the app onto the same generic screen a body tap would.
     static final String ACTION_OPEN_VERSE = "open_verse_request";
+
+    // "Find resources": lands in Chat with a "I need some help right now" message already sent, so the app's
+    // own resource picker answers (see MainActivity.handleRiskIntent / app.js). The overlay's button and the
+    // fallback notification's action both use it.
+    static final String ACTION_OPEN_RESOURCES = "open_resources_request";
 
     // Shorter than the nightly check-in's: this is about an in-the-moment risk window, not a
     // routine daily touchpoint -- stale well before half a day has passed.
@@ -226,16 +235,11 @@ final class RiskNudgeMonitor {
             "A quick check-in, whenever you're ready.",
     };
 
+    // Posts a risk nudge. With "Display over other apps" granted this is the full-screen check-in ONLY --
+    // no notification is posted at all (the user's decision: nothing in the shade or on a lock screen,
+    // and no heads-up banner covering the overlay). A notification is the FALLBACK, used only when the
+    // overlay can't appear (permission not granted) or fails to show, so a nudge is never silently lost.
     private static void postNotification(Context ctx, String packageName, RiskScorer.Result result) {
-        NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
-        if (nm == null) return;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // HIGH, not DEFAULT: a full-screen intent needs a high-importance channel to actually
-            // heads-up/take over -- see the class doc comment on what this can and can't do.
-            nm.deleteNotificationChannel(OLD_CHANNEL_ID);
-            nm.createNotificationChannel(new NotificationChannel(CHANNEL_ID, "Risk check-in", NotificationManager.IMPORTANCE_HIGH));
-        }
-
         LocalSignalsDb db = LocalSignalsDb.getInstance(ctx);
         // One id for this nudge everywhere (pending alert, overlay): a verdict given on either
         // surface is then recognized as the same alert and counts once.
@@ -249,7 +253,45 @@ final class RiskNudgeMonitor {
         // (the previous occurrence went unanswered) escalates to a full-screen takeover attempt.
         // User's own framing: the first miss might just be bad timing, but being ignored twice in
         // a row is a real signal worth interrupting for.
-        boolean escalate = NotificationTracking.recordSentAndShouldEscalate(ctx, NotificationTracking.TYPE_RISK);
+        final boolean escalate = NotificationTracking.recordSentAndShouldEscalate(ctx, NotificationTracking.TYPE_RISK);
+
+        if (RiskOverlay.canShow(ctx)) {
+            RiskOverlay.Spec spec = new RiskOverlay.Spec();
+            spec.text = overlayText(ctx, db, packageName, result);
+            spec.appLabel = appLabel(ctx, packageName);
+            spec.alertId = alertId;
+            spec.factors = result.factors;
+            // The Bible verse, chosen ahead of time by the on-device AI for this situation (RiskVerse).
+            java.util.Set<String> firedIds = new java.util.HashSet<>();
+            for (int i = 0; i < result.factors.length(); i++) firedIds.add(result.factors.optString(i));
+            String sig = RiskNotificationText.noteSignature(firedIds);
+            spec.sig = sig == null ? "K" : sig;
+            spec.bucket = result.trace != null ? result.trace.optString("timeBucket", "") : "";
+            spec.verses = RiskVerse.pick(db, RiskVerse.keyFor(sig, spec.bucket), new java.util.Random());
+            if (!spec.verses.isEmpty()) RiskVerse.markShown(db, spec.verses.get(0).ref);
+            // Always shown on the overlay: the person judges for themselves whether it's a false alarm.
+            for (int i = 0; i < result.userReasons.length(); i++) spec.reasons.add(result.userReasons.optString(i));
+            spec.partnerNames[0] = db.getMeta("accountability_name");
+            spec.partnerPhones[0] = db.getMeta("accountability_phone");
+            spec.partnerNames[1] = db.getMeta("accountability_name_2");
+            spec.partnerPhones[1] = db.getMeta("accountability_phone_2");
+            // If it can't be drawn (revoked mid-call, no window token), fall back to the notification.
+            RiskOverlay.show(ctx, spec, () -> postFallbackNotification(ctx, packageName, result, escalate));
+            return;
+        }
+        postFallbackNotification(ctx, packageName, result, escalate);
+    }
+
+    private static void postFallbackNotification(Context ctx, String packageName, RiskScorer.Result result, boolean escalate) {
+        NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm == null) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // HIGH, not DEFAULT: a full-screen intent needs a high-importance channel to actually
+            // heads-up/take over -- see the class doc comment on what this can and can't do.
+            nm.deleteNotificationChannel(OLD_CHANNEL_ID);
+            nm.createNotificationChannel(new NotificationChannel(CHANNEL_ID, "Risk check-in", NotificationManager.IMPORTANCE_HIGH));
+        }
+        LocalSignalsDb db = LocalSignalsDb.getInstance(ctx);
 
         // Tapping the notification body (not the call action) opens the app -- app.js checks for
         // the pending alert above on boot and shows the detail screen instead of landing on Chat.
@@ -310,32 +352,14 @@ final class RiskNudgeMonitor {
             // building a button with nowhere real to go; add it once that content exists.
             Intent openVerse = new Intent(ctx, MainActivity.class);
             openVerse.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-            openVerse.putExtra(EXTRA_ACTION, ACTION_OPEN_VERSE);
+            openVerse.putExtra(EXTRA_ACTION, ACTION_OPEN_RESOURCES);
             PendingIntent openVerseIntent = PendingIntent.getActivity(
                     ctx, 2, openVerse, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            builder.addAction(0, "Read a verse", openVerseIntent);
+            builder.addAction(0, "Find resources", openVerseIntent);
         }
 
         nm.notify(NOTIFICATION_ID, builder.build());
-        Log.d(TAG, "posted risk nudge notification");
-
-        // The notification above stays as the fallback and the record; when the person has granted
-        // "Display over other apps", a full-screen check-in covers whatever they're doing as well --
-        // the whole point, since a notification is easy to ignore mid-slip. See RiskOverlay.
-        if (RiskOverlay.canShow(ctx)) {
-            RiskOverlay.Spec spec = new RiskOverlay.Spec();
-            spec.text = overlayText(ctx, db, packageName, result);
-            spec.appLabel = appLabel(ctx, packageName);
-            spec.alertId = alertId;
-            spec.factors = result.factors;
-            // Always shown on the overlay: the person judges for themselves whether it's a false alarm.
-            for (int i = 0; i < result.userReasons.length(); i++) spec.reasons.add(result.userReasons.optString(i));
-            spec.partnerNames[0] = db.getMeta("accountability_name");
-            spec.partnerPhones[0] = db.getMeta("accountability_phone");
-            spec.partnerNames[1] = db.getMeta("accountability_name_2");
-            spec.partnerPhones[1] = db.getMeta("accountability_phone_2");
-            RiskOverlay.show(ctx, spec);
-        }
+        Log.d(TAG, "posted risk nudge notification (fallback: no overlay)");
     }
 
     // Specific text (default) from the trace + the AI's phrase bank, or the generic fallback when
@@ -356,9 +380,12 @@ final class RiskNudgeMonitor {
         String text = null;
         if (detail && result.trace != null) {
             org.json.JSONObject bank = null;
+            org.json.JSONObject noteBank = null;
             try {
                 String raw = db.getMeta("phrase_bank");
                 if (raw != null && !raw.isEmpty()) bank = new org.json.JSONObject(raw);
+                String rawNotes = db.getMeta("note_bank");
+                if (rawNotes != null && !rawNotes.isEmpty()) noteBank = new org.json.JSONObject(rawNotes);
             } catch (org.json.JSONException e) {
                 // Malformed bank -- RiskNotificationText falls back to its built-in phrases.
             }
@@ -367,7 +394,7 @@ final class RiskNudgeMonitor {
                     appLabel(ctx, packageName),
                     result.trace.optLong("sessionMinutes"),
                     result.trace.optString("timeBucket"),
-                    bank, true, new java.util.Random());
+                    bank, noteBank, true, new java.util.Random());
         }
         if (text == null && genericFallback) return GENERIC_TEXTS[new java.util.Random().nextInt(GENERIC_TEXTS.length)];
         return text;

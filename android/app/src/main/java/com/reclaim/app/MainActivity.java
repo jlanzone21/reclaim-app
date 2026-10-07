@@ -65,7 +65,8 @@ public class MainActivity extends BridgeActivity {
         String action = intent.getStringExtra(RiskNudgeMonitor.EXTRA_ACTION);
         boolean isOpen = RiskNudgeMonitor.ACTION_OPEN.equals(action);
         boolean isVerse = RiskNudgeMonitor.ACTION_OPEN_VERSE.equals(action);
-        if (!isOpen && !isVerse) return;
+        boolean isResources = RiskNudgeMonitor.ACTION_OPEN_RESOURCES.equals(action);
+        if (!isOpen && !isVerse && !isResources) return;
 
         // Explicit cancel, not just relying on setAutoCancel(true) -- confirmed on-device that
         // autoCancel doesn't reliably fire when this intent is invoked via the full-screen
@@ -75,14 +76,15 @@ public class MainActivity extends BridgeActivity {
         if (nm != null) nm.cancel(RiskNudgeMonitor.NOTIFICATION_ID);
         NotificationTracking.recordResponded(this, NotificationTracking.TYPE_RISK);
 
-        if (isVerse) {
+        if (isVerse || isResources) {
             LocalSignalsDb db = LocalSignalsDb.getInstance(this);
             // Consume the risk alert's own pending-flag here too (not just left for
             // RiskAlertView's boot/resume check) -- the whole point of this action is to skip the
             // detail popup entirely and go straight to Chat, so it must never surface once this
             // path has already handled the response.
             db.setMeta("pending_risk_alert", "");
-            db.setMeta("pending_verse_request", "1");
+            // "1" = a Bible verse request (the original), "resources" = "I need some help right now".
+            db.setMeta("pending_verse_request", isResources ? "resources" : "1");
         }
         // Nothing else to do for a plain open -- the risk alert's own pending-flag
         // (pending_risk_alert) is already written at post time and consumed by RiskAlertView on

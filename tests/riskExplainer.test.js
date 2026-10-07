@@ -376,6 +376,78 @@ const alert = {
   assert.equal(JSON.parse(m.store.reclaim_feedback_notes).length, 5);
   assert.ok(JSON.parse(m.store.reclaim_feedback_notes)[0].text.length <= 140);
 
+  // ---- Note bank: complete AI-written notes per combination of reasons, with live slots ----
+  m = load({});
+  const sigOf = (...ids) => m.R.noteSignature(ids);
+  assert.equal(sigOf("duration"), "D");
+  assert.equal(sigOf("triggerApp", "duration"), "D", "duration names the app too, so it replaces A");
+  assert.equal(sigOf("triggerApp"), "A");
+  assert.equal(sigOf("socialMedia", "selfReportedTime"), "AT");
+  assert.equal(sigOf("duration", "historicalTime", "selfReportedTime", "alone"), "DTL");
+  assert.equal(sigOf("triggerApp", "alone"), "AL");
+  assert.equal(sigOf("selfReportedTime"), null, "no app/duration clause to hang a sentence on");
+  assert.equal(sigOf("alone"), null);
+  assert.equal(sigOf("duration", "recentKeyword"), null, "keyword nudges keep their fixed line, never an AI note");
+  assert.equal(sigOf("triggerApp", "recentKeywordSevere"), null);
+  assert.equal(m.R._noteBase("D"), "You've been on {app} for {minutes} minutes {time}.");
+  assert.equal(m.R._noteBase("AT"), "You're on {app} {time}, a hard time of day for you.");
+  assert.equal(m.R._noteBase("DTL"), "You've been on {app} for {minutes} minutes {time}, a hard time of day for you, and no one else seems to be nearby.");
+  assert.equal(m.R._NOTE_SIGS.length, 8);
+
+  const vn = (sig, s) => m.R._validateNote(sig, s);
+  // outputs the real model gave on the Pixel 8a (12 of 15 passed; these passed)
+  assert.equal(vn("D", "You've been on {app} for {minutes} minutes {time}. Please take a moment to pause and check in."), "You've been on {app} for {minutes} minutes {time}. Please take a moment to pause and check in.");
+  // a note may UNDER-claim (drop a fact the base had) but never add one
+  assert.ok(vn("DTL", "You've been on {app} for {minutes} minutes {time}, and no one else seems to be nearby. Take a moment to pause and check in."));
+  assert.ok(vn("A", "You are on {app} {time}. Please take a moment to pause and check in."));
+  assert.equal(vn("AT", "You're on {app} {time}, a hard time of day for you. Take a moment to pause and check in."), "You're on {app} {time}, a hard time of day for you. Take a moment to pause and check in.");
+  // ...and the ones that failed on the phone are rejected
+  assert.equal(vn("A", "You're on {app} {time}. It's okay to just rest for a moment and check in."), null, "invented advice (rest)");
+  assert.equal(vn("DT", "You've been on {app} for {minutes} minutes, and a hard time of day has come. Take a moment to pause and check in."), null, "lost {time}");
+  assert.equal(vn("AT", "You're on {app} {time}, a hard time of day for you. It's okay to take a moment to pause and check in with yourself."), null, "'okay' isn't in the allowed vocabulary (a real rejection on the phone)");
+  assert.ok(vn("AT", "You're on {app} {time}, a hard time of day for you. Please take a moment to pause and check in with yourself."), "'yourself' is allowed");
+  // structure the vocabulary check can't see (real phone: a spliced clause passed it)
+  assert.equal(vn("DTL", "You've been on {app} for {minutes} minutes {time}, and a hard time of day for you, no one else seems to be nearby. Take a moment to pause and check in."), null, "spliced clause");
+  assert.equal(vn("A", "Right now you're on {app} {time}. Take a moment to pause and check in."), null, "must open like the source sentence");
+  assert.ok(vn("D", "You've been on {app} for {minutes} minutes {time}. Please pause to check in."));
+  // other rejections
+  assert.equal(vn("A", "You're on {app} {time}. Hope you're having a wonderful time. Check in."), null, "3 sentences / cheer");
+  assert.equal(vn("A", "You're on {app} for 20 minutes {time}. Take a moment to pause and check in."), null, "digits");
+  assert.equal(vn("A", "Hey {name}, you're on {app} {time}. Take a moment to pause and check in."), null, "unknown placeholder");
+  assert.equal(vn("D", "You're on {app} {time}. Take a moment to pause and check in."), null, "D needs {minutes}");
+  assert.equal(vn("A", "You're on {app} {time}. Take a moment to pause and check in \u6253\u6210."), null, "non-ASCII");
+  assert.equal(vn("A", "You're on {app} {time}."), "You're on {app} {time}. Let's check in.", "missing invitation is added, as for the alert note");
+  assert.equal(vn("A", "x"), null);
+
+  // refresh: one call per sample, writes only valid notes, mirrors to the notifier, re-validates on read
+  const asked = [];
+  m = load({
+    reply: (messages) => {
+      const base = messages[1].content.split("\n")[0];
+      asked.push(base);
+      return base + " Take a moment to pause and check in.";
+    },
+  });
+  assert.equal(await m.R.refreshNoteBank(), true);
+  const nb = m.R.getNoteBank();
+  deepEqual(Object.keys(nb).sort(), m.R._NOTE_SIGS.slice().sort());
+  assert.equal(nb.D[0], "You've been on {app} for {minutes} minutes {time}. Take a moment to pause and check in.");
+  assert.equal(nb.D.length, 1, "identical samples are stored once");
+  assert.equal(m.calls.sync, 1);
+  assert.equal(asked.length, 8 * 3, "3 samples per combination");
+  assert.match(m.calls.model[0][1].content, /\(Goal: gently invite them to pause and check in\.\)/);
+  assert.equal(await m.R.refreshNoteBank(), false, "fresh bank: not rewritten until forced");
+  assert.equal(await load({ nativeAvailable: false, reply: () => "x" }).R.refreshNoteBank(), false);
+  // a stored bank is re-validated on read
+  const staleNotes = load({});
+  staleNotes.store.reclaim_note_bank_v1 = JSON.stringify({ at: Date.now(), bank: { D: ["You've been on {app} for {minutes} minutes {time}. Rest and breathe.", "You've been on {app} for {minutes} minutes {time}. Take a moment to pause and check in."], A: ["you're waiting for the end"] } });
+  deepEqual(staleNotes.R.getNoteBank(), { D: ["You've been on {app} for {minutes} minutes {time}. Take a moment to pause and check in."] });
+  // failure partway keeps what was written
+  let calls3 = 0;
+  m = load({ reply: (msgs) => { if (++calls3 > 4) throw new Error("device lost"); return msgs[1].content.split("\n")[0] + " Take a moment to pause and check in."; } });
+  assert.equal(await m.R.refreshNoteBank(), true);
+  deepEqual(Object.keys(m.R.getNoteBank()).sort(), ["D", "DT"]);
+
   console.log("risk explainer tests passed");
 })().catch((e) => {
   console.error(e);

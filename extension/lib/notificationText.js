@@ -34,6 +34,35 @@
   const MAX_LENGTH = 150; // the Android heads-up shows roughly this much before truncating
 
   const ALLOWED_PLACEHOLDER = /\{(?:app|minutes|time)\}/g;
+  const NOTE_MAX_LENGTH = 200;
+
+  // Which combination of reasons this nudge has, for picking a pre-written (AI) note. Same letters as
+  // RiskNotificationText.noteSignature (Java) and RiskExplainer.noteSignature -- keep the three in step.
+  //   D = duration fired (its sentence names the site too, so it wins over A)
+  //   A = a flagged site / flagged social media     T = a hard time of day     L = nobody nearby
+  // null when a keyword factor fired (fixed line only, never an AI note) or there is no app/duration clause.
+  function noteSignature(fired) {
+    for (const id of KEYWORD_FACTORS) if (fired.has(id)) return null;
+    const d = fired.has("duration");
+    const a = fired.has("triggerApp") || fired.has("socialMedia");
+    const t = fired.has("selfReportedTime") || fired.has("historicalTime");
+    const l = fired.has("alone");
+    if (!d && !a) return null;
+    return (d ? "D" : "A") + (t ? "T" : "") + (l ? "L" : "");
+  }
+
+  // A synced note is only used if it is still shaped like one (see Java's usableNote).
+  function usableNote(sig, note) {
+    if (typeof note !== "string") return false;
+    const n = note.trim();
+    if (n.length < 20 || n.length > NOTE_MAX_LENGTH) return false;
+    if (/\{[^}]*\}/.test(n.replace(ALLOWED_PLACEHOLDER, ""))) return false;
+    if (/\d/.test(n)) return false;
+    if (!n.includes("{app}")) return false;
+    if (sig.startsWith("D") && !n.includes("{minutes}")) return false;
+    const sentences = (n.match(/[.!?](?=\s|$)/g) || []).length;
+    return sentences >= 1 && sentences <= 2;
+  }
 
   // A phrase from the synced bank is only used if it is still shaped like one: short, a single
   // sentence, and no placeholder other than the three we fill in. The app validated it when it was
@@ -72,11 +101,18 @@
    * @param {function} [o.pick]        n => index in [0, n), injectable for tests
    * @returns {string|null} the text, or null when the caller should use the generic wording
    */
-  function compose({ trace, app, minutes, timeBucket, bank, detail, pick }) {
+  function compose({ trace, app, minutes, timeBucket, bank, noteBank, detail, pick }) {
     if (!detail) return null;
     const choose = pick || ((n) => Math.floor(Math.random() * n));
     const fired = new Set((trace || []).filter((f) => f.fired).map((f) => f.id));
     const values = { app: app || "this app", minutes: minutes || 0, time: TIME_WORDS[timeBucket] || "right now" };
+
+    // The AI-written note for this exact combination of reasons, if there is one.
+    const sig = noteSignature(fired);
+    if (sig && noteBank && Array.isArray(noteBank[sig])) {
+      const notes = noteBank[sig].filter((n) => usableNote(sig, n));
+      if (notes.length) return fill(notes[choose(notes.length)].trim(), values);
+    }
 
     const lead = [];
     let sawTime = false;
@@ -106,7 +142,7 @@
     return text;
   }
 
-  const api = { compose, usable, BUILTIN, CLOSERS, KEYWORD_LINE, TIME_WORDS, PRIORITY };
+  const api = { compose, usable, usableNote, noteSignature, BUILTIN, CLOSERS, KEYWORD_LINE, TIME_WORDS, PRIORITY };
   root.NotificationText = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
