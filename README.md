@@ -665,7 +665,7 @@ the same small embedding model the chat uses, and ranks the bundled verses by cl
 meaning. What helped under similar conditions raises a verse, "Not for me" lowers it, and the
 person's thumbs elsewhere in the app nudge it too. The three best per situation are stored with
 their text and YouVersion's required attribution and handed to the native overlay, which just
-picks one. "This helped" / "Not for me" under the verse feed back into this the next time the app
+picks one. A smile / neutral / frown rating under the verse feeds back into this the next time the app
 opens. Everything stays on the phone.
 
 ### The full-screen check-in (Android)

@@ -375,8 +375,8 @@ instantly if the permission is revoked. **A Bible verse is shown on the overlay 
 Nathaniel's embedding model against a sentence describing the situation AND the person's
 recent check-in struggles, shifted by what helped under similar conditions and by their
 thumbs elsewhere (tag ranking if the model isn't loaded), fetched from YouVersion with its
-required attribution (bundled text as fallback) and mirrored to native. "This helped" /
-"Not for me" under the verse are parked natively and turned into a rating + a
+required attribution (bundled text as fallback) and mirrored to native. a three-face rating
+(smile = helped, neutral = records nothing, frown = not for me) under the verse is parked natively and turned into a rating + a
 situation-tied outcome the next time the app opens, then the bank is rebuilt; "Not for
 me" also moves on to the next verse. Situation and the person's recent struggles are scored as SEPARATE embeddings, each verse is
 corrected by its mean similarity to all queries (hubness), and the situation sentences share no

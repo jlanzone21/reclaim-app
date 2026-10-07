@@ -90,11 +90,14 @@ const CheckInView = (function () {
     const whenValue = els.whenInput.value;
     const timestamp = whenValue ? new Date(whenValue).toISOString() : new Date().toISOString();
 
+    const note = els.notes.value.trim();
+    // A slip's own words feed the AI's learning, like its tags do (a "resisted" note never lowers anything).
+    if (selectedType === "slipped" && note && typeof RiskExplainer !== "undefined") RiskExplainer.learnFromWords(note, "checkin");
     CheckInStore.add({
       timestamp,
       type: selectedType,
       tags: Array.from(selectedTags),
-      notes: els.notes.value.trim(),
+      notes: note,
       mood_rating: selectedMood,
       urge_intensity: selectedUrge,
     });

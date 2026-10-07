@@ -13,7 +13,7 @@ const deepEqual = (a, b, msg) => assert.deepEqual(plain(a), plain(b), msg);
 const js = (f) => fs.readFileSync(path.join(__dirname, "..", "web", "js", f), "utf8");
 
 function load({ modelState = "ready", reply = () => "", nativeAvailable = true, notes = [] } = {}) {
-  const calls = { model: [], feedback: [], sync: 0, crisisClicks: 0 };
+  const calls = { model: [], feedback: [], nudges: [], sync: 0, crisisClicks: 0 };
   const store = {};
   const sandbox = {
     console: { log: console.log, warn() {}, error: console.error },
@@ -32,6 +32,7 @@ function load({ modelState = "ready", reply = () => "", nativeAvailable = true, 
       available: () => nativeAvailable,
       recordRiskFeedback: async (p) => (calls.feedback.push(p), { adjusted: p.factors.filter((f) => f !== "recentKeywordSevere"), duplicate: false }),
       takePendingFeedbackNotes: async () => notes,
+      nudgeWeights: async (factors, increase) => calls.nudges.push({ factors, increase }),
     },
     // the app's crisis gate (agentTools.js) and the crisis button the overlay-feedback path opens
     agentIsCrisis: (t) => /kill myself|end it all|suicid/i.test(t),
@@ -447,6 +448,31 @@ const alert = {
   m = load({ reply: (msgs) => { if (++calls3 > 4) throw new Error("device lost"); return msgs[1].content.split("\n")[0] + " Take a moment to pause and check in."; } });
   assert.equal(await m.R.refreshNoteBank(), true);
   deepEqual(Object.keys(m.R.getNoteBank()).sort(), ["D", "DT"]);
+
+  // ---- learning from the person's own words (check-in notes, chat) ----
+  m = load({ reply: () => "ALONE" });
+  deepEqual(await m.R.learnFromWords("scrolling in my room by myself again", "checkin"), ["alone"]);
+  deepEqual(m.calls.nudges, [{ factors: ["alone"], increase: true }]);
+  m = load({ reply: () => "TIME_OF_DAY? no -- NIGHT." });
+  deepEqual(await m.R.learnFromWords("couldn't sleep, it was 2am", "checkin"), ["selfReportedTime", "historicalTime"]);
+  m = load({ reply: () => "NONE" });
+  deepEqual(await m.R.learnFromWords("had a great day with friends", "checkin"), []);
+  assert.equal(m.calls.nudges.length, 0, "NONE changes nothing");
+  m = load({ reply: () => "I think they feel sad." });
+  deepEqual(await m.R.learnFromWords("not sure what to say here honestly", "chat"), [], "an unparseable answer changes nothing");
+  m = load({ reply: () => "ALONE" });
+  deepEqual(await m.R.learnFromWords("kill myself", "checkin"), [], "crisis words are never mined");
+  assert.equal(m.calls.model.length, 0, "...and the model is never even asked");
+  deepEqual(await m.R.learnFromWords("hi", "chat"), [], "too short to read");
+  m = load({ modelState: "idle", reply: () => "ALONE" });
+  deepEqual(await m.R.learnFromWords("scrolling in my room by myself again", "chat"), [], "no model, no learning");
+  // chat is rate limited to one nudge per 6 hours; check-in notes are not
+  m = load({ reply: () => "SOCIAL" });
+  deepEqual(await m.R.learnFromWords("got sucked into Instagram again tonight", "chat"), ["socialMedia", "triggerApp"]);
+  deepEqual(await m.R.learnFromWords("TikTok is my weak spot honestly", "chat"), [], "second chat message within 6 hours");
+  deepEqual(await m.R.learnFromWords("got sucked into Instagram again tonight", "checkin"), ["socialMedia", "triggerApp"]);
+  assert.equal(m.calls.nudges.length, 2);
+  assert.equal(JSON.parse(m.store.reclaim_learned_from_words).length, 2, "each use is logged");
 
   console.log("risk explainer tests passed");
 })().catch((e) => {

@@ -2193,7 +2193,7 @@ reality:
   bundled verses by meaning against a sentence describing the situation + the person's recent
   struggles, adjusted by situation-tied outcomes and his thumbs-learned taste; the top 3 for each
   of 36 situations are stored with YouVersion text + attribution and synced to native
-  (`RiskVerse.java`); "This helped" / "Not for me" are parked natively and learned on the next app
+  (`RiskVerse.java`); a smile / neutral / frown rating (neutral records nothing) is parked natively and learned on the next app
   open. **Interpretation call:** "learn from users" is done per user, on device -- pooling
   experience across people would need a server, which the app's privacy commitments rule out;
   say so if you meant otherwise. "Find resources" opens Chat with "I'm tempted right now and I
@@ -2319,3 +2319,15 @@ reality:
   weight-tuning checklist item above ships that instead: a small
   deterministic feedback rule, in the same spirit as everything else in
   this system — explainable code, not vibes.
+
+- [x] **AI learns from check-in notes and chat, not just the flag page; verse rating is three faces.**
+  A slipped check-in's note, and each chat message (after the reply, at most one nudge per 6 hours),
+  go to the on-device model, which answers with ONE category word (ALONE / NIGHT / LONG / SOCIAL /
+  BORED / NONE); code maps it to factors and applies the usual bounded +2 via
+  `LocalSignals.nudgeWeights` -> `RiskScorer.adjustWeights`. Words only ever RAISE sensitivity (a
+  "resisted" note or a good day lowers nothing), crisis messages are skipped before any model call,
+  and each use is logged on device (`reclaim_learned_from_words`; no UI for it yet). Measured on the
+  Pixel 8a: 14/14 on a first set and 7/8 on a harder one (the miss was NONE, never a wrong pick);
+  end to end a check-in note raised `alone` 15 -> 17. The overlay verse card now has smile / neutral
+  / frown buttons (48dp) instead of text links; verified on the phone (frown parks -1 and shows the
+  next verse, neutral records nothing). Not done: the browser extension has no equivalent.

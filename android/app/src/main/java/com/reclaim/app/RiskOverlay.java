@@ -356,8 +356,9 @@ final class RiskOverlay {
         return col;
     }
 
-    // One verse, with its attribution and two small word-links to teach the AI: "This helped" and "Not for me"
-    // (which also moves on to the next verse). Both are parked natively and read by the app next time it opens
+    // One verse, with its attribution and a three-face rating to teach the AI: smiling = it helped, neutral =
+    // no opinion (nothing is recorded), frowning = not for me (which also moves on to the next verse). A
+    // face is recorded only when tapped. Ratings are parked natively and read by the app next time it opens
     // (RiskFeedbackNotes.addVerseFeedback -> VerseBank.processFeedback).
     private static void renderVerse(Context c, Spec spec, LinearLayout card, int[] idx) {
         card.removeAllViews();
@@ -391,30 +392,48 @@ final class RiskOverlay {
 
         final LinearLayout links = new LinearLayout(c);
         links.setOrientation(LinearLayout.HORIZONTAL);
+        links.setGravity(Gravity.CENTER_VERTICAL);
         links.setPadding(0, dp(c, 6), 0, 0);
-        final TextView helped = smallLink(c, "This helped");
-        final TextView notForMe = smallLink(c, "Not for me");
-        helped.setOnClickListener(x -> {
+        final TextView ask = text(c, "Did this help?", 12, MUTED, false);
+        ask.setPadding(0, 0, dp(c, 10), 0);
+        links.addView(ask);
+        final TextView happy = faceButton(c, "\uD83D\uDE42", "It helped");
+        final TextView meh = faceButton(c, "\uD83D\uDE10", "Neutral");
+        final TextView sad = faceButton(c, "\uD83D\uDE41", "Not for me");
+        happy.setOnClickListener(x -> {
             RiskFeedbackNotes.addVerseFeedback(c, v.ref, v.text, spec.sig, spec.bucket, 1);
-            links.removeAllViews();
-            TextView thanks = text(c, "Thanks \u2014 I'll remember that.", 12, MUTED, false);
-            thanks.setPadding(0, dp(c, 4), 0, dp(c, 4));
-            links.addView(thanks);
+            thank(c, links, "Thanks \u2014 I'll remember that.");
         });
-        notForMe.setOnClickListener(x -> {
+        meh.setOnClickListener(x -> thank(c, links, "Thanks \u2014 noted.")); // no opinion: nothing is recorded
+        sad.setOnClickListener(x -> {
             RiskFeedbackNotes.addVerseFeedback(c, v.ref, v.text, spec.sig, spec.bucket, -1);
             idx[0]++;
             renderVerse(c, spec, card, idx); // on to the next verse the AI picked, if there is one
         });
-        links.addView(helped);
-        TextView dot = text(c, "  \u00B7  ", 12, MUTED, false);
-        dot.setPadding(0, dp(c, 4), 0, dp(c, 4));
-        links.addView(dot);
-        links.addView(notForMe);
+        links.addView(happy);
+        links.addView(meh);
+        links.addView(sad);
         body.addView(links);
 
         row.addView(body, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         card.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+    }
+
+    // One face of the verse rating: a big, easy tap target (48dp) around an emoji.
+    private static TextView faceButton(Context c, String face, String description) {
+        TextView t = text(c, face, 26, WHITE, false);
+        t.setGravity(Gravity.CENTER);
+        t.setContentDescription(description);
+        t.setMinWidth(dp(c, 48));
+        t.setMinHeight(dp(c, 48));
+        return t;
+    }
+
+    private static void thank(Context c, LinearLayout links, String message) {
+        links.removeAllViews();
+        TextView thanks = text(c, message, 12, MUTED, false);
+        thanks.setPadding(0, dp(c, 4), 0, dp(c, 4));
+        links.addView(thanks);
     }
 
     // A small underlined word-link (not a button), left-aligned, for use inline.
