@@ -9,7 +9,7 @@
 // module scope. So nothing important lives in a variable: durable state is chrome.storage.local,
 // the in-flight session is chrome.storage.session (browser memory, survives worker restarts).
 
-importScripts("lib/shared.js", "lib/riskScorer.js");
+importScripts("lib/shared.js", "lib/riskScorer.js", "lib/notificationText.js");
 
 const Shared = ReclaimShared;
 
@@ -23,9 +23,9 @@ const CORRELATION_WINDOW_MS = 6 * 60 * 60 * 1000; // same as LocalSignalsPlugin
 const TICK_ALARM = "reclaim-tick";
 const NIGHTLY_ALARM = "reclaim-nightly";
 
-// Same generic phrasings as RiskNudgeMonitor.GENERIC_TEXTS: a notification can be glanced at by
-// anyone near the screen, so it never names the site or the pattern. Detail shows once the app
-// is open.
+// Same generic phrasings as RiskNudgeMonitor.GENERIC_TEXTS. Used only when the user has turned
+// "lock-screen detail" OFF in Privacy (default is ON: the notification then says specifically why,
+// e.g. "You've been on reddit.com for 22 minutes. Let's check in." -- see lib/notificationText.js).
 const GENERIC_TEXTS = [
   "Reclaim wants to check in with you.",
   "Got a second to check in?",
@@ -282,7 +282,16 @@ async function postRiskNotification(domain, result) {
   const escalate = await recordSentAndShouldEscalate("risk");
 
   // The specific detail is stored for the app to show once it is open -- never in the notification.
-  await save("pendingAlert", { appLabel: domain, reasons: result.userReasons, occurredAt: new Date().toISOString() });
+  await save("pendingAlert", {
+    appLabel: domain,
+    reasons: result.userReasons,
+    occurredAt: new Date().toISOString(),
+    // What the in-app AI explanation is written from, and what the user's verdict is applied to
+    // (op RISK_FEEDBACK). `id` makes a verdict idempotent per alert.
+    id: Date.now(),
+    factors: result.factors,
+    trace: result.trace,
+  });
   await save("pendingFactors", { factors: result.factors, postedAt: Date.now() });
 
   // Tiered like RiskNudgeMonitor: a score well past the bar suggests reaching out to a
@@ -298,7 +307,19 @@ async function postRiskNotification(domain, result) {
   mapping.push("verse");
   await save("notifButtons", { risk: mapping });
 
-  const text = GENERIC_TEXTS[Math.floor(Math.random() * GENERIC_TEXTS.length)];
+  // Specific text (default) or the generic fallback when the user turned lock-screen detail off,
+  // or when nothing specific could be composed.
+  const specific = result.trace
+    ? NotificationText.compose({
+        trace: result.trace.factors,
+        app: domain,
+        minutes: result.trace.sessionMinutes,
+        timeBucket: result.trace.timeBucket,
+        bank: context.phraseBank,
+        detail: context.lockScreenDetail !== false,
+      })
+    : null;
+  const text = specific || GENERIC_TEXTS[Math.floor(Math.random() * GENERIC_TEXTS.length)];
   await createNotification("reclaim-risk", {
     type: "basic",
     iconUrl: "icons/icon.png",
@@ -369,8 +390,7 @@ chrome.notifications.onButtonClicked.addListener(async (id, index) => {
 //
 // Windows hides toast pop-ups while something is fullscreen (a YouTube video, say) or Focus assist
 // is on, and that is exactly when a nudge matters. So the same generic message is ALSO drawn on
-// the tab the user is looking at (content.js). Same wording and buttons as the notification, so it
-// reveals nothing a glance at the screen couldn't already see; detail still waits for the app.
+// the tab the user is looking at (content.js). Same wording and buttons as the notification.
 async function showBanner(id, text, buttons) {
   const win = await chrome.windows.getLastFocused().catch(() => null);
   if (!win || !win.focused) return;
@@ -554,8 +574,25 @@ async function runOp(op, payload, { fromPopup }) {
         intensity: c.intensity || "medium",
         topSlipTags: Array.isArray(c.topSlipTags) ? c.topSlipTags : [],
         riskyTimeBuckets: Array.isArray(c.riskyTimeBuckets) ? c.riskyTimeBuckets : [],
+        lockScreenDetail: c.lockScreenDetail !== false,
+        // AI-written phrase templates (web/js/riskExplainer.js); NotificationText re-validates
+        // each one before use, so only the shape is checked here.
+        phraseBank: c.phraseBank && typeof c.phraseBank === "object" ? c.phraseBank : {},
       });
       return { ok: true };
+    }
+    case "RISK_FEEDBACK": {
+      // The user's verdict on an alert (via the app's AI-assisted feedback). Same bounded +/-
+      // nudge as everything else, applied only to adjustable factors that actually fired, once per
+      // alert id. Mirrors LocalSignalsPlugin.recordRiskFeedback.
+      const alertId = Number(payload.alertId) || 0;
+      if (!alertId || alertId === (await load("lastFeedbackAlertId", 0))) {
+        return { ok: true, result: { adjusted: [], duplicate: true } };
+      }
+      await save("lastFeedbackAlertId", alertId);
+      const adjustable = (Array.isArray(payload.factors) ? payload.factors : []).filter((f) => RiskScorer.WEIGHT_SPECS[f]);
+      await save("weights", RiskScorer.adjustWeights(await load("weights", null), adjustable, !!payload.valid));
+      return { ok: true, result: { adjusted: adjustable, duplicate: false } };
     }
     case "TAKE_PENDING": {
       const [riskAlert, nightly, verse] = await Promise.all([

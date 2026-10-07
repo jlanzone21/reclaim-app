@@ -172,10 +172,15 @@ class ReclaimAgent {
     try {
       preferences = buildUserPreferencesContext(UserPreferencesStore.get());
     } catch (e) {}
+    let feedback = "";
+    try {
+      feedback = RiskExplainer.feedbackContext();
+    } catch (e) {}
     const context = [
       `Right now it is ${describeTimeOfDay(new Date())}.`,
       personal && `About this person, from their own check-ins: ${personal}`,
       preferences && `What they told us when setting up the app: ${preferences}`,
+      feedback && `What they've told the app about its check-ins being false alarms, in their words: ${feedback}`,
     ]
       .filter(Boolean)
       .join("\n");

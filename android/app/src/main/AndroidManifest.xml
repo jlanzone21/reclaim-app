@@ -127,6 +127,14 @@
          what this can and can't do. -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
+    <!-- "Display over other apps." Special-access permission the person grants once in Settings
+         (Privacy shows a card for it). Lets RiskOverlay draw the full-screen check-in over
+         whatever app is in use when a risk nudge fires, the thing a notification alone cannot do
+         (Android blocks background apps from starting activities, and denies full-screen
+         intents to non-call apps by default on 14+). It draws only Reclaim's own screen: nothing is
+         read or sent by it. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
     <!-- Package visibility (API 30+): without this, PackageManager can't see other apps at all
          (not even to resolve a name/label) unless the app holds the restricted
          QUERY_ALL_PACKAGES permission, which requires special Play Store justification. This is

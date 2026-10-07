@@ -110,6 +110,11 @@ public class LocalSignalsPlugin extends Plugin {
         db().setMeta("notification_intensity", call.getString("intensity", "medium"));
         db().setMeta("top_slip_tags", jsonArrayOrEmpty(call, "topSlipTags"));
         db().setMeta("risky_time_buckets", jsonArrayOrEmpty(call, "riskyTimeBuckets"));
+        // Notification wording: whether the lock screen may show the specific reason (default ON),
+        // and the phrase templates the on-device AI wrote -- see RiskNotificationText.
+        db().setMeta("lock_screen_detail", Boolean.FALSE.equals(call.getBoolean("lockScreenDetail", true)) ? "0" : "1");
+        com.getcapacitor.JSObject bank = call.getObject("phraseBank");
+        db().setMeta("phrase_bank", bank != null ? bank.toString() : "{}");
         call.resolve();
     }
 
@@ -208,6 +213,40 @@ public class LocalSignalsPlugin extends Plugin {
         call.resolve();
     }
 
+    // The user's own verdict on a risk alert, from RiskAlertView: "fair" (valid=true) reinforces the
+    // factors that fired, "false alarm" (valid=false) eases off the ones they said didn't fit (or
+    // all of them if they didn't narrow it down) -- the same +/-ADJUST_DELTA, bounded nudge as the
+    // check-in-driven tuning above, so a direct verdict can't swing a weight any harder than that
+    // can. Deliberately independent of recordCheckinOutcome (a later check-in can nudge the same
+    // factors again) -- same "not deduplicated" choice as the tag half, see RiskScorer's class doc.
+    // The on-device model only WRITES the explanation the user reacts to; it never decides what to
+    // adjust -- nudging a number is a math problem, and a 2B model reading free text into weight
+    // changes would be an unaccountable way to move them. Idempotent per alert (alertId), so a
+    // double tap or a re-rendered dialog can't count twice. Resolves with the factor names that are
+    // actually tunable so the UI can say truthfully what changed (SEVERE keywords are fixed).
+    @PluginMethod
+    public void recordRiskFeedback(PluginCall call) {
+        // optLong, not call.getDouble: Capacitor's getDouble returns its default for a JS integer
+        // that doesn't fit an int (a millisecond timestamp parses as a Long), so the id read as 0
+        // and every verdict was silently treated as "no alert" -- found on a real phone.
+        long alertId = call.getData().optLong("alertId", 0L);
+        boolean valid = Boolean.TRUE.equals(call.getBoolean("valid", false));
+        org.json.JSONArray adjusted = RiskScorer.applyFeedback(getContext(), alertId, call.getArray("factors"), valid);
+        JSObject result = new JSObject();
+        result.put("adjusted", adjusted != null ? adjusted : new com.getcapacitor.JSArray());
+        result.put("duplicate", adjusted == null);
+        call.resolve(result);
+    }
+
+    // Free-text feedback typed on the full-screen check-in's flag page, waiting for the on-device
+    // AI -- see RiskFeedbackNotes. Consumed once (cleared on read), same as the other pending items.
+    @PluginMethod
+    public void getPendingFeedbackNotes(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("notes", RiskFeedbackNotes.takeAll(getContext()));
+        call.resolve(result);
+    }
+
     // For Insights -- see NotificationTracking's own comment for exactly what "sent"/"responded"
     // count. Shape: {"nightly":{"sent":N,"responded":N},"risk":{"sent":N,"responded":N}}, missing
     // a type entirely (or the whole object empty) if nothing of that type has posted yet.
@@ -255,7 +294,7 @@ public class LocalSignalsPlugin extends Plugin {
 
     @PluginMethod
     public void debugSendRiskNudge(PluginCall call) {
-        RiskNudgeMonitor.debugForceNotify(getContext());
+        RiskNudgeMonitor.debugForceNotify(getContext(), call.getString("packageName"), call.getInt("minutes", 0));
         call.resolve();
     }
 

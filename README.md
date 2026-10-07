@@ -566,6 +566,52 @@ true. Older versions stored users' own Claude/Gemini API keys in
   Chrome on Android 12+. Android's embedded WebView supports it on the
   Pixel 8a above; other phones (older Android, other GPUs) are untested.
 
+### Risk-nudge explanations and feedback
+
+The on-device model also writes the *why* behind a risk nudge, from what
+`RiskScorer` actually did. Every score records a **trace** — each factor,
+whether it fired, its points and the values behind it (never the matched
+keyword or any screen text) — which travels with the pending alert to the
+app (`web/js/riskExplainer.js`):
+
+- **Alert note.** A 1–2 sentence personal note on the alert screen. Checked in
+  code (shared unsafe-sentence filter, a deny-list for claims about what was
+  viewed or that they slipped, and "every number must be in the trace");
+  anything that fails shows a deterministic template built from the trace.
+- **Notification text.** The model can't run while the app is closed, so while
+  the app is open it writes a few phrase templates per factor
+  (`{app}`, `{minutes}`, `{time}`, refreshed weekly) which are mirrored to the
+  background notifier. `RiskNotificationText.java` (Android) and
+  `extension/lib/notificationText.js` (browser) fill in the live values, e.g.
+  "You've been on Instagram for 22 minutes. Let's check in." Built-in phrases
+  cover the first run. The Privacy setting "Say why on the lock screen"
+  (default on) turns this off for generic text. Keyword factors always use one
+  fixed line, never AI wording.
+- **Feedback.** "Yes, fair" / "No, false alarm" (optionally which reasons
+  didn't fit), or free text: the model proposes a verdict, the user confirms,
+  and only then does the existing bounded ±2 nudge run on the factors that
+  fired. Once per alert (`alertId`).
+
+Tests: `npm test` (extension scorer/notifier, and `tests/riskExplainer.test.js`
+with a stubbed model).
+
+### The full-screen check-in (Android)
+
+A notification is easy to swipe away mid-slip, so when a risk nudge fires and the
+person has granted "Display over other apps" (a card in Privacy opens the Settings
+page), `RiskOverlay.java` also covers the screen with a check-in: the specific
+sentence, the reasons behind it (always shown), Call <accountability partner>, Read a
+verse, "I'm okay" (disabled for 5 s), and a small link for "This was a false alarm".
+Answering normally counts as "fair"; the false-alarm link opens a page to
+tap which parts were wrong and/or type why (or skip). Typed words are read by the
+on-device AI the next time the app opens, which works out which parts of the nudge
+they meant before the bounded weight change is applied. It is a native overlay window rather than an
+activity because Android blocks background apps from starting activities and denies
+full-screen intents to non-call apps. It stays up through Back and Home, but cannot
+be made inescapable (Android offers no way to disable Home) — so it has a 10-minute
+failsafe and disappears the moment the permission is revoked. It's drawn over an
+unlocked, in-use screen only (the worker skips locked/screen-off phones).
+
 ### Testing the AI on Android
 
 Build a **release** APK and install it over the existing app. It's signed

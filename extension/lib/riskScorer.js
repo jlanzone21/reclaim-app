@@ -109,17 +109,26 @@
     const reasons = [];
     const userReasons = [];
     const factors = [];
+    // Explainability, same shape as RiskScorer.java's Result.trace: every factor, fired or not,
+    // with the values behind it. The on-device AI writes the user-facing explanation from this.
+    // Holds no page text and never the matched keyword -- only the severity tier.
+    const trace = [];
+    const adjustments = [];
+    const noteMiss = (id, detail) => trace.push({ id, fired: false, points: 0, detail });
 
-    function fire(name, weight, reasonText, userText) {
+    function fire(name, weight, reasonText, userText, detail) {
       points += weight;
       factorCount++;
       factors.push(name);
       reasons.push(`${reasonText}(+${weight})`);
       userReasons.push(userText);
+      trace.push({ id: name, fired: true, points: weight, detail });
     }
 
     if (Shared.domainMatches(input.domain, input.triggerDomains || [])) {
-      fire("triggerApp", weights.triggerApp, "trigger-site", "You're on a site you flagged as a trigger.");
+      fire("triggerApp", weights.triggerApp, "trigger-site", "You're on a site you flagged as a trigger.", "the current site is on the user's trigger list");
+    } else {
+      noteMiss("triggerApp", "the current site is not on the user's trigger list");
     }
 
     // Gradual, not a cliff: full weight after 15 minutes, derived from the (adaptive) cap.
@@ -131,25 +140,45 @@
       factors.push("duration");
       reasons.push(`duration=${input.sessionMinutes}m(+${durationPoints})`);
       userReasons.push(`You've been there for ${input.sessionMinutes} minutes.`);
+      trace.push({
+        id: "duration",
+        fired: true,
+        points: durationPoints,
+        detail: `${input.sessionMinutes} minutes on the site so far (reaches the full ${durationCap} points at 15 minutes)`,
+      });
+    } else {
+      noteMiss("duration", `the session has only just started (${input.sessionMinutes} minutes)`);
     }
 
     const bucket = timeBucket(input.hour);
     if ((ctx.temptingTimes || []).includes(bucket)) {
-      fire("selfReportedTime", weights.selfReportedTime, "self-reported-time", "It's a time of day you told us is hard for you.");
+      fire("selfReportedTime", weights.selfReportedTime, "self-reported-time", "It's a time of day you told us is hard for you.", `it is currently ${bucket}, a time the user listed as tempting`);
+    } else {
+      noteMiss("selfReportedTime", `it is currently ${bucket}, not a time the user listed as tempting`);
     }
     if ((ctx.riskyTimeBuckets || []).includes(bucket)) {
       fire(
         "historicalTime",
         weights.historicalTime,
         "historical-time",
-        "This time of day has been difficult for you before, based on your check-ins."
+        "This time of day has been difficult for you before, based on your check-ins.",
+        `${bucket} is a time of day where the user's past slips cluster`
       );
+    } else {
+      noteMiss("historicalTime", `${bucket} is not a time of day where the user's past slips cluster (or there isn't enough check-in history yet)`);
     }
 
     const socialFlagged =
       (ctx.commonTriggers || []).includes("Social media") || (ctx.topSlipTags || []).includes("Social media");
     if (socialFlagged && Shared.domainMatches(input.domain, Shared.SOCIAL_MEDIA_DOMAINS)) {
-      fire("socialMedia", weights.socialMedia, "social-media", "It's a social media site, which you've flagged as a trigger.");
+      fire("socialMedia", weights.socialMedia, "social-media", "It's a social media site, which you've flagged as a trigger.", "a social media site, and the user flagged social media as a trigger");
+    } else {
+      noteMiss(
+        "socialMedia",
+        Shared.domainMatches(input.domain, Shared.SOCIAL_MEDIA_DOMAINS)
+          ? "a social media site, but the user hasn't flagged social media as a trigger"
+          : "not a social media site"
+      );
     }
 
     // The strongest signal: an actual keyword match on this site's page text, not an inferred
@@ -164,22 +193,27 @@
         "recentKeywordSevere",
         w,
         "recent-keyword-severe",
-        "Something explicit was just seen on this site -- this matters enough to flag right away."
+        "Something explicit was just seen on this site -- this matters enough to flag right away.",
+        `page text on this site recently matched the most serious keyword tier (within ${KEYWORD_WINDOW_MIN.severe} minutes); this tier always triggers`
       );
     } else if (severity === "moderate") {
       fire(
         "recentKeyword",
         Math.round(weights.recentKeyword * mult),
         "recent-keyword",
-        "Something on this page recently matched a word or phrase you'd flagged."
+        "Something on this page recently matched a word or phrase you'd flagged.",
+        `page text on this site recently matched the moderate keyword tier (within ${KEYWORD_WINDOW_MIN.moderate} minutes)`
       );
     } else if (severity === "mild") {
       fire(
         "recentKeywordMild",
         Math.round(weights.recentKeywordMild * mult),
         "recent-keyword-mild",
-        "Something on this page recently had a word or phrase worth noticing."
+        "Something on this page recently had a word or phrase worth noticing.",
+        `page text on this site recently matched the mildest keyword tier (within ${KEYWORD_WINDOW_MIN.mild} minutes)`
       );
+    } else {
+      noteMiss("recentKeyword", "no keyword match on this site's page text within its recency window");
     }
 
     // Several different kinds of signal at once matter more than the sum of their parts. Fixed,
@@ -189,25 +223,44 @@
       points += convergenceBonus;
       reasons.push(`convergence=${factorCount}factors(+${convergenceBonus})`);
       userReasons.push("Several small things are lining up right now, which together matter more than any one alone.");
+      adjustments.push({ id: "convergence", points: convergenceBonus, detail: `${factorCount} different kinds of signal were true at the same time` });
     }
 
     // Protective: having recently opened Reclaim itself is a good sign, not a neutral one.
     if (input.minutesSinceReclaimOpen >= 0 && input.minutesSinceReclaimOpen <= RECENT_RECLAIM_WINDOW_MIN) {
+      const before = points;
       points = Math.max(0, points - RECENT_RECLAIM_PROTECTION);
+      adjustments.push({
+        id: "recentReclaimUse",
+        points: points - before,
+        detail: `the user opened Reclaim ${input.minutesSinceReclaimOpen} minutes ago, which is a protective sign`,
+      });
       reasons.push(`recent-reclaim-use(-${RECENT_RECLAIM_PROTECTION})`);
     }
 
     const threshold = thresholdForIntensity(ctx.intensity);
 
+    const isHighRisk = points >= threshold + HIGH_RISK_MARGIN;
     return {
       score: points,
       threshold,
       severe: severity === "severe",
       triggers: points >= threshold,
-      isHighRisk: points >= threshold + HIGH_RISK_MARGIN,
+      isHighRisk,
       reason: reasons.join(" "),
       userReasons,
       factors,
+      trace: {
+        platform: "web",
+        score: points,
+        threshold,
+        intensity: ctx.intensity || "medium",
+        timeBucket: bucket,
+        sessionMinutes: input.sessionMinutes,
+        highRisk: isHighRisk,
+        factors: trace,
+        adjustments,
+      },
     };
   }
 

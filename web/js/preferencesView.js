@@ -53,6 +53,7 @@ const PreferencesView = (function () {
       clearHomeBtn: document.getElementById("prefClearHomeBtn"),
       allowlistSummary: document.getElementById("prefAllowlistSummary"),
       intensityScale: document.getElementById("prefIntensityScale"),
+      lockScreenDetail: document.getElementById("prefLockScreenDetail"),
       otherNotes: document.getElementById("prefOtherNotes"),
       save: document.getElementById("preferencesSave"),
       skip: document.getElementById("preferencesSkip"),
@@ -125,6 +126,7 @@ const PreferencesView = (function () {
       btn.classList.toggle("selected", btn.dataset.value === selectedGender);
     });
 
+    els.lockScreenDetail.checked = prefs.lock_screen_detail !== false;
     selectedIntensity = prefs.notification_intensity || "medium";
     Array.from(els.intensityScale.querySelectorAll(".scale-btn")).forEach((btn) => {
       btn.classList.toggle("selected", btn.dataset.value === selectedIntensity);
@@ -331,6 +333,7 @@ const PreferencesView = (function () {
       common_triggers: Array.from(selectedTriggers),
       preferred_coping_methods: Array.from(selectedCopingMethods),
       notification_intensity: selectedIntensity,
+      lock_screen_detail: els.lockScreenDetail.checked,
       other_notes: els.otherNotes.value.trim(),
       home_lat: homeLat,
       home_lon: homeLon,

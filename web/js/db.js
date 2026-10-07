@@ -75,7 +75,8 @@ const DB = (function () {
       home_lat REAL,
       home_lon REAL,
       gender TEXT,
-      preferred_coping_methods TEXT
+      preferred_coping_methods TEXT,
+      lock_screen_detail INTEGER DEFAULT 1
     );
 
     -- One row per topic from bible_verses_for_100_circumstances.csv (user-provided). refs is a
@@ -253,6 +254,7 @@ const DB = (function () {
     if (!prefCols.includes("accountability_phone_2")) run("ALTER TABLE user_preferences ADD COLUMN accountability_phone_2 TEXT");
     if (!prefCols.includes("gender")) run("ALTER TABLE user_preferences ADD COLUMN gender TEXT");
     if (!prefCols.includes("preferred_coping_methods")) run("ALTER TABLE user_preferences ADD COLUMN preferred_coping_methods TEXT");
+    if (!prefCols.includes("lock_screen_detail")) run("ALTER TABLE user_preferences ADD COLUMN lock_screen_detail INTEGER DEFAULT 1");
 
     const resourceCols = all("PRAGMA table_info(resources)").map((c) => c.name);
     if (!resourceCols.includes("method")) run("ALTER TABLE resources ADD COLUMN method TEXT");

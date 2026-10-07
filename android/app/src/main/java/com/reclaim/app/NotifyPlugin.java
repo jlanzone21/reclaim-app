@@ -1,7 +1,10 @@
 package com.reclaim.app;
 
 import android.Manifest;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Build;
+import android.provider.Settings;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
@@ -44,6 +47,24 @@ public class NotifyPlugin extends Plugin {
             return;
         }
         requestPermissionForAlias("post", call, "permissionCallback");
+    }
+
+    // "Display over other apps" (SYSTEM_ALERT_WINDOW) -- a special-access Settings-page permission,
+    // not a runtime dialog. Backs the full-screen check-in (RiskOverlay); granting it is the
+    // consent, with no separate toggle.
+    @PluginMethod
+    public void hasOverlayPermission(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("granted", RiskOverlay.canShow(getContext()));
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void openOverlaySettings(PluginCall call) {
+        Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getContext().getPackageName()));
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        getContext().startActivity(intent);
+        call.resolve();
     }
 
     @PermissionCallback

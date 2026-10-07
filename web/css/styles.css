@@ -1610,6 +1610,50 @@ a.resource-contact:active {
   background: var(--crisis-bg);
 }
 
+/* Lock-screen-detail toggle row (Privacy / preferences). */
+.toggle-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 18px 0 4px;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.toggle-row input { margin-top: 3px; }
+.toggle-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+/* Risk alert: the AI's note, the numbers behind it, and the feedback controls (riskAlertView.js). */
+.risk-note {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+}
+.risk-note-text { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text); }
+.risk-note-text.pending { color: var(--text-faint); font-style: italic; }
+.risk-note-source { display: block; margin-top: 4px; font-size: 11px; color: var(--text-faint); }
+.risk-numbers { margin: 0 0 12px; font-size: 12.5px; color: var(--text-muted); }
+.risk-numbers summary { cursor: pointer; font-weight: 600; }
+.risk-numbers table { width: 100%; margin-top: 8px; border-collapse: collapse; }
+.risk-numbers td { padding: 3px 0; vertical-align: top; }
+.risk-numbers td.pts { text-align: right; white-space: nowrap; padding-left: 10px; font-variant-numeric: tabular-nums; }
+.risk-numbers tr.miss { color: var(--text-faint); }
+.risk-numbers tr.total td { border-top: 1px solid var(--border-strong); padding-top: 6px; font-weight: 600; color: var(--text); }
+.risk-feedback { margin: 0 0 12px; }
+.risk-feedback-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.risk-feedback-row > button { flex: 1; }
+.risk-feedback-hint { margin: 4px 0 8px; font-size: 12.5px; color: var(--text-muted); }
+.risk-feedback-proposal { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-size: 13px; }
+.risk-feedback-proposal p { margin: 0 0 8px; }
+.risk-feedback-result { margin: 8px 0 0; font-size: 13px; color: var(--text); }
+
 /* Risk-alert "I'm okay" countdown -- a filling shaded bar behind the label so the 10s wait before
    it's clickable reads as "counting down," not "broken." See riskAlertView.js. */
 .dismiss-countdown-btn {

@@ -505,6 +505,14 @@
         <button type="button" class="scale-btn" data-value="high">High</button>
       </div>
 
+      <label class="toggle-row" for="prefLockScreenDetail">
+        <input type="checkbox" id="prefLockScreenDetail" checked />
+        <span>
+          <strong>Say why on the lock screen</strong>
+          <span class="toggle-sub">Notifications say what we noticed, like "You've been on Instagram for 22 minutes. Let's check in." Turn this off to keep them generic ("Got a second to check in?") so nothing shows on a locked phone. We never show what was on your screen either way.</span>
+        </span>
+      </label>
+
       <div class="field-label">Anything else we should know?</div>
       <textarea id="prefOtherNotes" class="field-input field-textarea" placeholder="Optional"></textarea>
 
@@ -518,12 +526,41 @@
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="riskAlertTitle">
       <h2 id="riskAlertTitle">We noticed something</h2>
       <p id="riskAlertAppLine" style="font-weight:600; color:var(--text);"></p>
+      <div class="risk-note" id="riskAlertNoteWrap">
+        <p class="risk-note-text" id="riskAlertNote"></p>
+        <span class="risk-note-source" id="riskAlertNoteSource"></span>
+      </div>
       <ul class="modal-list" id="riskAlertReasons"></ul>
+      <details class="risk-numbers" id="riskAlertNumbers" hidden>
+        <summary>See the numbers</summary>
+        <div id="riskAlertNumbersBody"></div>
+      </details>
       <p style="font-size:12.5px; color:var(--text-muted);">
         This is our best guess, not a judgment — you know your own situation better than we do.
-        We're still learning what actually matters to you; you'll be able to fine-tune this from
-        Privacy soon.
+        Tell us how it landed and Reclaim will learn what actually matters to you.
       </p>
+      <div class="risk-feedback" id="riskAlertFeedback" hidden>
+        <div class="field-label" style="margin-top:0;">Was this a fair nudge?</div>
+        <div class="risk-feedback-row">
+          <button type="button" class="secondary-btn" id="riskFeedbackFair">Yes, fair</button>
+          <button type="button" class="secondary-btn" id="riskFeedbackFalse">No, false alarm</button>
+        </div>
+        <div id="riskFeedbackWhich" hidden>
+          <p class="risk-feedback-hint">Which part didn't fit? (Optional — skip to say none of it did.)</p>
+          <div class="tag-grid" id="riskFeedbackChips"></div>
+          <button type="button" class="modal-continue" id="riskFeedbackFalseDone">Done</button>
+        </div>
+        <textarea id="riskFeedbackText" class="field-input field-textarea" rows="2" placeholder="Or tell me in your own words…"></textarea>
+        <button type="button" class="secondary-btn" id="riskFeedbackSend" style="width:100%; margin-top:8px;">Tell Reclaim</button>
+        <div id="riskFeedbackProposal" class="risk-feedback-proposal" hidden>
+          <p id="riskFeedbackProposalText"></p>
+          <div class="risk-feedback-row">
+            <button type="button" class="modal-continue" id="riskFeedbackApply" style="margin:0;">Yes, that's right</button>
+            <button type="button" class="secondary-btn" id="riskFeedbackNope">Not quite</button>
+          </div>
+        </div>
+        <p class="risk-feedback-result" id="riskFeedbackResult" role="status" hidden></p>
+      </div>
       <div id="riskAlertCallCards"></div>
       <button type="button" class="secondary-btn" id="riskAlertChat" style="width:100%; margin-top:8px;">Find resources</button>
       <button type="button" class="secondary-btn dismiss-countdown-btn" id="riskAlertDismiss" style="width:100%; margin-top:8px;">
@@ -623,6 +660,7 @@
   <script src="js/localModel.js"></script>
   <script src="js/personalContext.js"></script>
   <script src="js/reclaimAgent.js"></script>
+  <script src="js/riskExplainer.js"></script>
   <script src="js/checkinView.js"></script>
   <script src="js/insightsView.js"></script>
   <script src="js/nativeUsage.js"></script>
@@ -631,6 +669,7 @@
   <script src="js/nativeAccessibility.js"></script>
   <script src="js/nearbyDevices.js"></script>
   <script src="js/nativeNotify.js"></script>
+  <script src="js/nativeOverlay.js"></script>
   <script src="js/localSignals.js"></script>
   <script src="js/webTracker.js"></script>
   <script src="js/backgroundSampler.js"></script>

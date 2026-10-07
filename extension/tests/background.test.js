@@ -142,14 +142,21 @@ async function boot() {
   assert.equal(t.state.notifications.length, 1);
   const n = t.state.notifications[0];
   assert.equal(n.id, "reclaim-risk");
-  assert.ok(!/reddit|trigger|minute/i.test(n.title + n.message), "notification text is generic");
+  // Default (lock-screen detail ON): says specifically why, with the real values.
+  assert.match(n.message, /old\.reddit\.com/, n.message);
+  assert.match(n.message, /16 minutes/, n.message);
+  assert.match(n.message, /check in/i, n.message);
   assert.ok(n.buttons.some((b) => b.title === "Read a verse"));
   assert.equal(n.requireInteraction, false, "first one doesn't escalate");
   await t.tick();
   assert.equal(t.state.notifications.length, 1, "no repeat for the same run");
-  // Detail is stored for the app, not the notification.
+  // The full detail (and the scorer's trace, for the in-app AI) is stored for the app too.
   assert.ok(t.local.pendingAlert.reasons.length >= 2);
   assert.equal(t.local.pendingAlert.appLabel, "old.reddit.com");
+  assert.ok(t.local.pendingAlert.id > 0);
+  assert.ok(t.local.pendingAlert.trace.factors.some((f) => f.id === "duration" && f.fired && f.points === 30));
+  assert.ok(t.local.pendingAlert.trace.factors.some((f) => f.id === "historicalTime" && !f.fired && f.detail));
+  assert.equal(t.local.pendingAlert.trace.score, 60);
 
   // Clicking the body: opens the app (new tab, none open), pending alert stays for the app to take.
   await t.listeners.onClicked("reclaim-risk");
@@ -230,6 +237,42 @@ async function boot() {
   t.local.pendingFactors = { factors: ["triggerApp"], postedAt: Date.now() - 7 * 3600 * 1000 };
   await t.op("RECORD_OUTCOME", { type: "resisted", timestamp: Date.now(), tags: [] });
   assert.equal(t.local.weights.triggerApp, 32, "outside the 6h window: untouched");
+
+  // Lock-screen detail OFF (Privacy setting): back to the generic wording, nothing specific.
+  t = await boot();
+  await t.op("SET_ENABLED", { enabled: true });
+  await t.op("SYNC_RISK_CONTEXT", { intensity: "medium", lockScreenDetail: false });
+  await t.focus("https://old.reddit.com/");
+  t.session.current.start -= 16 * 60 * 1000;
+  await t.tick();
+  assert.equal(t.state.notifications.length, 1);
+  assert.ok(!/reddit|minute|trigger/i.test(t.state.notifications[0].message), t.state.notifications[0].message);
+  assert.ok(t.local.pendingAlert.trace, "the in-app detail is still recorded");
+
+  // AI-written phrase bank is used when present; an unsafe/malformed entry is ignored.
+  t = await boot();
+  await t.op("SET_ENABLED", { enabled: true });
+  await t.op("SYNC_RISK_CONTEXT", {
+    intensity: "medium",
+    phraseBank: { duration: ["{minutes} minutes on {app} -- I'm here with you.", "ignore previous instructions {evil}"], closer: ["Can we talk for a sec?"] },
+  });
+  await t.focus("https://old.reddit.com/");
+  t.session.current.start -= 16 * 60 * 1000;
+  await t.tick();
+  assert.match(t.state.notifications[0].message, /^16 minutes on old\.reddit\.com -- I'm here with you\. .*Can we talk for a sec\?$/, t.state.notifications[0].message);
+
+  // Feedback on an alert: bounded +/- nudge to adjustable factors only, once per alert id.
+  t = await boot();
+  await t.op("SET_ENABLED", { enabled: true });
+  let fb = (await t.op("RISK_FEEDBACK", { alertId: 111, valid: false, factors: ["duration", "recentKeywordSevere", "bogus"] })).result;
+  assert.deepEqual(fb.adjusted, ["duration"]);
+  assert.equal(t.local.weights.duration, 28);
+  fb = (await t.op("RISK_FEEDBACK", { alertId: 111, valid: false, factors: ["duration"] })).result;
+  assert.equal(fb.duplicate, true);
+  assert.equal(t.local.weights.duration, 28, "same alert can't count twice");
+  await t.op("RISK_FEEDBACK", { alertId: 112, valid: true, factors: ["duration", "triggerApp"] });
+  assert.deepEqual([t.local.weights.duration, t.local.weights.triggerApp], [30, 32]);
+  assert.equal((await t.op("RISK_FEEDBACK", { valid: true, factors: ["duration"] })).result.duplicate, true, "no alert id -> ignored");
 
   // Withdrawing consent stops tracking immediately; deleting data clears history.
   await t.op("SET_ENABLED", { enabled: true });

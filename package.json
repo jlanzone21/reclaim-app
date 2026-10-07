@@ -9,7 +9,8 @@
     "dist": "electron-builder",
     "vendor:webllm": "node scripts/vendor-webllm.mjs",
     "vendor:youversion": "node scripts/vendor-youversion.mjs",
-    "gen:icons": "node scripts/make-icons.mjs"
+    "gen:icons": "node scripts/make-icons.mjs",
+    "test": "node extension/tests/riskScorer.test.js && node extension/tests/notificationText.test.js && node extension/tests/background.test.js && node tests/riskExplainer.test.js"
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.1",
