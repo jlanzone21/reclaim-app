@@ -37,6 +37,33 @@ const RECLAIM_UNSAFE_SENTENCE = [
 
 const RECLAIM_SENTENCE_END = /^([\s\S]*?[.!?]+["'”’)]*)\s+/;
 
+// Supabase-backed tools resolve their list to null when the directory can't be reached.
+const RECLAIM_UNREACHABLE = {
+  small_group_finder: ["groups", "group directory"],
+  sermon_library: ["sermons", "sermon library"],
+  article_finder: ["articles", "article library"],
+  counseling_directory: ["centers", "counseling directory"],
+};
+
+function unreachableLabel(name, output) {
+  const u = RECLAIM_UNREACHABLE[name];
+  return u && output && output[u[0]] === null ? u[1] : null;
+}
+
+// What resourcePicker.js learns from: thumbs up/down (resourceFeedback.js) and the coping methods picked in onboarding.
+// Either failing (e.g. storage unavailable) just means picking without them.
+function learnedPreferences() {
+  let profile = null;
+  let preferredMethods = [];
+  try {
+    profile = ResourceFeedback.profile();
+  } catch (e) {}
+  try {
+    preferredMethods = UserPreferencesStore.get().preferred_coping_methods || [];
+  } catch (e) {}
+  return { profile, preferredMethods };
+}
+
 function isSafeSentence(sentence) {
   return !RECLAIM_UNSAFE_SENTENCE.some((re) => re.test(sentence));
 }
@@ -96,22 +123,34 @@ class ReclaimAgent {
     let shown = false;
     try {
       let intro = "";
-      const pick = agentPickResource(userText, previous);
-      if (pick) {
-        const input = pick.theme ? { theme: pick.theme, query: userText } : { query: userText };
-        const output = await executeAgentTool(pick.resource, input);
-        if (output && output.groups === null) {
-          // Supabase unreachable (small_group_finder only) -- say so instead of showing an empty card.
-          intro = "I couldn't reach the group directory right now — try again once you're online.";
-          revealer.push(intro);
-        } else {
+      const learned = learnedPreferences();
+      // Up to 3 kinds of resource and 4 items, chosen from the message plus what this person has rated helpful
+      // (resourcePicker.js). Instant arithmetic, no model call.
+      const picks = ResourcePicker.pick(userText, previous, learned);
+      const results = await Promise.all(
+        picks.map(async (p) => {
+          const input = p.theme ? { theme: p.theme, query: userText } : { query: userText };
+          const rank = ResourcePicker.ranker(p.resource, p.theme, learned.profile, learned.preferredMethods);
+          const output = await executeAgentTool(p.resource, input, { limit: p.limit, rank });
+          return { ...p, input, output, unreachable: unreachableLabel(p.resource, output) };
+        })
+      );
+      // Supabase unreachable: an explicit ask says so instead of showing an empty card; an unasked addition is just left out.
+      const shownResults = results.filter((r) => !r.unreachable);
+      const missed = results.filter((r) => r.unreachable && r.explicit);
+      if (shownResults.length || missed.length) {
+        for (const r of shownResults) {
           const id = `tool_${++this._idCounter}`;
           // feedback: thumbs up/down on these cards (resourceFeedback.js) -- AI mode only; Basic mode never sets it.
-          handlers.onToolCallStart({ id, name: pick.resource, input, feedback: true });
-          handlers.onToolCallEnd({ id, output });
-          intro = cardIntro(pick.resource, pick.theme, output);
-          revealer.push(intro);
+          handlers.onToolCallStart({ id, name: r.resource, input: r.input, feedback: true });
+          handlers.onToolCallEnd({ id, output: r.output });
         }
+        const sentences = [];
+        if (shownResults.length === 1) sentences.push(cardIntro(shownResults[0].resource, shownResults[0].theme, shownResults[0].output));
+        else if (shownResults.length > 1) sentences.push(ResourcePicker.intro(shownResults));
+        missed.forEach((r) => sentences.push(`I couldn't reach the ${r.unreachable} right now — try again once you're online.`));
+        intro = sentences.join(" ");
+        revealer.push(intro);
         // The app's one-sentence intro ("I found some Bible reading plans you could start.") is the whole reply when
         // resources are shown. The model used to add more, and its extra sentences were where the unreliable advice, theology,
         // invented resources and stray verse offers came from (see llm-prompt-tests). It also saves a model call.
@@ -173,10 +212,16 @@ class ReclaimAgent {
     try {
       preferences = buildUserPreferencesContext(UserPreferencesStore.get());
     } catch (e) {}
+    // Kinds of resources and themes they've rated, so a no-card reply that names one kind leans toward what has helped.
+    let rated = "";
+    try {
+      rated = ResourceFeedback.summary();
+    } catch (e) {}
     const context = [
       `Right now it is ${describeTimeOfDay(new Date())}.`,
       personal && `About this person, from their own check-ins: ${personal}`,
       preferences && `What they told us when setting up the app: ${preferences}`,
+      rated,
     ]
       .filter(Boolean)
       .join("\n");

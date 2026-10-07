@@ -162,9 +162,14 @@ Main JS modules (`web/js/`):
 - `resourceRepo.js` — query layer (`getScripture`, `getDevotional`,
   `getSmallGroups`, …). `supabaseClient.js` — tiny fetch-based read-only
   Supabase REST client.
-- `agentTools.js` — shared tools, keyword routing (`AGENT_TOOL_DEFS`,
-  `AGENT_THEME_WORDS`, `agentPickResource`), `AGENT_SYSTEM_PROMPT`,
+- `agentTools.js` — shared tools, keyword scoring (`AGENT_TOOL_DEFS`,
+  `AGENT_THEME_WORDS`, `agentScoreTool`), `AGENT_SYSTEM_PROMPT`,
   `executeAgentTool` (single source of truth for tool output), crisis check.
+- `resourcePicker.js` — AI mode's multi-kind resource picking and
+  within-kind ranking from learned preferences. `resourceFeedback.js` —
+  thumbs up/down storage + the per-user preference profile.
+  `learnedView.js` — Privacy's "What Reclaim has learned". Offline tests:
+  `npm run test:picker`.
 - `fixedAnswers.js` — reviewed, fixed replies for app/privacy questions and
   requests to find or excuse porn; runs right after the crisis check, before
   card routing or any model call, in both agents. Add an intent there instead of
@@ -187,7 +192,7 @@ Main JS modules (`web/js/`):
 
 - **Local (sql.js, `db.js`):** resources (scripture, devotionals, bible
   plans, coping mechanisms), `bible_plan_days`, `checkins`,
-  `user_preferences`, `app_meta`.
+  `user_preferences`, `app_meta`, `resource_feedback` (thumbs up/down).
   - **Bump `CURRENT_SEED_VERSION` whenever `seedData.js` changes
     materially**, or existing installs never see it. A bump replaces
     `is_sample=1` rows only; never touches check-ins or `is_sample=0` rows.
@@ -210,17 +215,21 @@ Main JS modules (`web/js/`):
   `pending_risk_alert`). Read in JS via `LocalSignalsPlugin`/`localSignals.js`.
   Never networked.
 - Every resource tool returns **at most 2** results per request (user ask —
-  a long list overwhelms someone mid-urge).
+  a long list overwhelms someone mid-urge). In AI mode one reply may combine
+  up to **3 kinds and 4 items total** (Nathaniel, 2026-10-06).
 
 ## 6. The AI agent (on-device)
 
 - Model: **Qwen3.5-2B** (`Qwen3.5-2B-q4f16_1-MLC`, ~1 GB) via WebLLM +
   WebGPU, downloaded only after the user taps to opt in. 4k context,
   temperature 0.3, thinking off. (4B was tried on-device and reverted.)
-- Flow per message: crisis gate → **fixed answers** (`fixedAnswers.js`) → **keyword routing** picks at most one
-  resource card (no model call — a model-based pick took ~16 s on a Pixel 8a)
-  → app renders the card and writes its one-sentence intro, and **that is the
-  whole reply (no model call)**; with no card the model writes 1–2 sentences
+- Flow per message: crisis gate → **fixed answers** (`fixedAnswers.js`) →
+  **`ResourcePicker.pick`** chooses up to 3 kinds / 4 items from keyword
+  scoring, the named theme, onboarding methods and the person's thumbs
+  up/down (no model call — a model-based pick took ~16 s on a Pixel 8a;
+  explicit asks are always honored; the accountability partner is never
+  learned up or down) → app renders the cards and writes the intro sentence,
+  and **that is the whole reply (no model call)**; with no card the model writes 1–2 sentences
   as a resource finder that doesn't answer questions or give advice/theology
   → each sentence is filtered (`RECLAIM_UNSAFE_SENTENCE`: Bible references,
   quoted passages, phone numbers, links, verse offers, and known tone failures

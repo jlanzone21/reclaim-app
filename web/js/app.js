@@ -174,7 +174,7 @@
   // opened the app -- the whole point of that button is to skip the usual risk-alert detail popup
   // and land straight in Chat with a scripture request already sent, so the button does what it
   // says instead of just reopening the app onto the same screen a body tap would. Uses the exact
-  // same trigger text as the "Find a verse" suggestion chip (index.html) so agentPickResource
+  // same trigger text as the "Find a verse" suggestion chip (index.html) so ResourcePicker
   // routes it the identical, already-verified way. Must run (and be checked) before
   // RiskAlertView.checkPending() -- MainActivity already cleared pending_risk_alert for this case,
   // but ordering it first keeps that guarantee explicit here too, not just implicit in native.
@@ -554,7 +554,7 @@
   // rating teaches. Tapping the pressed thumb again undoes the rating.
   function addFeedbackRow(card, name, item, ctx) {
     if (!ctx || !ctx.feedback || !item || typeof ResourceFeedback === "undefined" || !ResourceFeedback.rateable(name)) return;
-    const entry = ResourceFeedback.describe(name, item, ctx.input);
+    const entry = ResourceFeedback.describe(name, item);
     let rowId = null;
     let current = 0;
 

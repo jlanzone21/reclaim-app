@@ -421,21 +421,42 @@ await agent.send(userText, {
      porn or to hide activity / get around a filter. The model used to answer
      these and made things up. Where the project has no information (price,
      iPhone, who built it) the answer says so. Basic mode uses the same layer.
-  2. **Weighted keyword scoring** (`agentPickResource`, using each tool's
-     `signals` -- `[pattern, weight]` pairs -- in `agentTools.js`; highest
-     score wins if it reaches `AGENT_MIN_SCORE`, negative weights cancel
-     false alarms like "are you a counselor?") picks at most one resource
-     card. A card appears only
-     when someone asks for one ("a verse about shame", "groups near me"),
-     says yes to one the last reply offered, or mentions an urge happening
-     now. Someone sharing a slip or a feeling gets a reply, not a card they
-     didn't ask for. The theme (shame, loneliness, hope…) comes from
-     keywords too (`AGENT_THEME_WORDS`).
-  3. The app looks the resource up (`executeAgentTool` → `ResourceRepo`),
-     shows it as a card, and writes the sentence introducing it itself (the
-     `intro` on each tool). The coping toolkit shows **three** ideas at
-     most — in the middle of an urge, a long list overwhelms more than it
-     helps.
+  2. **`ResourcePicker.pick`** (`resourcePicker.js`) chooses **up to 3 kinds
+     of resource and 4 items** (at most 2 of a kind), with no model call.
+     Weighted keyword scoring (each tool's `signals` -- `[pattern, weight]`
+     pairs in `agentTools.js`, negative weights cancel false alarms like "are
+     you a counselor?") finds explicit asks: every tool reaching
+     `AGENT_MIN_SCORE` is honored, whatever the person has rated. The theme
+     (shame, loneliness, hope…) comes from keywords too
+     (`AGENT_THEME_WORDS`); an urge counts as "in-the-moment". When a feeling
+     or urge is named, kinds that fit it are added unasked: `THEME_TYPES`
+     maps each theme to kinds (lonely → verse, small group; urge → coping,
+     verse), nudged by the coping methods picked in onboarding and then by
+     the person's **thumbs up/down** (below). A kind they've rated down stops
+     being added unasked; a liked kind is added only if it fits the theme.
+     Small talk and "are you…?" questions get no cards; a short "yes" is
+     matched against the last reply. The accountability partner is never
+     added or dropped by learning -- it shows whenever asked for.
+  3. The app looks each resource up (`executeAgentTool` → `ResourceRepo`)
+     and shows them as cards. Within a kind, `ResourcePicker.ranker` orders
+     candidates instead of shuffling: theme match first, then liked keywords,
+     the onboarding method, distance for groups, and a little randomness so
+     close calls vary. The app writes the intro itself: the tool's own
+     `intro` for one kind, or one combined sentence for several ("I found a
+     verse about loneliness and a recovery group you could look into.").
+     Basic mode passes no ranker, so it keeps its old single-card, random
+     picks.
+     - **Thumbs up/down** (`resourceFeedback.js`): every card except the
+       accountability partner gets Helpful / Not helpful, in AI mode only.
+       Ratings live in the local `resource_feedback` table and teach the
+       **kind** of resource and the item's **keywords** (tags, coping
+       method, verse topic; for the tagless Supabase rows, format words and
+       the ministry/speaker from the subtitle) -- never the specific item.
+       `ResourceFeedback.profile()` turns them into -1…+1 scores, each rating
+       fading with a 60-day half-life. Privacy → "What Reclaim has learned"
+       shows the leanings and can forget any one or all of them.
+       `scripts/test-resource-picker.mjs` (`npm run test:picker`) checks the
+       picking rules offline.
   4. **If a card was shown, that intro sentence is the whole reply** -- the
      model isn't called. Otherwise the model writes 1-2 sentences
      (`AGENT_SYSTEM_PROMPT`). It is an "AI resource finder", not a chat
@@ -446,7 +467,10 @@ await agent.send(userText, {
      person, and it never quotes, names, or lists a resource. The prompt has
      no literal example sentences on purpose: the small model copies any
      example as its default reply ("Would today's verse help?" was in 44% of
-     replies before it was removed).
+     replies before it was removed). Its per-turn context includes
+     `ResourceFeedback.summary()` (kinds and themes they've rated helpful or
+     not -- never item names), so when it names a kind, it can lean toward
+     what has helped.
   5. The reply **streams one sentence at a time**, and each sentence is
      checked before it's shown (`RECLAIM_UNSAFE_SENTENCE`): anything with a
      Bible reference, a quoted passage, a phone number, or a link is
