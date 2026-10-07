@@ -630,9 +630,7 @@ app (`web/js/riskExplainer.js`):
   background notifier. `RiskNotificationText.java` (Android) and
   `extension/lib/notificationText.js` (browser) fill in the live values, e.g.
   "You've been on Instagram for 22 minutes. Let's check in." Built-in phrases
-  cover the first run. The Privacy setting "Say why on the lock screen"
-  (default on) turns this off for generic text. Keyword factors always use one
-  fixed line, never AI wording.
+  cover the first run. Keyword factors always use one fixed line, never AI wording.
 - **Feedback.** Same as the full-screen check-in below: no "was this fair?"
   question. Answering the alert screen normally (Call, Find resources, I'm
   okay) counts as fair; a small "This was a false alarm" link opens a page to
@@ -681,7 +679,7 @@ person has granted "Display over other apps" (a card in Privacy opens the Settin
 page), `RiskOverlay.java` also covers the screen with a check-in: the specific
 sentence, the reasons behind it (always shown), Call <accountability partner>, Read a
 verse, "I'm okay" (disabled for 5 s), and a small link for "This was a false alarm".
-Answering normally counts as "fair"; the false-alarm link opens a page to
+Answering normally records no signal (only the flag moves the weights); the false-alarm link opens a page to
 tap which parts were wrong and/or type why (or skip). Typed words are read by the
 on-device AI the next time the app opens, which works out which parts of the nudge
 they meant before the bounded weight change is applied. It is a native overlay window rather than an

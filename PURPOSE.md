@@ -2098,8 +2098,9 @@ reality:
     screen text, never the matched keyword (only the severity tier).
   - **Reversal, decided by the user:** the notification text is now specific
     by default (reverses the earlier "permanently generic" decision above).
-    New Privacy setting "Say why on the lock screen", default ON, restores
-    generic text. Keyword factors keep a fixed, never-AI line ("Something on
+    (A "say why on the lock screen" Privacy setting was added and later
+    removed at the user's request: the text is always specific.) Keyword
+    factors keep a fixed, never-AI line ("Something on
     your screen caught our attention."). The model can't run in the
     background, so it writes phrase templates ahead of time while the app is
     open (weekly refresh, one small call per factor, each validated) and
@@ -2138,8 +2139,8 @@ reality:
   narrowed the overlay exemption for starting activities.
   - **Revised after first use (user critique):** no "Why am I seeing this?"
     button -- the reasons are always shown on the overlay. "False alarm" is
-    small text at the bottom, and the default verdict is "fair": any normal
-    answer reinforces the fired factors, only the flag changes that. The flag
+    small text at the bottom. (This first version made the default verdict "fair": any normal
+    answer reinforced the fired factors. Superseded -- see "No signal" below. The flag
     opens a separate page (tap which parts were wrong, type why, or Skip, which
     still counts as a false alarm). Typed words feed the AI loop: native parks
     them (the overlay can't run the model), and on the next app open the model
@@ -2147,7 +2148,7 @@ reality:
     factors if it says NO to everything or is unavailable; a 12 h worker
     fallback applies it if the app is never opened), the crisis gate runs
     first, and the notes become context for the chat model. Tradeoff to
-    watch: unflagged nudges now count as "fair", so weights drift up (bounded).
+    watch: unflagged nudges counted as "fair", so weights drifted up (bounded) -- fixed below.
     Verified: Java compiles, `npm test` incl. the note pipeline against a
     stubbed model. **Not verified on the phone** (it was disconnected): the new
     overlay layout, the flag page and its keyboard, and how well the real model
@@ -2172,6 +2173,17 @@ reality:
     was then confirmed on the phone (overlay gone at the 10:00 mark, no verdict
     recorded). Not verified: other Android versions/OEM skins, and behavior with
     Do Not Disturb/Focus modes.
+
+- [x] **Unflagged nudges and "I'm okay" record no signal.** Problem (user: "that is real"): the
+  overlay counted every unflagged answer as "fair" and raised the weights of the factors that fired
+  (+2, bounded), so a pointless nudge waved off with "I'm okay" made the same situation score
+  higher next time -- a self-reinforcing loop, with flagging (effort, -2) the only counterweight.
+  Decision (user, for simplicity, "for now"): answering the main screen (I'm okay, Call, Find
+  resources) records no signal; only the false-alarm flag moves weights. Removes the upward bias.
+  Still true, not fixed: the older check-in paths (slip after a nudge or its tags +2; resisted -2,
+  so a nudge that works lowers its own sensitivity), no decay toward defaults, all bounded to
+  0.5-1.5x default. Options not taken: weights drifting back to defaults; rate limits; asymmetric
+  steps.
 
 - [x] **Bible verse on the overlay, "Find resources", countdown bar.** Asked for (user):
   the "I'm okay" countdown bar from the in-app dismiss button on the popup; "Read a verse"
@@ -2213,8 +2225,7 @@ reality:
   0 notifications posted, "I'm okay" dismissed it and applied the fair verdict; permission
   revoked -> no overlay, notification posted with the AI note text; tapping that
   notification cleared it and the in-app popup stayed off. Because the risk check only
-  runs while the phone is unlocked, the lock-screen-detail setting now only affects that
-  fallback (and the nightly check-in is unaffected).
+  runs while the phone is unlocked, the notification text only matters for that fallback.
 
 - [x] **AI note bank, pinned nightly check-in, in-app alert off.** Asked for:
   make sure the AI really produces personalized, specific notification text ("you

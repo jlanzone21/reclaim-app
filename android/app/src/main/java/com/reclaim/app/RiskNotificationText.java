@@ -33,8 +33,7 @@ import java.util.regex.Pattern;
  *
  * Two exceptions, on purpose: the keyword factors always use a fixed built-in line -- never AI
  * wording and never the matched word or anything that was on screen -- so a model can't be talking
- * about explicit content on a lock screen; and when the user turns "lock-screen detail" off (a
- * Privacy setting, default ON) compose() returns null and the caller uses the generic wording.
+ * about explicit content on a lock screen.
  */
 final class RiskNotificationText {
     private RiskNotificationText() {}
@@ -138,12 +137,11 @@ final class RiskNotificationText {
     /**
      * @param traceFactors RiskScorer.Result.trace's "factors" array
      * @param bank         {factorId: [phrases], closer: [phrases]} written by the on-device AI, or null
-     * @param detail       the user's lock-screen-detail setting
      * @return the text, or null when the caller should use the generic wording
      */
     static String compose(JSONArray traceFactors, String app, long minutes, String timeBucket,
-                          JSONObject bank, JSONObject noteBank, boolean detail, Random rnd) {
-        if (!detail || traceFactors == null) return null;
+                          JSONObject bank, JSONObject noteBank, Random rnd) {
+        if (traceFactors == null) return null;
         Set<String> fired = new HashSet<>();
         for (int i = 0; i < traceFactors.length(); i++) {
             JSONObject f = traceFactors.optJSONObject(i);

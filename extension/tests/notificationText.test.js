@@ -4,10 +4,8 @@ const N = require("../lib/notificationText.js");
 
 const f = (id, fired = true, points = 10) => ({ id, fired, points, detail: "" });
 const first = () => 0;
-const base = { app: "Instagram", minutes: 22, timeBucket: "Night", bank: null, detail: true, pick: first };
+const base = { app: "Instagram", minutes: 22, timeBucket: "Night", bank: null, pick: first };
 
-// Detail off -> null: the caller keeps the generic wording.
-assert.equal(N.compose({ ...base, trace: [f("duration")], detail: false }), null);
 // Nothing fired / only unknown factors -> null, never an empty or half-built sentence.
 assert.equal(N.compose({ ...base, trace: [f("duration", false)] }), null);
 assert.equal(N.compose({ ...base, trace: [f("mystery")] }), null);
@@ -80,8 +78,6 @@ assert.equal(N.compose({ ...base, trace: [f("alone"), f("duration")], noteBank }
 const kwNote = N.compose({ ...base, trace: [f("recentKeyword"), f("duration")], noteBank });
 assert.match(kwNote, /^Something on your screen caught our attention\./);
 assert.ok(!/pause and check in/.test(kwNote));
-// detail off -> generic, even with a bank
-assert.equal(N.compose({ ...base, trace: [f("duration")], noteBank, detail: false }), null);
 // unusable notes (digits, unknown slot, missing {minutes} for D, 3 sentences, too long) fall back
 for (const bad of ["You've been on {app} for {minutes} minutes {time}, 20 times. Check in.", "Hey {name}, {app} {minutes}. Check in.", "You're on {app} {time}. Check in.", "A. B. C {app} {minutes}.", "x".repeat(210)]) {
   assert.equal(N.usableNote("D", bad), false, bad);

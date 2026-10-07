@@ -11,8 +11,6 @@
  *     common_triggers: string[],                    // subset of CONDITION_TAGS (constants.js)
  *     tempting_locations,                            // free text
  *     notification_intensity: 'low' | 'medium' | 'high',
- *     lock_screen_detail: boolean,                   // default true: notification text says WHY ("You've been on
- *                                                    // Instagram for 22 minutes"); false = generic wording
  *     other_notes,
  *     onboarding_completed_at,                       // ISO string once they've been through setup
  *     home_lat, home_lon,                            // number | null, captured via device GPS
@@ -43,7 +41,6 @@ const UserPreferencesStore = (function () {
     common_triggers: [],
     tempting_locations: "",
     notification_intensity: "medium",
-    lock_screen_detail: true,
     other_notes: "",
     onboarding_completed_at: null,
     home_lat: null,
@@ -60,8 +57,6 @@ const UserPreferencesStore = (function () {
       tempting_times: row.tempting_times ? JSON.parse(row.tempting_times) : [],
       common_triggers: row.common_triggers ? JSON.parse(row.common_triggers) : [],
       preferred_coping_methods: row.preferred_coping_methods ? JSON.parse(row.preferred_coping_methods) : [],
-      // Stored as 0/1; a row from before this column existed reads NULL, which means the default (on).
-      lock_screen_detail: row.lock_screen_detail === 0 ? false : true,
     };
   }
 
@@ -92,7 +87,6 @@ const UserPreferencesStore = (function () {
       next.home_lon ?? null,
       next.gender || null,
       JSON.stringify(next.preferred_coping_methods || []),
-      next.lock_screen_detail === false ? 0 : 1,
     ];
     if (exists) {
       DB.run(
@@ -103,8 +97,7 @@ const UserPreferencesStore = (function () {
            tempting_times = ?, common_triggers = ?, tempting_locations = ?,
            notification_intensity = ?, other_notes = ?,
            onboarding_completed_at = ?, updated_at = ?,
-           home_lat = ?, home_lon = ?, gender = ?, preferred_coping_methods = ?,
-           lock_screen_detail = ?
+           home_lat = ?, home_lon = ?, gender = ?, preferred_coping_methods = ?
          WHERE id = 1`,
         params
       );
@@ -115,8 +108,8 @@ const UserPreferencesStore = (function () {
             pastor_name, pastor_phone,
             tempting_times, common_triggers, tempting_locations,
             notification_intensity, other_notes, onboarding_completed_at, updated_at,
-            home_lat, home_lon, gender, preferred_coping_methods, lock_screen_detail)
-         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            home_lat, home_lon, gender, preferred_coping_methods)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         params
       );
     }

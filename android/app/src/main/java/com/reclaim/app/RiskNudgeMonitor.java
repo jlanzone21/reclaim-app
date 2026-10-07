@@ -52,10 +52,8 @@ import androidx.core.content.ContextCompat;
  *
  * The notification text says specifically why (RiskNotificationText: "You've been on Instagram for
  * 22 minutes. Let's check in."), written from RiskScorer's trace with wording the on-device AI
- * authored while the app was open -- that is the default, a deliberate reversal of the earlier
- * always-generic text, decided by the user. A Privacy setting ("lock-screen detail", app_meta
- * "lock_screen_detail") switches back to the generic GENERIC_TEXTS below for anyone who doesn't
- * want it readable on a locked phone. Either way the keyword factors only ever say "something on
+ * authored while the app was open -- always, a deliberate reversal of the earlier always-generic
+ * text, decided by the user (there is no longer a setting to turn it off). The keyword factors only ever say "something on
  * your screen caught our attention" -- never the word or what was seen. The fuller breakdown
  * (userReasons + the trace) goes to app_meta and is shown, with an AI-written explanation, once
  * the app is open. See PURPOSE.md.
@@ -222,8 +220,8 @@ final class RiskNudgeMonitor {
         return mode == android.app.AppOpsManager.MODE_ALLOWED;
     }
 
-    // The generic fallback, used only when the user has turned "lock-screen detail" OFF (default
-    // is ON -- see the class doc comment) or no specific text could be composed. Never names the
+    // The generic fallback, used only when no specific text could be composed (nothing speakable fired).
+    // Never names the
     // app or the pattern, so none of these may reveal anything. Several phrasings, picked at
     // random per post, purely so this doesn't read as the exact same robotic string every time.
     private static final String[] GENERIC_TEXTS = {
@@ -362,23 +360,22 @@ final class RiskNudgeMonitor {
         Log.d(TAG, "posted risk nudge notification (fallback: no overlay)");
     }
 
-    // Specific text (default) from the trace + the AI's phrase bank, or the generic fallback when
-    // lock-screen detail is off or nothing specific could be composed.
+    // Specific text from the trace + the AI's note/phrase banks, or the generic fallback when nothing specific
+    // could be composed.
     private static String notificationText(Context ctx, LocalSignalsDb db, String packageName, RiskScorer.Result result) {
-        return composeText(ctx, db, packageName, result, !"0".equals(db.getMeta("lock_screen_detail")), true);
+        return composeText(ctx, db, packageName, result, true);
     }
 
-    // The overlay is drawn over an UNLOCKED, in-use screen (see RiskOverlay), so the lock-screen
-    // privacy setting doesn't apply -- it always gets the specific sentence.
+    // The overlay is drawn over an UNLOCKED, in-use screen (see RiskOverlay): specific sentence, no generic fallback here.
     private static String overlayText(Context ctx, LocalSignalsDb db, String packageName, RiskScorer.Result result) {
-        String s = composeText(ctx, db, packageName, result, true, false);
+        String s = composeText(ctx, db, packageName, result, false);
         return s != null ? s : "Reclaim wants to check in with you.";
     }
 
     private static String composeText(Context ctx, LocalSignalsDb db, String packageName, RiskScorer.Result result,
-                                      boolean detail, boolean genericFallback) {
+                                      boolean genericFallback) {
         String text = null;
-        if (detail && result.trace != null) {
+        if (result.trace != null) {
             org.json.JSONObject bank = null;
             org.json.JSONObject noteBank = null;
             try {
@@ -394,7 +391,7 @@ final class RiskNudgeMonitor {
                     appLabel(ctx, packageName),
                     result.trace.optLong("sessionMinutes"),
                     result.trace.optString("timeBucket"),
-                    bank, noteBank, true, new java.util.Random());
+                    bank, noteBank, new java.util.Random());
         }
         if (text == null && genericFallback) return GENERIC_TEXTS[new java.util.Random().nextInt(GENERIC_TEXTS.length)];
         return text;

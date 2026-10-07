@@ -10,8 +10,7 @@
 //
 // The two exceptions: the keyword factors always use a fixed built-in line -- never AI wording, and
 // never the matched word or what was on screen -- so a model can't be talking about explicit
-// content on a lock screen. And when the user turns "lock-screen detail" off (a Privacy setting,
-// default ON), compose() returns null and the caller falls back to the old generic text.
+// content on a lock screen.
 (function (root) {
   const TIME_WORDS = { Morning: "this morning", Afternoon: "this afternoon", Evening: "this evening", Night: "late tonight" };
 
@@ -97,12 +96,10 @@
    * @param {number} o.minutes         session minutes
    * @param {string} o.timeBucket      Morning | Afternoon | Evening | Night
    * @param {object} [o.bank]          {factorId: string[], closer: string[]} written by the on-device AI
-   * @param {boolean} o.detail         the user's lock-screen-detail setting
    * @param {function} [o.pick]        n => index in [0, n), injectable for tests
    * @returns {string|null} the text, or null when the caller should use the generic wording
    */
-  function compose({ trace, app, minutes, timeBucket, bank, noteBank, detail, pick }) {
-    if (!detail) return null;
+  function compose({ trace, app, minutes, timeBucket, bank, noteBank, pick }) {
     const choose = pick || ((n) => Math.floor(Math.random() * n));
     const fired = new Set((trace || []).filter((f) => f.fired).map((f) => f.id));
     const values = { app: app || "this app", minutes: minutes || 0, time: TIME_WORDS[timeBucket] || "right now" };

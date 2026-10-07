@@ -33,11 +33,11 @@ Non-negotiables (see PURPOSE.md for the full reasoning):
   `agentIsCrisis` in `web/js/agentTools.js`), runs before any model call, and
   should over-trigger rather than under-trigger. Gaps are bugs.
 - **Allowlist, not blocklist,** for what on-screen text may be read.
-- Risk-nudge notification text says **why** by default ("You've been on
+- Risk-nudge notification text says **why** ("You've been on
   Instagram for 22 minutes. Let's check in.") — the user's decision, reversing
-  the earlier always-generic rule. A Privacy setting, "Say why on the lock
-  screen" (`lock_screen_detail`, default ON), switches back to generic wording
-  ("Got a second to check in?"). Either way the text **never** includes the
+  the earlier always-generic rule, and now unconditional (the "say why on the
+  lock screen" setting was removed; on Android a risk nudge is the overlay and
+  this text is only the fallback notification). The text **never** includes the
   matched keyword or anything that was on screen — the keyword factors only
   ever say "Something on your screen caught our attention." (fixed line, never
   AI-written). Don't loosen that.
@@ -292,10 +292,10 @@ Main JS modules (`web/js/`):
   Keyword nudges never get a note (fixed line only). Weekly refresh, ~4 min of
   background model time. Tuned on the Pixel 8a: free generation was unusable, the
   rewrite with a stated goal passed 12/15 and every miss was rejected.
-- **The in-app risk alert (`RiskAlertView`) is switched OFF** (`enabled = false`;
-  the user wants only the outside-of-app overlay). It is kept intact — flip
-  `RiskAlertView.setEnabled(true)` — and a pending alert is still consumed silently on
-  boot/resume so a stale one can't appear later.
+- **The in-app risk alert (`RiskAlertView`) is OFF on Android, ON on the web** (the
+  user wants only the outside-of-app overlay on the phone; a browser can't draw one, so the
+  extension's notification leads to this popup). `RiskAlertView.setEnabled()` overrides;
+  while off, a pending alert is still consumed silently so a stale one can't appear later.
 - Setup answers (accountability partner(s), pastor, tempting times, triggers)
   reach the prompt via `personalContext.js`; the prompt tells the model to
   name the partner. Up to 2 accountability partners
@@ -336,8 +336,7 @@ risk nudge posts NO notification at all — nothing in the shade, nothing on a l
 (the risk check only runs while the phone is unlocked and in use anyway). A notification
 is only the FALLBACK, used when the overlay can't appear (permission not granted) or fails
 to draw (`RiskOverlay.show`'s `onFailure`), so a nudge is never silently lost; the
-lock-screen-detail setting and generic text only matter for that fallback and for the
-nightly check-in.
+fallback notification's wording is the same specific text (there is no setting to make it generic).
 
 **Full-screen check-in** (`RiskOverlay.java`): on EVERY risk nudge, if the person has
 granted "Display over other apps" (`SYSTEM_ALERT_WINDOW`; a Privacy card sends them
@@ -348,9 +347,10 @@ false alarm themselves — there is deliberately no "why" button), Call <partner
 Read a verse, "I'm okay" (5 s wait), and small underlined text links at the bottom:
 "This was a false alarm". (A 988 link was there and was removed at the user's
 request; while the overlay is up it covers the app's own crisis button, so the
-only ways out are "I'm okay", the flag page, Home, and the failsafe.) **Default verdict is
-"fair"**: any way of answering the main screen reinforces the factors that fired
-(bounded ±2 via `RiskScorer.applyFeedback`, once per alert id); only the flag link
+only ways out are "I'm okay", the flag page, Home, and the failsafe.) **Answering
+the main screen records NO signal** ("I'm okay", Call, Find resources change no weight —
+counting them as "fair" made a self-reinforcing loop: a pointless nudge waved off would
+raise the weights and cause more nudges); only the flag link
 changes that. It opens a second page: tap which parts didn't fit and/or type why,
 Send — or Skip, which still counts as a false alarm on everything that fired. Picked
 reasons / Skip adjust immediately; typed words with no reasons picked wait in
@@ -359,9 +359,10 @@ on the next app open asks one YES/NO per fired factor ("does this person say THI
 part was wrong?") and applies the false alarm to the YES factors (all fired if none /
 no model), then keeps the note as context for the chat model
 (`RiskExplainer.processFeedbackNotes` / `feedbackContext`). The crisis gate runs
-before any model call on typed words. Unreinforced timeouts record nothing. Known
-tradeoff: because unflagged nudges now count as "fair", weights drift upward over
-time (bounded at 1.5× default); watch for it. It is an overlay window, not an activity, on
+before any model call on typed words. Timeouts record nothing. What can still
+move weights: the flag (−2, via `RiskScorer.applyFeedback`, once per alert id), and the older check-in
+paths (a slip after a nudge or a slip's tags +2; a check-in marked resisted −2 — which means a nudge
+that WORKS slowly lowers its own sensitivity). All bounded to 0.5–1.5× default. No decay toward defaults yet. It is an overlay window, not an activity, on
 purpose: Android 10+ blocks background activity starts, full-screen intents are
 denied to non-call apps on 14+, and 15+ narrowed the overlay exemption — verified
 on the Pixel 8a (Android 16) that the notification's `setFullScreenIntent` is
