@@ -1,6 +1,8 @@
 // Runs Reclaim's AI inside this page with WebLLM; the 6 MB library (js/vendor/web-llm.js) loads only once the AI is turned on.
 const LocalModel = (function () {
-  const MODEL = { base: "Qwen3.5-2B", downloadMB: 1030 };
+  // downloadMB covers both downloads behind the one AI opt-in: the chat model (~1030 MB) and the
+  // embedding model localEmbedder.js loads right after it (67.6 MB measured).
+  const MODEL = { base: "Qwen3.5-2B", downloadMB: 1100 };
   const ENABLED_KEY = "reclaim_ai_enabled";
 
   let status = { state: "checking", detail: "", progress: 0, downloadMB: MODEL.downloadMB };
@@ -91,6 +93,9 @@ const LocalModel = (function () {
           initProgressCallback: (report) => set(status.state, report.text || "", report.progress || 0),
         });
         set("ready", "", 1);
+        // The small embedding model loads after chat is usable and never holds it up; if it can't
+        // load, matching falls back to keywords + thumbs (see localEmbedder.js).
+        if (typeof LocalEmbedder !== "undefined") LocalEmbedder.start(appConfig);
       } catch (err) {
         engine = null;
         set("error", friendlyError(err));

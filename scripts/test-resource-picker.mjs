@@ -181,4 +181,71 @@ test("ranker: derived keywords work for Supabase rows, and distance still matter
   }
 });
 
+// ---- Embedding signals (localEmbedder.js), with hand-made vectors so no GPU/model is needed ----
+
+const unit = (...xs) => {
+  const n = Math.hypot(...xs);
+  return xs.map((x) => x / n);
+};
+const cosine = (a, b) => a.reduce((s, x, i) => s + x * b[i], 0);
+
+test("an inferred feeling works like a keyword feeling, but never overrides one", () => {
+  for (const p of many(() => pick("everything feels heavy and I want to escape", "", { inferred: { theme: "stress" } }))) {
+    assert.equal(p[0].resource, "coping_toolkit"); // stress maps to coping first
+    assert.equal(p[0].theme, "stress");
+  }
+  // Keyword theme wins over the model's guess.
+  assert.equal(pick("I feel so lonely", "", { inferred: { theme: "stress" } })[0].theme, "loneliness");
+  // An urge (keyword coping ask) keeps urge themes even if the model guessed a feeling (real case:
+  // "the craving won't go away" read as "hope").
+  for (const p of many(() => pick("the craving won't go away", "", { inferred: { theme: "hope" } }))) {
+    assert.equal(p[0].resource, "coping_toolkit");
+    assert.equal(p[0].theme, "in-the-moment");
+    assert.ok(p.every((x) => x.theme !== "hope"), JSON.stringify(p));
+  }
+  // Nothing inferred, no keywords: still no cards.
+  assert.deepEqual(pick("everything feels heavy and I want to escape", "", { inferred: { theme: null, ask: null } }), []);
+});
+
+test("an inferred ask counts as explicit (honored even when disliked); keyword asks win", () => {
+  const hates = profile({ counseling_directory: -1 });
+  for (const p of many(() => pick("is there anyone I could talk to about this professionally", "", { profile: hates, inferred: { ask: "counseling_directory" } }))) {
+    assert.equal(p[0].resource, "counseling_directory");
+    assert.equal(p[0].explicit, true);
+  }
+  assert.equal(pick("find me a sermon", "", { inferred: { ask: "counseling_directory" } })[0].resource, "sermon_library");
+});
+
+test("inferred signals are ignored for 'are you...?' questions and for a bare 'yes'", () => {
+  assert.deepEqual(pick("are you able to help me", "", { inferred: { theme: "stress", ask: "counseling_directory" } }), []);
+  for (const p of many(() => pick("yes", "I found a verse about grace.", { inferred: { ask: "counseling_directory" } }))) {
+    assert.equal(p[0].resource, "scripture_search");
+    assert.ok(!names(p).includes("counseling_directory"), names(p).join());
+  }
+});
+
+test("ranker: closer in meaning to the message ranks higher among on-topic items", () => {
+  const vecs = { "local:coping_toolkit:Calm": unit(1, 0.1, 0), "local:coping_toolkit:Walk": unit(0, 1, 0), "local:coping_toolkit:Off": unit(1, 0, 0) };
+  const rows = [
+    { title: "Walk", tags: ["anxiety"] },
+    { title: "Calm", tags: ["anxiety"] },
+    { title: "Off", tags: ["hope"] },
+  ];
+  const semantic = { queryVec: unit(1, 0, 0), taste: null, vectorFor: (k) => vecs[k], cosine };
+  for (const order of many(() => ranker("coping_toolkit", "anxiety", null, [], semantic)(rows).map((r) => r.title))) {
+    // "Off" is closest in meaning but off-topic: the theme still wins.
+    assert.deepEqual(order, ["Calm", "Walk", "Off"]);
+  }
+});
+
+test("ranker: taste pulls toward what resembles past helpful ratings; unindexed items get no opinion", () => {
+  const vecs = { "local:devotional_finder:Like": unit(0, 0, 1), "local:devotional_finder:Unlike": unit(1, 0, 0) };
+  const rows = [{ title: "Unlike", tags: [] }, { title: "Like", tags: [] }, { title: "Unknown", tags: [] }];
+  const semantic = { queryVec: null, taste: unit(0, 0, 1), vectorFor: (k) => vecs[k], cosine };
+  for (const order of many(() => ranker("devotional_finder", null, null, [], semantic)(rows).map((r) => r.title))) {
+    assert.equal(order[0], "Like");
+    assert.equal(order[2], "Unlike");
+  }
+});
+
 console.log(`\n${passed} passed`);

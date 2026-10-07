@@ -73,7 +73,15 @@
     connStatus.title =
       s.state === "ready" ? "Reclaim's AI runs privately on this device. Your conversations never leave it." : "About Reclaim's AI";
 
-    const panel = {
+    // Told once if the small embedding model couldn't load (decision: tell the user once; chat and
+    // resources still work on keywords + thumbs -- see localEmbedder.js).
+    const embedNotice = s.state === "ready" && typeof LocalEmbedder !== "undefined" && LocalEmbedder.failureNoticeDue();
+    const panel = embedNotice
+      ? {
+          text: "Reclaim's smarter resource matching couldn't start on this device, so it will match resources a simpler way. Chat and everything else work the same.",
+          dismiss: "OK",
+        }
+      : {
       unsupported: {
         text: `This device can't run Reclaim's AI. ${s.detail} Instead, a simpler built-in guide answers, and crisis resources always work.`,
         dismiss: "OK",
@@ -88,7 +96,7 @@
     }[s.state];
 
     // While chat is locked the panel is the only thing explaining why, so it can't be dismissed.
-    const show = !!panel && (busy || locked || (aiPanelWanted === null ? s.state === "available" || s.state === "error" : aiPanelWanted));
+    const show = !!panel && (busy || locked || embedNotice || (aiPanelWanted === null ? s.state === "available" || s.state === "error" : aiPanelWanted));
     aiPanel.hidden = !show;
     if (!show) return;
     aiPanelText.textContent = panel.text;
@@ -107,8 +115,10 @@
   });
   aiDismissBtn.addEventListener("click", () => {
     aiPanelWanted = false;
+    if (typeof LocalEmbedder !== "undefined" && LocalEmbedder.failureNoticeDue()) LocalEmbedder.dismissFailureNotice();
     renderAiStatus(LocalModel.getStatus());
   });
+  if (typeof LocalEmbedder !== "undefined") LocalEmbedder.onChange(() => renderAiStatus(LocalModel.getStatus()));
   aiPrimaryBtn.addEventListener("click", () => {
     aiPanelWanted = null;
     LocalModel.start();
@@ -555,6 +565,9 @@
   function addFeedbackRow(card, name, item, ctx) {
     if (!ctx || !ctx.feedback || !item || typeof ResourceFeedback === "undefined" || !ResourceFeedback.rateable(name)) return;
     const entry = ResourceFeedback.describe(name, item);
+    // The card's own text, read before the thumbs are added -- what the embedding "taste" learns from
+    // (localEmbedder.js), including things that were never indexed, like a YouVersion verse.
+    const cardText = card.textContent.replace(/\s+/g, " ").trim();
     let rowId = null;
     let current = 0;
 
@@ -572,6 +585,7 @@
       } else {
         rowId = ResourceFeedback.rate(rowId, entry, rating);
         current = rating;
+        if (typeof LocalEmbedder !== "undefined") LocalEmbedder.rememberItem(entry.key, cardText);
       }
       up.setAttribute("aria-pressed", String(current === 1));
       down.setAttribute("aria-pressed", String(current === -1));

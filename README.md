@@ -457,6 +457,21 @@ await agent.send(userText, {
        shows the leanings and can forget any one or all of them.
        `scripts/test-resource-picker.mjs` (`npm run test:picker`) checks the
        picking rules offline.
+     - **Embedding model** (`localEmbedder.js`): a small on-device model
+       (snowflake-arctic-embed-s, ~68 MB, its own WebLLM engine) that turns
+       text into a meaning vector and writes nothing. It loads after the
+       chat model under the same opt-in. Per message it's one ~50 ms embed:
+       compared with calibrated example messages (several per theme / per
+       kind of ask, plus a "none" class of small talk), it supplies a
+       feeling or ask the keywords missed (`inferred`; an inferred ask is
+       treated as explicit). The ranker also scores closeness in meaning to
+       the message and to a "taste" vector built from rated items (same
+       60-day fade). Resource vectors are computed once and cached in
+       IndexedDB. It never gates anything -- crisis check, fixed answers and
+       keyword asks run first -- and if it can't load, the person is told
+       once and picking uses keywords + thumbs. Re-check its thresholds
+       with `scripts/embedding-calibration.js` (pasted into the app's
+       console) after editing the example lists.
   4. **If a card was shown, that intro sentence is the whole reply** -- the
      model isn't called. Otherwise the model writes 1-2 sentences
      (`AGENT_SYSTEM_PROMPT`). It is an "AI resource finder", not a chat

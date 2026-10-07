@@ -193,6 +193,12 @@ const ResourceFeedback = (function () {
     return { tools: finalize(tools), keywords: finalize(keywords) };
   }
 
+  // Each rating with its current decay weight -- for the embedding "taste" (localEmbedder.js),
+  // which looks at what rated things were about rather than their keywords.
+  function weightedRows(now = Date.now()) {
+    return all().map((row) => ({ key: row.resource_key, rating: row.rating, weight: decayWeight(row.created_at, now) }));
+  }
+
   // One plain sentence for the on-device model's per-turn context (reclaimAgent.js), so when it
   // writes a no-card reply and names a kind of resource, it can lean toward ones that have helped.
   // Kinds and themes only -- never item names, which the model must not repeat.
@@ -230,6 +236,7 @@ const ResourceFeedback = (function () {
     forgetKeyword,
     clearAll,
     profile,
+    weightedRows,
     summary,
   };
 })();

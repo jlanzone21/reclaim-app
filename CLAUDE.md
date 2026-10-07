@@ -223,6 +223,16 @@ Main JS modules (`web/js/`):
 - Model: **Qwen3.5-2B** (`Qwen3.5-2B-q4f16_1-MLC`, ~1 GB) via WebLLM +
   WebGPU, downloaded only after the user taps to opt in. 4k context,
   temperature 0.3, thinking off. (4B was tried on-device and reverted.)
+- Embedding model: **snowflake-arctic-embed-s** (`-q0f32-MLC-b4`, 67.6 MB
+  measured, ~240 MB GPU memory; the b32 build needs ~1 GB) in its own WebLLM
+  engine (`localEmbedder.js`), loaded right after the chat model under the
+  same opt-in (shown total ~1.1 GB). It writes no text. It infers a feeling
+  or ask the keywords missed (calibrated margins: themes 0.04, asks 0.07 —
+  re-check with `scripts/embedding-calibration.js` after editing its example
+  lists) and ranks items by meaning and by "taste" (closeness to rated
+  items). Vectors are cached in IndexedDB (not the sql.js blob, which is
+  capped by localStorage). If it fails to load, the user is told once and
+  picking falls back to keywords + thumbs.
 - Flow per message: crisis gate → **fixed answers** (`fixedAnswers.js`) →
   **`ResourcePicker.pick`** chooses up to 3 kinds / 4 items from keyword
   scoring, the named theme, onboarding methods and the person's thumbs

@@ -124,13 +124,22 @@ class ReclaimAgent {
     try {
       let intro = "";
       const learned = learnedPreferences();
+      // The small embedding model's read of the message (localEmbedder.js): a feeling or ask the keywords missed,
+      // and the message's meaning for ranking. ~50 ms; null when it isn't loaded, and everything works without it.
+      const analysis = typeof LocalEmbedder !== "undefined" ? await LocalEmbedder.analyze(userText) : null;
+      const semantic = analysis && {
+        queryVec: analysis.queryVec,
+        taste: LocalEmbedder.tasteVector(ResourceFeedback.weightedRows()),
+        vectorFor: LocalEmbedder.vectorFor,
+        cosine: LocalEmbedder.cosine,
+      };
       // Up to 3 kinds of resource and 4 items, chosen from the message plus what this person has rated helpful
-      // (resourcePicker.js). Instant arithmetic, no model call.
-      const picks = ResourcePicker.pick(userText, previous, learned);
+      // (resourcePicker.js). Instant arithmetic, no chat-model call.
+      const picks = ResourcePicker.pick(userText, previous, { ...learned, inferred: analysis });
       const results = await Promise.all(
         picks.map(async (p) => {
           const input = p.theme ? { theme: p.theme, query: userText } : { query: userText };
-          const rank = ResourcePicker.ranker(p.resource, p.theme, learned.profile, learned.preferredMethods);
+          const rank = ResourcePicker.ranker(p.resource, p.theme, learned.profile, learned.preferredMethods, semantic);
           const output = await executeAgentTool(p.resource, input, { limit: p.limit, rank });
           return { ...p, input, output, unreachable: unreachableLabel(p.resource, output) };
         })

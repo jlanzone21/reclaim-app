@@ -1,8 +1,10 @@
 /**
  * Chooses which kinds of resources Reclaim's on-device AI shows for a message, and how many of
  * each, then orders candidates within a kind -- using the person's thumbs up/down
- * (resourceFeedback.js). Plain arithmetic, no model: it runs on every message and has to be
- * instant (a model-based pick took ~16 s on a Pixel 8a), and it has to be explainable.
+ * (resourceFeedback.js). Plain arithmetic, no chat model: it runs on every message and has to be
+ * instant (a model-based pick took ~16 s on a Pixel 8a), and it has to be explainable. When the
+ * small embedding model is loaded (localEmbedder.js), its signals feed in too -- a feeling or ask
+ * the keywords missed, and closeness in meaning/taste -- but everything works without it.
  *
  * Decisions this encodes (Nathaniel, 2026-10-06 -- see PURPOSE.md):
  * - Up to 3 kinds and 4 items per reply (2 at most of any one kind).
@@ -75,13 +77,20 @@ const ResourcePicker = (function () {
   };
 
   // Item ranking weights: theme match outranks everything learned, so a liked keyword never pulls
-  // in something off-topic; preferences and the onboarding method decide among on-topic items.
-  // ITEM_THEME has to exceed the widest swing of the rest (method 0.5 + prefs +/-0.8 + noise 0.2 =
-  // 2.3) -- at 1.0, an off-topic liked item beat an on-topic disliked one in the offline test.
-  const ITEM_THEME = 3.0;
+  // in something off-topic; preferences, meaning and the onboarding method decide among on-topic
+  // items. ITEM_THEME has to exceed the widest swing of the rest: method 0.5 + 2 x (prefs 0.8 +
+  // meaning 0.8 + taste 0.6 + noise 0.1) = 5.1 -- at 1.0, an off-topic liked item beat an
+  // on-topic disliked one in the offline test.
+  const ITEM_THEME = 6.0;
   const ITEM_METHOD = 0.5;
   const ITEM_PREF = 0.8;
   const ITEM_NOISE = 0.2;
+  // Embedding terms (localEmbedder.js) use similarity relative to the other candidates, since raw
+  // cosines all sit around 0.4-0.7: a candidate 0.1 closer in meaning than average gains 0.4.
+  const ITEM_MEANING = 4.0;
+  const ITEM_MEANING_CAP = 0.8;
+  const ITEM_TASTE = 3.0;
+  const ITEM_TASTE_CAP = 0.6;
   const MILES_PER_POINT = 100;
 
   const toolScore = (profile, tool) => (profile && profile.tools[tool] ? profile.tools[tool].score : 0);
@@ -127,22 +136,33 @@ const ResourcePicker = (function () {
 
   /**
    * [{ resource, theme, explicit, limit }] for this message, best first; [] means no cards.
-   * profile: ResourceFeedback.profile(); preferredMethods: onboarding's coping methods.
+   * profile: ResourceFeedback.profile(); preferredMethods: onboarding's coping methods;
+   * inferred: { theme, ask } from the embedding model (localEmbedder.js), or null -- only used
+   * when the keywords found nothing of that sort. An inferred ask counts as explicit (decision:
+   * they did ask, in other words).
    */
-  function pick(userText, lastReply = "", { profile = null, preferredMethods = [] } = {}) {
+  function pick(userText, lastReply = "", { profile = null, preferredMethods = [], inferred = null } = {}) {
     // A short "yes" answers whatever the last reply offered, so it's matched against that reply.
     let lower = userText.toLowerCase();
-    if (AGENT_AFFIRMATIVE.test(userText) && userText.length < 40 && lastReply) lower = lastReply.toLowerCase();
+    const affirmative = AGENT_AFFIRMATIVE.test(userText) && userText.length < 40 && !!lastReply;
+    if (affirmative) lower = lastReply.toLowerCase();
+    const aboutAi = /\bare you\b/.test(lower);
+    // What the embedding model read from "yes" says nothing; the last reply already carries the meaning.
+    const hint = !affirmative && !aboutAi && inferred ? inferred : {};
 
     const explicit = AGENT_TOOL_DEFS.map((t) => ({ name: t.name, score: agentScoreTool(t, lower) }))
       .filter((s) => s.score >= AGENT_MIN_SCORE)
       .sort((a, b) => b.score - a.score)
       .map((s) => s.name);
+    if (!explicit.length && hint.ask) explicit.push(hint.ask);
 
-    // "Are you a pastor?" names no need, even if it contains a feeling word.
-    const feeling = /\bare you\b/.test(lower) ? null : agentInferTheme(lower);
+    // "Are you a pastor?" names no need, even if it contains a feeling word. An urge happening now
+    // (coping asked for) outranks a feeling the embedding model only guessed at: with the real model,
+    // "the craving won't go away" read as "hope" and pulled in hope content instead of urge help.
+    const urgeNow = explicit.includes("coping_toolkit");
+    const feeling = aboutAi ? null : agentInferTheme(lower) || (urgeNow ? null : hint.theme) || null;
     // An urge happening now counts as a theme for unasked additions even without a feeling word.
-    const theme = feeling || (explicit.includes("coping_toolkit") ? "in-the-moment" : null);
+    const theme = feeling || (urgeNow ? "in-the-moment" : null);
     if (!explicit.length && !feeling) return [];
 
     const picks = explicit.slice(0, MAX_TYPES).map((name) => ({ resource: name, explicit: true }));
@@ -176,13 +196,30 @@ const ResourcePicker = (function () {
     return allocate(picks);
   }
 
+  const clamp = (x, cap) => Math.max(-cap, Math.min(cap, x));
+
+  // Similarity of each row's vector to `target`, minus the average over the rows that have one;
+  // rows without a vector (not indexed yet) get 0, i.e. no opinion.
+  function relativeSimilarity(rows, target, vectorFor, cosine) {
+    const sims = rows.map((row) => {
+      const v = vectorFor(row);
+      return v ? cosine(target, v) : null;
+    });
+    const known = sims.filter((s) => s !== null);
+    if (!known.length) return rows.map(() => 0);
+    const mean = known.reduce((a, b) => a + b, 0) / known.length;
+    return sims.map((s) => (s === null ? 0 : s - mean));
+  }
+
   /**
    * A rank(rows) function for ResourceRepo: best-first by theme match, onboarding method, learned
-   * keyword preferences, distance (groups with a saved home location), and a little noise.
+   * keyword preferences, distance (groups with a saved home location), and a little noise -- plus,
+   * when the embedding model is ready (`semantic`: { queryVec, taste, vectorFor(key), cosine }),
+   * closeness in meaning to the message and to what they've rated helpful.
    */
-  function ranker(tool, theme, profile, preferredMethods = []) {
+  function ranker(tool, theme, profile, preferredMethods = [], semantic = null) {
     const keywordScores = profile ? profile.keywords : {};
-    const score = (item) => {
+    const score = (item, meaning, taste) => {
       let s = 0;
       const tags = Array.isArray(item.tags) ? item.tags : [];
       if (theme && tags.includes(theme)) s += ITEM_THEME;
@@ -193,13 +230,23 @@ const ResourcePicker = (function () {
         .filter(Boolean);
       if (rated.length) s += ITEM_PREF * (rated.reduce((n, k) => n + k.score, 0) / rated.length);
       if (item.distanceMeters != null) s -= item.distanceMeters / 1609.34 / MILES_PER_POINT;
+      s += clamp(ITEM_MEANING * meaning, ITEM_MEANING_CAP) + clamp(ITEM_TASTE * taste, ITEM_TASTE_CAP);
       return s + noise(ITEM_NOISE);
     };
-    return (rows) =>
-      rows
-        .map((row) => ({ row, s: score(row) }))
+    return (rows) => {
+      const zeros = rows.map(() => 0);
+      let meaning = zeros;
+      let taste = zeros;
+      if (semantic && semantic.vectorFor) {
+        const vecOf = (row) => semantic.vectorFor(ResourceFeedback.describe(tool, row).key);
+        if (semantic.queryVec) meaning = relativeSimilarity(rows, semantic.queryVec, vecOf, semantic.cosine);
+        if (semantic.taste) taste = relativeSimilarity(rows, semantic.taste, vecOf, semantic.cosine);
+      }
+      return rows
+        .map((row, i) => ({ row, s: score(row, meaning[i], taste[i]) }))
         .sort((a, b) => b.s - a.s)
         .map((x) => x.row);
+    };
   }
 
   // ---- The app's own intro sentence for a multi-kind reply (the model never describes cards) ----
