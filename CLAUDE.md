@@ -227,7 +227,7 @@ Main JS modules (`web/js/`):
   measured, ~240 MB GPU memory; the b32 build needs ~1 GB) in its own WebLLM
   engine (`localEmbedder.js`), loaded right after the chat model under the
   same opt-in (shown total ~1.1 GB). It writes no text. It infers a feeling
-  or ask the keywords missed (calibrated margins: themes 0.04, asks 0.07 —
+  or ask the keywords missed (calibrated margins: themes 0.035, asks 0.07 —
   re-check with `scripts/embedding-calibration.js` after editing its example
   lists) and ranks items by meaning and by "taste" (closeness to rated
   items). Vectors are cached in IndexedDB (not the sql.js blob, which is
