@@ -1437,6 +1437,295 @@ a.resource-contact:active {
   opacity: 0.7;
 }
 
+/* "Pray through it · 2 min" -- the Lectio Divina meditation on today's passage (lectioView.js) */
+.home-lectio-btn {
+  display: block;
+  width: 100%;
+  margin-top: 14px;
+  padding: 11px 14px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: #fe8722;
+  color: #06335d;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.home-lectio-btn:hover {
+  filter: brightness(1.05);
+}
+
+/* ---- Lectio Divina (lectioView.js) ----
+   Full screen, quiet, nothing but the words: fixed navy in both themes, like the Android check-in
+   overlay. z-index 45 keeps it UNDER the modals (50), so the crisis modal opened from its own link
+   shows on top of it. */
+.lectio {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #06335d 0%, #042642 100%);
+  color: #ffffff;
+  padding: max(16px, env(safe-area-inset-top)) 20px max(10px, env(safe-area-inset-bottom));
+  overflow-y: auto;
+}
+
+.lectio[hidden] { display: none; }
+
+body.lectio-open { overflow: hidden; }
+
+.lectio-top,
+.lectio-stage,
+.lectio-closing {
+  width: 100%;
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+.lectio-progress {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.lectio-progress span {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.18);
+  overflow: hidden;
+}
+
+.lectio-progress i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: #fe8722;
+  transition: width 0.2s linear;
+}
+
+.lectio-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.lectio-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #fe8722;
+}
+
+.lectio-count { flex: 1; }
+
+.lectio-end {
+  padding: 5px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  background: none;
+  color: #ffffff;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.lectio[data-step="done"] .lectio-end { visibility: hidden; }
+
+.lectio-stage,
+.lectio-closing {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 28px 0 16px;
+}
+
+.lectio-stage[hidden],
+.lectio-closing[hidden] { display: none; }
+
+.lectio-kicker {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #fe8722;
+}
+
+.lectio-instruction {
+  margin: 8px 0 24px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.lectio-loading { color: rgba(255, 255, 255, 0.7); }
+
+.lectio-passage {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 19px;
+  line-height: 1.8;
+}
+
+/* The passage sits in YouVersion's container (their license), whose bible.css colors and sizes text for
+   a light page -- take this screen's instead, as the Home card does (.yv-verse rules below). */
+.lectio .lectio-passage[data-slot="yv-bible-renderer"] {
+  --yv-reader-font-size: 19px;
+  --yv-reader-line-height: 1.8;
+  color: #ffffff;
+  background: transparent;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 19px;
+  line-height: 1.8;
+}
+
+.lectio .lectio-passage[data-slot="yv-bible-renderer"] .lectio-tap { color: inherit; }
+
+.lectio .lectio-passage[data-slot="yv-bible-renderer"] .lectio-vnum { color: rgba(255, 255, 255, 0.45); }
+
+.lectio-vnum {
+  margin-right: 3px;
+  font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* Each phrase is tappable: the one that catches them is the one they carry into Meditatio. */
+.lectio-tap {
+  padding: 1px 2px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.lectio-tap:hover { background: rgba(255, 255, 255, 0.08); }
+
+.lectio-tap.picked {
+  background: rgba(254, 135, 34, 0.28);
+  box-shadow: inset 0 -2px 0 #fe8722;
+}
+
+.lectio-ref {
+  margin-top: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+/* Required by the YouVersion license -- keep it visible. */
+.lectio-attribution {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.lectio-phrase {
+  font-family: Georgia, "Times New Roman", serif;
+  line-height: 1.4;
+}
+
+.lectio-phrase-large { font-size: clamp(26px, 6.5vw, 40px); }
+
+.lectio-phrase-small {
+  font-size: 21px;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+/* Contemplatio: almost nothing on the screen. */
+.lectio[data-step="4"] .lectio-instruction { color: rgba(255, 255, 255, 0.55); }
+
+.lectio-rest-ref {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 22px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.lectio-rest {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.lectio-amen {
+  margin-bottom: 14px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 34px;
+}
+
+.lectio-carry {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 19px;
+  font-style: italic;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.lectio-rate {
+  margin-top: 18px;
+  font-size: 13.5px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.lectio-rate button,
+.lectio-flag,
+.lectio-crisis {
+  padding: 6px 2px;
+  border: none;
+  background: none;
+  color: rgba(255, 255, 255, 0.75);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.lectio-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.lectio-btn {
+  padding: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 14px;
+  background: transparent;
+  color: #ffffff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.lectio-btn.primary {
+  border-color: #fe8722;
+  background: #fe8722;
+  color: #06335d;
+}
+
+.lectio-flag {
+  align-self: center;
+  margin-top: 16px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.lectio-crisis {
+  align-self: center;
+  flex-shrink: 0;
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
 /* YouVersion Bible display (youversion.js). The passage HTML sits in YouVersion's
    data-slot="yv-bible-renderer" container so their bible.css applies; these rules only size it and
    let it take the surrounding card's colors (the Home card is navy, Chat cards follow the theme).

@@ -9,7 +9,7 @@
 // module scope. So nothing important lives in a variable: durable state is chrome.storage.local,
 // the in-flight session is chrome.storage.session (browser memory, survives worker restarts).
 
-importScripts("lib/shared.js", "lib/riskScorer.js", "lib/notificationText.js");
+importScripts("lib/shared.js", "lib/riskScorer.js", "lib/notificationText.js", "lib/passagePicker.js");
 
 const Shared = ReclaimShared;
 
@@ -284,11 +284,29 @@ function speakableSite(domain) {
   return Shared.findKeywords(String(domain).replace(/[.\-]/g, " ")).length ? "this site" : domain;
 }
 
+// Which daily passage this nudge offers to pray through (see lib/passagePicker.js), recorded as offered
+// today so a later nudge the same day offers a different one. null when the app hasn't synced a plan yet.
+async function takePassage(plan, key) {
+  const day = PassagePicker.dayNumber();
+  const stored = await load("passagesUsed", null);
+  const usedToday = stored && stored.day === day && Array.isArray(stored.refs) ? stored.refs : [];
+  const pick = PassagePicker.choose(plan, new Set(usedToday), key, day);
+  if (pick) await save("passagesUsed", { day, refs: [...usedToday, pick.ref] });
+  return pick;
+}
+
 async function postRiskNotification(domain, result) {
   const context = await load("riskContext", {});
   const escalate = await recordSentAndShouldEscalate("risk");
 
+  // The passage to pray through (Lectio Divina, in the app): today's passage on the first nudge of the
+  // day, after that the one the AI ranked best for this situation (Nathaniel, 2026-10-07).
+  const firedIds = new Set(((result.trace && result.trace.factors) || []).filter((f) => f.fired).map((f) => f.id));
+  const situation = { sig: NotificationText.noteSignature(firedIds) || "K", bucket: (result.trace && result.trace.timeBucket) || "" };
+  const passage = await takePassage(context.passagePlan, PassagePicker.keyFor(situation.sig, situation.bucket));
+
   // The specific detail is stored for the app to show once it is open -- never in the notification.
+  // With a passage, opening the app goes straight into the meditation on it (app.js checkPendingWeb).
   await save("pendingAlert", {
     appLabel: domain,
     reasons: result.userReasons,
@@ -298,11 +316,15 @@ async function postRiskNotification(domain, result) {
     id: Date.now(),
     factors: result.factors,
     trace: result.trace,
+    passage: passage ? { ref: passage.ref, description: passage.description } : null,
+    situation,
   });
   await save("pendingFactors", { factors: result.factors, postedAt: Date.now() });
 
-  // Tiered like RiskNudgeMonitor: a score well past the bar suggests reaching out to a
-  // partner (the app's alert screen then shows tap-to-call buttons); anything lower, a verse.
+  // Tiered like RiskNudgeMonitor: a score well past the bar puts reaching out to a partner first (the
+  // app's alert screen then shows tap-to-call buttons) and the meditation second; anything lower, the
+  // meditation alone (Nathaniel, 2026-10-07: "partner first on high-risk"). Before the app has synced a
+  // plan there's no passage, and the old "Read a verse" stands in.
   const partner = result.isHighRisk ? context.accountabilityName || (context.accountabilityPhone ? "someone" : "") : "";
   const buttons = [];
   const mapping = [];
@@ -310,9 +332,15 @@ async function postRiskNotification(domain, result) {
     buttons.push({ title: `Reach out to ${partner === "someone" ? "someone" : partner}` });
     mapping.push("reach");
   }
-  buttons.push({ title: "Read a verse" });
-  mapping.push("verse");
+  if (passage) {
+    buttons.push({ title: `Pray through ${passage.ref}` });
+    mapping.push("pray");
+  } else {
+    buttons.push({ title: "Read a verse" });
+    mapping.push("verse");
+  }
   await save("notifButtons", { risk: mapping });
+  const passageLine = passage ? [passage.ref, passage.description].filter(Boolean).join(" · ") : "";
 
   // Specific text (default) or the generic fallback when the user turned lock-screen detail off,
   // or when nothing specific could be composed.
@@ -327,7 +355,7 @@ async function postRiskNotification(domain, result) {
       })
     : null;
   const text = specific || GENERIC_TEXTS[Math.floor(Math.random() * GENERIC_TEXTS.length)];
-  await createNotification("reclaim-risk", {
+  const options = {
     type: "basic",
     iconUrl: "icons/icon.png",
     title: "Reclaim",
@@ -335,8 +363,11 @@ async function postRiskNotification(domain, result) {
     buttons: buttons.slice(0, 2),
     priority: 2,
     requireInteraction: escalate,
-  });
-  await showBanner("reclaim-risk", text, buttons.slice(0, 2).map((b, i) => ({ title: b.title, action: mapping[i] })));
+  };
+  // The passage's reference and one-line description, on its own smaller line under the message.
+  if (passageLine) options.contextMessage = passageLine;
+  await createNotification("reclaim-risk", options);
+  await showBanner("reclaim-risk", text, buttons.slice(0, 2).map((b, i) => ({ title: b.title, action: mapping[i] })), passageLine);
 }
 
 async function postNightlyNotification() {
@@ -360,11 +391,14 @@ async function postNightlyNotification() {
 
 // One place for what each notification/banner action does, so the system notification's buttons
 // and the in-page banner's buttons can't drift apart. `action` is "body" (the notification itself
-// was clicked) or a button name from notifButtons: "reach", "verse", "went_well", "more".
+// was clicked) or a button name from notifButtons: "reach", "pray", "verse", "went_well", "more".
 async function performAction(id, action) {
   chrome.notifications.clear(id);
   if (id === "reclaim-risk") {
     await recordResponded("risk");
+    // "body" / "pray": nothing to add -- the pending alert carries its passage, and the app opens into the
+    // meditation on it. "reach": the check-in screen with the tap-to-call buttons instead.
+    if (action === "reach") await save("pendingReach", true);
     if (action === "verse") {
       // Straight to a scripture request, skipping the alert detail screen -- same as Android.
       await save("pendingVerse", true);
@@ -398,12 +432,12 @@ chrome.notifications.onButtonClicked.addListener(async (id, index) => {
 // Windows hides toast pop-ups while something is fullscreen (a YouTube video, say) or Focus assist
 // is on, and that is exactly when a nudge matters. So the same generic message is ALSO drawn on
 // the tab the user is looking at (content.js). Same wording and buttons as the notification.
-async function showBanner(id, text, buttons) {
+async function showBanner(id, text, buttons, subtext = "") {
   const win = await chrome.windows.getLastFocused().catch(() => null);
   if (!win || !win.focused) return;
   const [tab] = await chrome.tabs.query({ active: true, windowId: win.id }).catch(() => []);
   if (!tab?.id || !Shared.hostnameOf(tab.url) || Shared.isAppUrl(tab.url)) return; // the app shows its own alert
-  chrome.tabs.sendMessage(tab.id, { type: "SHOW_BANNER", id, text, buttons }).catch(() => {
+  chrome.tabs.sendMessage(tab.id, { type: "SHOW_BANNER", id, text, subtext, buttons }).catch(() => {
     // No content script in this tab (opened before the extension loaded, or a page that blocks
     // them) -- the system notification is still there.
   });
@@ -509,7 +543,7 @@ async function handleMessage(message, sender) {
   }
   if (message?.type === "BANNER_ACTION") {
     // From the banner content script in an ordinary page; only the two known ids and actions.
-    const ok = { "reclaim-risk": ["body", "reach", "verse"], "reclaim-nightly": ["body", "went_well", "more"] };
+    const ok = { "reclaim-risk": ["body", "reach", "pray", "verse"], "reclaim-nightly": ["body", "went_well", "more"] };
     if (ok[message.id]?.includes(message.action)) await performAction(message.id, message.action);
     return { ok: true };
   }
@@ -585,6 +619,8 @@ async function runOp(op, payload, { fromPopup }) {
         // each one before use, so only the shape is checked here.
         phraseBank: c.phraseBank && typeof c.phraseBank === "object" ? c.phraseBank : {},
         noteBank: c.noteBank && typeof c.noteBank === "object" ? c.noteBank : {},
+        // Which daily passage a nudge offers (web/js/passageBank.js); PassagePicker checks every entry.
+        passagePlan: c.passagePlan && typeof c.passagePlan === "object" ? c.passagePlan : null,
       });
       return { ok: true };
     }
@@ -602,13 +638,14 @@ async function runOp(op, payload, { fromPopup }) {
       return { ok: true, result: { adjusted: adjustable, duplicate: false } };
     }
     case "TAKE_PENDING": {
-      const [riskAlert, nightly, verse] = await Promise.all([
+      const [riskAlert, nightly, verse, reach] = await Promise.all([
         load("pendingAlert", null),
         load("pendingNightly", null),
         load("pendingVerse", false),
+        load("pendingReach", false),
       ]);
-      await chrome.storage.local.remove(["pendingAlert", "pendingNightly", "pendingVerse"]);
-      return { ok: true, result: { riskAlert, nightly, verse } };
+      await chrome.storage.local.remove(["pendingAlert", "pendingNightly", "pendingVerse", "pendingReach"]);
+      return { ok: true, result: { riskAlert, nightly, verse, reach } };
     }
     case "RECORD_OUTCOME":
       return { ok: true, result: await recordOutcome(payload) };
@@ -620,7 +657,7 @@ async function runOp(op, payload, { fromPopup }) {
       await save("lastReclaimOpenAt", Date.now());
       return { ok: true };
     case "CLEAR_DATA":
-      await chrome.storage.local.remove(["sessions", "matches", "pendingAlert", "pendingNightly", "pendingVerse", "lastNotifiedRun"]);
+      await chrome.storage.local.remove(["sessions", "matches", "pendingAlert", "pendingNightly", "pendingVerse", "pendingReach", "passagesUsed", "lastNotifiedRun"]);
       return { ok: true };
     case "TEST_NOTIFICATION": {
       if (!fromPopup) return { ok: false, error: "popup only" };

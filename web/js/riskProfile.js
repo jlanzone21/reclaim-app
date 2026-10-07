@@ -77,8 +77,9 @@ const RiskProfile = (function () {
       // The phrase and note templates the on-device AI wrote -- see RiskExplainer / RiskNotificationText.
       phraseBank: typeof RiskExplainer !== "undefined" ? RiskExplainer.getPhraseBank() : {},
       noteBank: typeof RiskExplainer !== "undefined" ? RiskExplainer.getNoteBank() : {},
-      // The Bible verse shown on the full-screen check-in, chosen ahead of time by the on-device AI.
-      verseBank: typeof VerseBank !== "undefined" ? VerseBank.getBank() : {},
+      // Which daily passage a nudge offers to pray through: the person's upcoming daily passages plus the
+      // on-device AI's ranking per situation -- see PassageBank.getPlan / RiskPassage.java / passagePicker.js.
+      passagePlan: typeof PassageBank !== "undefined" ? PassageBank.getPlan() : null,
     };
     if (native) LocalSignals.syncRiskContext(payload).catch(() => {});
     if (extension) WebTracker.syncRiskContext(payload);

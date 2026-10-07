@@ -73,4 +73,37 @@ const ref = (p) => p && p.reference;
   assert.ok(back.D.today(day(2)), "a day before the cycle start still gets a passage");
 }
 
+// The schedule handed to the notifiers (they offer today's passage while the app is closed): it runs from
+// today through the end of the NEXT round, and what it says for a day is what Home shows that day -- even
+// across the round boundary, because the next round drawn for the schedule is the one used.
+{
+  const { D, all } = load();
+  D.today(day(0)); // the cycle started three days ago
+  const sched = D.schedule(day(3));
+  assert.deepEqual(D.schedule(day(3)), sched, "asking again doesn't redraw it");
+  assert.equal(sched[0].day, D.dayNumber(day(3)));
+  assert.equal(sched.length, 2 * all.length - 3, "rest of this round + all of the next");
+  assert.ok(sched.every((s, i) => i === 0 || s.day === sched[i - 1].day + 1), "consecutive days");
+  for (const s of sched) {
+    const date = new Date(2026, 9, 7 + (s.day - D.dayNumber(day(0))), 12);
+    assert.equal(ref(D.today(date)), s.ref, `day ${s.day}`);
+  }
+  const nextRound = sched.slice(all.length - 3).map((s) => s.ref);
+  assert.equal(new Set(nextRound).size, all.length, "the next round is a full round too");
+  assert.notEqual(nextRound[0], sched[all.length - 4].ref, "and doesn't open with the last one of this round");
+}
+
+// Passages prayed through in the app today (a nudge later today then offers a different one).
+{
+  const { D } = load();
+  const used = (d) => JSON.parse(JSON.stringify(D.usedToday(d))); // out of the vm's realm
+  assert.deepEqual(used(day(0)), []);
+  D.markUsed("Romans 8:31-39", day(0));
+  D.markUsed("Romans 8:31-39", day(0));
+  D.markUsed("Psalm 23:1-6", day(0, 22));
+  assert.deepEqual(used(day(0)), ["Romans 8:31-39", "Psalm 23:1-6"]);
+  assert.deepEqual(used(day(1)), [], "a new day starts clean");
+  assert.equal(D.byRef("Romans 8:31-39").description.length > 10, true);
+}
+
 console.log("daily passage tests passed");

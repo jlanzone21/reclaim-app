@@ -301,5 +301,17 @@ const RiskAlertView = (function () {
     enabled = !!on;
   }
 
-  return { init, checkPending, render, setEnabled };
+  // "This was a false alarm" on the Lectio Divina meditation's closing screen (lectioView.js): this
+  // screen for that nudge, opened straight onto the flag page -- even on Android, where it's otherwise
+  // switched off, because here the person asked for it.
+  function openFlag(alert) {
+    if (!alert) return;
+    const was = enabled;
+    enabled = true;
+    render(alert);
+    enabled = was;
+    if (feedbackOk) showFlagPage();
+  }
+
+  return { init, checkPending, render, setEnabled, openFlag };
 })();

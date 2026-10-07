@@ -230,8 +230,40 @@
     } else if (pending.nightly === "open_checkin") {
       showView("checkin");
     }
+    const alert = pending.riskAlert;
     if (pending.verse) submitVerseRequest();
-    else if (pending.riskAlert) RiskAlertView.render(pending.riskAlert);
+    // The nudge offered a passage to pray through: opening the app goes straight into the meditation on
+    // it (Nathaniel, 2026-10-07) -- unless the button was "Reach out to <partner>", which wants the
+    // check-in screen's call buttons.
+    else if (alert && alert.passage && alert.passage.ref && !pending.reach) openMeditation(alert.passage, alert, alert.situation);
+    else if (alert) RiskAlertView.render(alert);
+  }
+
+  // A risk nudge's passage, prayed through (lectioView.js) -- with the nudge itself, for the closing
+  // screen's false-alarm link and the partner-first ordering on a high-risk one.
+  function openMeditation(passage, alert, situation) {
+    LectioView.open({ reference: passage.ref, description: passage.description, alert, situation, source: "nudge" });
+  }
+
+  // Android: MainActivity writes this when the overlay's "Pray through <passage>" button or the fallback
+  // notification opened the app. The pending risk alert is the same nudge (unless a newer one replaced
+  // it) and is taken here, before RiskAlertView.checkPending would consume it.
+  async function checkPendingMeditation() {
+    if (typeof LocalSignals === "undefined" || !LocalSignals.available()) return false;
+    const m = await LocalSignals.getPendingMeditation();
+    if (!m) return false;
+    let alert = await LocalSignals.getPendingRiskAlert();
+    if (alert && m.alertId && alert.id !== m.alertId) alert = null;
+    openMeditation({ ref: m.ref, description: m.description }, alert, { sig: m.sig, bucket: m.bucket });
+    return true;
+  }
+
+  // Boot/resume order on Android: a meditation wins, then a "Find resources" request, then (if it were
+  // switched on) the check-in screen.
+  async function checkPendingNative() {
+    if (await checkPendingMeditation()) return;
+    if (await checkPendingVerseRequest()) return;
+    if (typeof RiskAlertView !== "undefined") RiskAlertView.checkPending();
   }
 
   // MainActivity is singleTask, so tapping a notification while the app is already alive in the
@@ -244,10 +276,8 @@
   document.addEventListener("resume", async () => {
     if (busy) return;
     checkPendingNightlyAction();
-    const wentToVerse = await checkPendingVerseRequest();
-    if (!wentToVerse && typeof RiskAlertView !== "undefined") RiskAlertView.checkPending();
+    checkPendingNative();
     if (typeof RiskExplainer !== "undefined") RiskExplainer.processFeedbackNotes();
-    if (typeof VerseBank !== "undefined") VerseBank.processFeedback();
   });
 
   navItems.forEach((btn) => {
@@ -257,6 +287,10 @@
   PermissionsView.init();
   AllowlistView.init();
   BrowserTrackingView.init();
+  LectioView.init({
+    onCrisis: openCrisisModal,
+    onFindResources: () => submitVerseRequest(RESOURCES_REQUEST),
+  });
 
   // Browser extension (web version): detected asynchronously, possibly after boot, so everything
   // that mirrors state to it hooks in here as well as running at boot below.
@@ -265,6 +299,9 @@
     BrowserTrackingView.refresh();
     HomeView.refresh();
     checkPendingWeb();
+    // Its nudges offer a passage the AI ranked for the situation; build that ranking now if the
+    // embedding model is already up (PassageBank.refresh decides whether it's needed).
+    PassageBank.refresh();
   });
   WebTracker.onPending(() => checkPendingWeb());
   document.addEventListener("visibilitychange", () => {
@@ -283,13 +320,13 @@
   LocalModel.onChange((s) => {
     if (s.state !== "ready" || phraseBankScheduled) return;
     phraseBankScheduled = true;
-    setTimeout(() => RiskExplainer.refreshNoteBank().then(() => RiskExplainer.refreshPhraseBank()).then(() => VerseBank.refresh()), 45000);
+    setTimeout(() => RiskExplainer.refreshNoteBank().then(() => RiskExplainer.refreshPhraseBank()).then(() => PassageBank.refresh()), 45000);
   });
-  // The verse for the full-screen check-in is ranked with Nathaniel's embedding model; a bank built before it
-  // was ready is rebuilt as soon as it is (VerseBank.refresh decides whether that's needed).
+  // The passage a nudge offers is ranked with Nathaniel's embedding model, so the ranking is built (or
+  // refreshed, weekly) once it's ready -- PassageBank.refresh decides whether that's needed.
   if (typeof LocalEmbedder !== "undefined") {
     LocalEmbedder.onChange((st) => {
-      if (st === "ready") setTimeout(() => VerseBank.refresh(), 8000);
+      if (st === "ready") setTimeout(() => PassageBank.refresh(), 8000);
     });
   }
   LocalModel.init();
@@ -320,12 +357,9 @@
         BrowserTrackingView.refresh();
         checkPendingWeb();
       });
-      checkPendingVerseRequest().then((wentToVerse) => {
-        if (!wentToVerse) RiskAlertView.checkPending();
-      });
+      checkPendingNative();
       // Words typed on the full-screen check-in's flag page wait for the AI -- see RiskExplainer.
       RiskExplainer.processFeedbackNotes();
-      VerseBank.processFeedback();
     })
     .catch((err) => {
       console.error("Failed to initialize local database", err);

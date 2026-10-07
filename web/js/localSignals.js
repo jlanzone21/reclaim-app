@@ -113,12 +113,14 @@ const LocalSignals = (function () {
     return plugin().recordRiskFeedback({ alertId, valid, factors: factors || [] });
   }
 
-  // "This helped" / "Not for me" taps on the verse shown on the full-screen check-in, parked natively until
-  // the app opens -- see VerseBank.processFeedback. Each: {ref, text, sig, bucket, rating, at}. Consumed once.
-  async function takePendingVerseFeedback() {
-    if (!available()) return [];
-    const { feedback } = await plugin().getPendingVerseFeedback();
-    return feedback || [];
+  // MainActivity writes this when the overlay's "Pray through <passage>" button or the fallback
+  // notification is what opened the app: {ref, description, sig, bucket, alertId}, so the app opens
+  // straight into the Lectio Divina meditation on that passage (app.js). Consumed once. Check it
+  // BEFORE getPendingRiskAlert -- the meditation takes that alert for its false-alarm link.
+  async function getPendingMeditation() {
+    if (!available()) return null;
+    const { meditation } = await plugin().getPendingMeditation();
+    return meditation && meditation.ref ? meditation : null;
   }
 
   // Words the person typed on the full-screen check-in's flag page (native can't run the model, so
@@ -186,10 +188,10 @@ const LocalSignals = (function () {
     getPendingRiskAlert,
     getPendingNightlyAction,
     getPendingVerseRequest,
+    getPendingMeditation,
     recordCheckinOutcome,
     recordRiskFeedback,
     takePendingFeedbackNotes,
-    takePendingVerseFeedback,
     getNotificationStats,
     debugRunBackgroundCheck,
     debugSendNightlyCheckin,

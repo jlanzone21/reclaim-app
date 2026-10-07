@@ -15,11 +15,13 @@ const HomeView = (function () {
   // Which day's verse is on screen (and whether it came from YouVersion), so switching back to Home
   // doesn't refetch or flash -- it only re-renders once the day changes or YouVersion recovers.
   let verseShownFor = null;
+  let localVerse = null; // the bundled verse on the card when YouVersion couldn't be reached
   let extensionProbed = false;
 
   function init() {
     els = {
       verseBody: document.getElementById("homeVerseBody"),
+      lectioBtn: document.getElementById("homeLectioBtn"),
       statRow: document.getElementById("homeStatRow"),
       callCards: document.getElementById("homeCallCards"),
       permReminder: document.getElementById("homePermReminder"),
@@ -27,6 +29,15 @@ const HomeView = (function () {
       preferencesCard: document.getElementById("homePreferencesCard"),
     };
     initialized = true;
+    // "Pray through it · 2 min": the Lectio Divina meditation on today's passage, by choice -- not only
+    // when a nudge offers it (Nathaniel, 2026-10-07). Offline, on the bundled verse the card is showing.
+    if (els.lectioBtn && typeof LectioView !== "undefined") {
+      els.lectioBtn.addEventListener("click", () => {
+        const passage = typeof DailyPassage !== "undefined" ? DailyPassage.today() : null;
+        if (verseShownFor && verseShownFor.startsWith("local:") && localVerse) LectioView.open({ verse: localVerse, source: "home" });
+        else LectioView.open({ reference: passage && passage.reference, description: passage && passage.description, source: "home" });
+      });
+    }
     // Coming back from the system settings screen after granting something should clear the
     // reminder without needing to switch tabs.
     document.addEventListener("visibilitychange", () => {
@@ -220,6 +231,7 @@ const HomeView = (function () {
 
     if (verseShownFor === `local:${day}`) return;
     const verse = ResourceRepo.getScripture();
+    localVerse = verse;
     els.verseBody.replaceChildren(
       verseLine("home-verse-text", verse ? verse.body : ""),
       verseLine("home-verse-ref", verse ? verse.title : "")

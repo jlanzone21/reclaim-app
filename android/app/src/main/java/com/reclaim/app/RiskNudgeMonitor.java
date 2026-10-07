@@ -50,6 +50,11 @@ import androidx.core.content.ContextCompat;
  * notification is posted (nothing in the shade or on a lock screen). Everything below about the
  * notification describes the FALLBACK, used when the overlay can't appear.
  *
+ * Either way a nudge offers a daily passage to pray through, picked by RiskPassage (today's passage first,
+ * then the on-device AI's pick for the situation): the overlay's "Pray through <passage>" button, and the
+ * notification's matching action and its body tap, open the app into the Lectio Divina meditation on it
+ * (ACTION_OPEN_MEDITATION; web/js/lectioView.js). Nathaniel, 2026-10-07.
+ *
  * The notification text says specifically why (RiskNotificationText: "You've been on Instagram for
  * 22 minutes. Let's check in."), written from RiskScorer's trace with wording the on-device AI
  * authored while the app was open -- always, a deliberate reversal of the earlier always-generic
@@ -97,6 +102,16 @@ final class RiskNudgeMonitor {
     // own resource picker answers (see MainActivity.handleRiskIntent / app.js). The overlay's button and the
     // fallback notification's action both use it.
     static final String ACTION_OPEN_RESOURCES = "open_resources_request";
+
+    // "Pray through <passage>": the overlay's button, the fallback notification's action and its body tap.
+    // Opens the app into the Lectio Divina meditation on the passage RiskPassage picked for this nudge
+    // (MainActivity writes app_meta "pending_meditation" from these extras; app.js opens it).
+    static final String ACTION_OPEN_MEDITATION = "open_meditation";
+    static final String EXTRA_PASSAGE_REF = "passage_ref";
+    static final String EXTRA_PASSAGE_DESCRIPTION = "passage_description";
+    static final String EXTRA_SIGNATURE = "situation_sig";
+    static final String EXTRA_BUCKET = "situation_bucket";
+    static final String EXTRA_ALERT_ID = "alert_id";
 
     // Shorter than the nightly check-in's: this is about an in-the-moment risk window, not a
     // routine daily touchpoint -- stale well before half a day has passed.
@@ -253,20 +268,28 @@ final class RiskNudgeMonitor {
         // a row is a real signal worth interrupting for.
         final boolean escalate = NotificationTracking.recordSentAndShouldEscalate(ctx, NotificationTracking.TYPE_RISK);
 
+        // The situation (which reasons fired, what time of day) and the daily passage to pray through, chosen
+        // ahead of time by the on-device AI for it (RiskPassage) -- today's passage on the first nudge of the day.
+        java.util.Set<String> firedIds = new java.util.HashSet<>();
+        for (int i = 0; i < result.factors.length(); i++) firedIds.add(result.factors.optString(i));
+        String noteSig = RiskNotificationText.noteSignature(firedIds);
+        final String sig = noteSig == null ? "K" : noteSig;
+        final String bucket = result.trace != null ? result.trace.optString("timeBucket", "") : "";
+        final RiskPassage.Passage passage = RiskPassage.pick(db, RiskPassage.keyFor(sig, bucket));
+        // High risk (well past the bar, or an actual on-screen keyword match): the partner comes first and the
+        // meditation second; otherwise the meditation first (Nathaniel, 2026-10-07).
+        final boolean highRisk = result.isHighRisk() || hasFactor(result.factors, "recentKeywordSevere") || hasFactor(result.factors, "recentKeyword");
+
         if (RiskOverlay.canShow(ctx)) {
             RiskOverlay.Spec spec = new RiskOverlay.Spec();
             spec.text = overlayText(ctx, db, packageName, result);
             spec.appLabel = appLabel(ctx, packageName);
             spec.alertId = alertId;
             spec.factors = result.factors;
-            // The Bible verse, chosen ahead of time by the on-device AI for this situation (RiskVerse).
-            java.util.Set<String> firedIds = new java.util.HashSet<>();
-            for (int i = 0; i < result.factors.length(); i++) firedIds.add(result.factors.optString(i));
-            String sig = RiskNotificationText.noteSignature(firedIds);
-            spec.sig = sig == null ? "K" : sig;
-            spec.bucket = result.trace != null ? result.trace.optString("timeBucket", "") : "";
-            spec.verses = RiskVerse.pick(db, RiskVerse.keyFor(sig, spec.bucket), new java.util.Random());
-            if (!spec.verses.isEmpty()) RiskVerse.markShown(db, spec.verses.get(0).ref);
+            spec.sig = sig;
+            spec.bucket = bucket;
+            spec.passage = passage;
+            spec.highRisk = highRisk;
             // Always shown on the overlay: the person judges for themselves whether it's a false alarm.
             for (int i = 0; i < result.userReasons.length(); i++) spec.reasons.add(result.userReasons.optString(i));
             spec.partnerNames[0] = db.getMeta("accountability_name");
@@ -274,13 +297,32 @@ final class RiskNudgeMonitor {
             spec.partnerNames[1] = db.getMeta("accountability_name_2");
             spec.partnerPhones[1] = db.getMeta("accountability_phone_2");
             // If it can't be drawn (revoked mid-call, no window token), fall back to the notification.
-            RiskOverlay.show(ctx, spec, () -> postFallbackNotification(ctx, packageName, result, escalate));
+            RiskOverlay.show(ctx, spec, () -> postFallbackNotification(ctx, packageName, result, escalate, passage, sig, bucket, alertId));
             return;
         }
-        postFallbackNotification(ctx, packageName, result, escalate);
+        postFallbackNotification(ctx, packageName, result, escalate, passage, sig, bucket, alertId);
     }
 
-    private static void postFallbackNotification(Context ctx, String packageName, RiskScorer.Result result, boolean escalate) {
+    // Opens the app into the Lectio Divina meditation on `passage` -- see ACTION_OPEN_MEDITATION.
+    static Intent meditationIntent(Context ctx, RiskPassage.Passage passage, String sig, String bucket, long alertId) {
+        Intent open = new Intent(ctx, MainActivity.class);
+        open.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        open.putExtra(EXTRA_ACTION, ACTION_OPEN_MEDITATION);
+        open.putExtra(EXTRA_PASSAGE_REF, passage.ref);
+        open.putExtra(EXTRA_PASSAGE_DESCRIPTION, passage.description);
+        open.putExtra(EXTRA_SIGNATURE, sig);
+        open.putExtra(EXTRA_BUCKET, bucket);
+        open.putExtra(EXTRA_ALERT_ID, alertId);
+        return open;
+    }
+
+    // "Romans 8:31-39 · Nothing can separate us from God's love."
+    static String passageLine(RiskPassage.Passage passage) {
+        return passage.description.isEmpty() ? passage.ref : passage.ref + " · " + passage.description;
+    }
+
+    private static void postFallbackNotification(Context ctx, String packageName, RiskScorer.Result result, boolean escalate,
+                                                 RiskPassage.Passage passage, String sig, String bucket, long alertId) {
         NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -291,23 +333,36 @@ final class RiskNudgeMonitor {
         }
         LocalSignalsDb db = LocalSignalsDb.getInstance(ctx);
 
-        // Tapping the notification body (not the call action) opens the app -- app.js checks for
-        // the pending alert above on boot and shows the detail screen instead of landing on Chat.
-        Intent openApp = new Intent(ctx, MainActivity.class);
-        openApp.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        openApp.putExtra(EXTRA_ACTION, ACTION_OPEN);
+        // Tapping the notification body (not an action) opens the app into the Lectio Divina meditation on
+        // this nudge's passage ("when it opens, it should open to a Lectio Divina scripture meditation",
+        // Nathaniel 2026-10-07). With no passage (the app hasn't synced a plan yet) it just opens the app.
+        Intent openApp;
+        if (passage != null) {
+            openApp = meditationIntent(ctx, passage, sig, bucket, alertId);
+        } else {
+            openApp = new Intent(ctx, MainActivity.class);
+            openApp.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            openApp.putExtra(EXTRA_ACTION, ACTION_OPEN);
+        }
         PendingIntent openAppIntent = PendingIntent.getActivity(
                 ctx, 0, openApp, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
+        String text = notificationText(ctx, db, packageName, result);
         NotificationCompat.Builder builder = new NotificationCompat.Builder(ctx, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle("Reclaim")
-                .setContentText(notificationText(ctx, db, packageName, result))
+                .setContentText(text)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setCategory(NotificationCompat.CATEGORY_REMINDER)
                 .setContentIntent(openAppIntent)
                 .setTimeoutAfter(TIMEOUT_MS)
                 .setAutoCancel(true);
+        if (passage != null) {
+            // The passage's reference in the header line (always visible), and reference + one-line
+            // description under the message once the notification is expanded.
+            builder.setSubText(passage.ref);
+            builder.setStyle(new NotificationCompat.BigTextStyle().bigText(text + "\n\n" + passageLine(passage)));
+        }
 
         if (escalate) {
             // Real, honest limit either way -- see the class doc comment: only reliably takes
@@ -335,13 +390,21 @@ final class RiskNudgeMonitor {
         boolean hasPhone1 = phone1 != null && !phone1.trim().isEmpty();
         boolean hasPhone2 = phone2 != null && !phone2.trim().isEmpty();
         boolean keywordMatch = hasFactor(result.factors, "recentKeywordSevere") || hasFactor(result.factors, "recentKeyword");
+        // "Pray through <passage>": after the partner actions on a high-risk nudge, first otherwise (Android
+        // shows at most three actions, which the partner ones never exceed with this one added).
+        PendingIntent prayIntent = passage == null ? null : PendingIntent.getActivity(
+                ctx, 6, meditationIntent(ctx, passage, sig, bucket, alertId), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        String prayLabel = passage == null ? null : "Pray through " + passage.ref;
         if (keywordMatch && (hasPhone1 || hasPhone2)) {
             if (hasPhone1) addTextAction(ctx, builder, 4, phone1, db.getMeta("accountability_name"));
             if (hasPhone2) addTextAction(ctx, builder, 5, phone2, db.getMeta("accountability_name_2"));
+            if (prayIntent != null) builder.addAction(0, prayLabel, prayIntent);
         } else if (result.isHighRisk() && (hasPhone1 || hasPhone2)) {
             if (hasPhone1) addCallAction(ctx, builder, 1, phone1, db.getMeta("accountability_name"));
             if (hasPhone2) addCallAction(ctx, builder, 3, phone2, db.getMeta("accountability_name_2"));
+            if (prayIntent != null) builder.addAction(0, prayLabel, prayIntent);
         } else {
+            if (prayIntent != null) builder.addAction(0, prayLabel, prayIntent);
             // Its own PendingIntent/extra, distinct from the body tap -- MainActivity routes
             // ACTION_OPEN_VERSE straight to Chat with a scripture request already sent, skipping
             // the risk-alert detail popup entirely, so this button does what it says instead of

@@ -68,6 +68,8 @@
               <div class="home-verse-label">Today's Passage</div>
               <!-- Filled by homeView.js: the day's passage (dailyPassage.js) via YouVersion, or a local verse offline -->
               <div class="home-verse-body" id="homeVerseBody"></div>
+              <!-- Lectio Divina on today's passage, by choice (lectioView.js) -->
+              <button type="button" class="home-lectio-btn" id="homeLectioBtn">Pray through it · 2 min</button>
             </div>
 
             <!-- Filled by homeView.js: reminder to finish granting permissions, only when some remain -->
@@ -545,7 +547,7 @@
         This is our best guess, not a judgment — you know your own situation better than we do.
       </p>
       <!-- The false-alarm page: same as the full-screen overlay's (RiskOverlay.java). No "was this
-           fair?" question -- answering normally counts as fair (riskAlertView.js). -->
+           fair?" question -- answering normally records nothing (riskAlertView.js). -->
       <div class="risk-feedback" id="riskAlertFeedback" hidden>
         <p class="risk-feedback-hint">Tap the parts that were wrong, or tell us in your own words. Or just skip — we'll still count this as a false alarm.</p>
         <div class="tag-grid" id="riskFeedbackChips"></div>
@@ -574,6 +576,29 @@
       <div id="addAppResults" class="allowlist-picker-list"></div>
       <button type="button" class="modal-continue" id="addAppClose" style="margin-top: 14px;">Close</button>
     </div>
+  </div>
+
+  <!-- Lectio Divina: the full-screen, 2-minute scripture meditation (lectioView.js). Opened from Home's
+       "Pray through it" and by a risk nudge. Sits UNDER the modals (z-index), so the crisis modal its own
+       link opens appears on top of it. Filled by lectioView.js. -->
+  <div class="lectio" id="lectioView" role="dialog" aria-modal="true" aria-label="Lectio Divina" hidden>
+    <div class="lectio-top">
+      <div class="lectio-progress" id="lectioProgress" aria-hidden="true">
+        <span><i></i></span><span><i></i></span><span><i></i></span><span><i></i></span>
+      </div>
+      <div class="lectio-meta">
+        <span class="lectio-title">Lectio Divina</span>
+        <span class="lectio-count" id="lectioCount"></span>
+        <button type="button" class="lectio-end" id="lectioEnd">End</button>
+      </div>
+    </div>
+    <div class="lectio-stage" id="lectioStage">
+      <div class="lectio-kicker" id="lectioKicker"></div>
+      <p class="lectio-instruction" id="lectioInstruction"></p>
+      <div class="lectio-body" id="lectioBody"></div>
+    </div>
+    <div class="lectio-closing" id="lectioClosing" hidden></div>
+    <button type="button" class="lectio-crisis" id="lectioCrisis">In crisis? Get help</button>
   </div>
 
   <div class="modal-overlay" id="crisisOverlay">
@@ -661,7 +686,7 @@
   <script src="js/personalContext.js"></script>
   <script src="js/reclaimAgent.js"></script>
   <script src="js/riskExplainer.js"></script>
-  <script src="js/verseBank.js"></script>
+  <script src="js/passageBank.js"></script>
   <script src="js/checkinView.js"></script>
   <script src="js/insightsView.js"></script>
   <script src="js/nativeUsage.js"></script>
@@ -680,6 +705,7 @@
   <script src="js/preferencesView.js"></script>
   <script src="js/learnedView.js"></script>
   <script src="js/riskAlertView.js"></script>
+  <script src="js/lectioView.js"></script>
   <script src="js/homeView.js"></script>
   <script src="js/debugTestPanel.js"></script>
   <script src="js/app.js"></script>

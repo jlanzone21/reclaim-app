@@ -191,7 +191,9 @@ Main JS modules (`web/js/`):
 - `native*.js`, `localSignals.js`, `backgroundSampler.js`, `nearbyDevices.js`
   — JS bridges to the Android plugins (no-ops elsewhere; check
   `LocalSignals.available()`).
-- `youversion.js` — YouVersion Bible display (§7).
+- `youversion.js` — YouVersion Bible display (§7). `dailyPassage.js` — today's
+  passage + the schedule the notifiers get. `lectioView.js` — the Lectio Divina
+  meditation (§7). `passageBank.js` — which passage a nudge offers (§8).
 - `debugTestPanel.js` — **TEMPORARY** testing panel (§9).
 
 ## 5. Data
@@ -316,10 +318,24 @@ Main JS modules (`web/js/`):
   FBV 1932, LSV 2660, WEB 206, WMB 1209, etc.
 - Home's card is **"Today's Passage"**: one of Nathaniel's 35 curated
   passages (`DAILY_PASSAGES` in `seedData.js`, each with a one-line
-  `description` kept for a planned 2-minute devotional — not shown yet),
-  picked by `dailyPassage.js` in each install's own shuffled order (all 35
-  before any repeat; order kept in `app_meta`), text fetched from
-  YouVersion. It replaced YouVersion's Verse of the Day (2026-10-07). In
+  `description` — shown on the overlay / nudge notifications and embedded to
+  rank passages, not on Home), picked by `dailyPassage.js` in each install's
+  own shuffled order (all 35 before any repeat; order kept in `app_meta`; the
+  NEXT round is drawn ahead so `schedule()` can hand the notifiers the coming
+  weeks), text fetched from YouVersion. It replaced YouVersion's Verse of the
+  Day (2026-10-07).
+- **Lectio Divina** (`lectioView.js`, Nathaniel 2026-10-07): a full-screen,
+  2-minute meditation — Lectio (read; tap the phrase that catches you),
+  Meditatio (that phrase, large), Oratio (pray), Contemplatio (near-empty), 30 s
+  each, advancing on its own (only "End"; soft chime + buzz between steps), then
+  a closing screen (Call partner, Find resources, Done, "This helped / Not for
+  me" → `PassageBank` outcomes + thumbs, and after a nudge the false-alarm link →
+  `RiskAlertView.openFlag`). Opened by "Pray through it · 2 min" on Home and by
+  a risk nudge (the extension notification's body/"Pray through" button — the
+  pending alert carries `passage`; Android's overlay button / fallback
+  notification → `pending_meditation`). Keeps a small crisis link on screen
+  (sits under the modals' z-index so the crisis modal opens on top). Text from
+  YouVersion inside its container with attribution; offline → a bundled verse. In
   Chat, a plain "share a verse" shows a seeded verse on the gospel / God's
   grace (`VERSE_DEFAULT_THEME`); a detected theme (shame, loneliness, …) shows the
   seeded verse for that theme, fetched from YouVersion by reference
@@ -348,8 +364,9 @@ granted "Display over other apps" (`SYSTEM_ALERT_WINDOW`; a Privacy card sends t
 to the Settings page — the grant IS the consent, no separate toggle), a native
 overlay window covers whatever is on screen with: the same specific sentence as
 the notification, the plain-language reasons (ALWAYS shown, so people can judge a
-false alarm themselves — there is deliberately no "why" button), Call <partner>,
-Read a verse, "I'm okay" (5 s wait), and small underlined text links at the bottom:
+false alarm themselves — there is deliberately no "why" button), a daily passage card
+with "Pray through <passage>", Call <partner>, Find resources, "I'm okay" (5 s wait),
+and small underlined text links at the bottom:
 "This was a false alarm". (A 988 link was there and was removed at the user's
 request; while the overlay is up it covers the app's own crisis button, so the
 only ways out are "I'm okay", the flag page, Home, and the failsafe.) **Answering
@@ -374,23 +391,27 @@ on the Pixel 8a (Android 16) that the notification's `setFullScreenIntent` is
 `FSI_REQUESTED_BUT_DENIED` and that the overlay survives Back and Home and covers
 Chrome. Android gives no way to disable Home/Recents, so it is never "inescapable":
 Back is swallowed, Home leaves it up, and it has a hard 10-minute failsafe, and dies
-instantly if the permission is revoked. **A Bible verse is shown on the overlay itself**, chosen ahead of time by the on-device AI
-(`web/js/verseBank.js`, `RiskVerse.java`): for each situation (the 8 reason combinations
-+ K for a keyword nudge, at each of 4 times of day = 36) the 3 best verses are ranked with
-Nathaniel's embedding model against a sentence describing the situation AND the person's
-recent check-in struggles, shifted by what helped under similar conditions and by their
-thumbs elsewhere (tag ranking if the model isn't loaded), fetched from YouVersion with its
-required attribution (bundled text as fallback) and mirrored to native. "This helped" /
-"Not for me" under the verse are parked natively and turned into a rating + a
-situation-tied outcome the next time the app opens, then the bank is rebuilt; "Not for
-me" also moves on to the next verse. Situation and the person's recent struggles are scored as SEPARATE embeddings, each verse is
-corrected by its mean similarity to all queries (hubness), and the situation sentences share no
-common tail — each of those was needed on the real phone to stop one verse leading most
-situations. Learning is THIS user on THIS device — pooling
-across people would need a server, which the privacy commitments rule out. "Find
-resources" (formerly "Read a verse") opens Chat with an urge message so the resource
-picker answers. "I'm okay" has the same filling-bar wait as the in-app dismiss button.
-Don't add a way to make it unescapable.
+instantly if the permission is revoked. **A daily passage to pray through is on the overlay
+itself** (Nathaniel, 2026-10-07; it replaced Joey's short AI-picked verse, `verseBank.js` /
+`RiskVerse.java`, now removed): its reference and one-line description, and "Pray through
+<passage>", which opens the app into the 2-minute **Lectio Divina** meditation on it (§7).
+Which passage: `RiskPassage.java` (and `extension/lib/passagePicker.js` — keep the two in
+step) offers TODAY's passage on the first nudge of the day, then the passage the on-device AI
+ranked best for this situation, never one already offered or prayed through that day. The
+ranking is built while the app is open (`web/js/passageBank.js`, Joey's method carried over:
+36 situations = 8 reason combinations + K, × 4 times of day; situation and the person's
+recent struggles embedded separately; corrected for "hub" passages; shifted by "This
+helped" / "Not for me" on the meditation's closing screen and by their thumbs) and synced
+as `passagePlan` together with the person's upcoming daily passages; with no embedding
+model the upcoming daily passages stand in. Scores are **z-scores** (each passage's closeness
+vs. its own spread across situations): for passages the raw hub-corrected differences are a
+few hundredths, and in testing one rating made Romans 8:31-39 lead 29 of 36 situations. On a
+high-risk nudge (well past the bar, or an on-screen keyword) Call <partner> comes first and
+the meditation second; otherwise the meditation is the main button. Learning is THIS user on
+THIS device — pooling across people would need a server, which the privacy commitments rule
+out. "Find resources" opens Chat with an urge message so the resource picker answers. "I'm
+okay" has the same filling-bar wait as the in-app dismiss button. Don't add a way to make it
+unescapable.
 
 Java in `android/app/src/main/java/com/reclaim/app/`: `MainActivity`,
 Capacitor plugins (`LocalSignalsPlugin`, `AccessibilityPlugin`,

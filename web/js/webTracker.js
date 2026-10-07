@@ -114,9 +114,10 @@ const WebTracker = (function () {
   // Same as LocalSignals.recordRiskFeedback, for the extension's scorer.
   const recordRiskFeedback = ({ alertId, valid, factors }) => call("RISK_FEEDBACK", { alertId, valid, factors: factors || [] }, null);
 
-  // { riskAlert, nightly, verse } -- each consumed once (the extension clears them on read), the
-  // same pending-flag pattern LocalSignals uses on Android.
-  const takePending = () => call("TAKE_PENDING", {}, { riskAlert: null, nightly: null, verse: false });
+  // { riskAlert, nightly, verse, reach } -- each consumed once (the extension clears them on read), the
+  // same pending-flag pattern LocalSignals uses on Android. A riskAlert carries the passage its
+  // notification offered (riskAlert.passage); `reach` means "Reach out to <partner>" was the button.
+  const takePending = () => call("TAKE_PENDING", {}, { riskAlert: null, nightly: null, verse: false, reach: false });
 
   function onPending(fn) {
     listeners.add(fn);

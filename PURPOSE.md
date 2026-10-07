@@ -2252,6 +2252,51 @@ reality:
   label in a note (not installed on the test phone; the Java composer is tested with
   the label), other Android versions.
 
+- [x] **Lectio Divina: a 2-minute scripture meditation, offered by every nudge and on Home.**
+  Asked for (Nathaniel, 2026-10-07): the notification should include the day's passage and make
+  it the primary option; opening the app should open a "Lectio Divina" meditation -- Guigo II's
+  four movements, 30 seconds each, with a brief description of each, full screen, "to interrupt
+  the user in times of temptation and really draw them into God's word" -- and Home's passage
+  should offer it by choice too. Decisions (asked one by one): every risk nudge offers it (the
+  browser extension's notification, Android's overlay and its fallback notification -- not the
+  nightly check-in); **the partner call stays first on a high-risk nudge**, the meditation first
+  otherwise; **the AI picks the passage from the 35 daily passages** -- today's on the first nudge
+  of the day, then personalized to the situation "like Joey's verse", never the same one twice a
+  day -- and **it replaces Joey's AI-picked verse on the overlay** (the overlay shows the passage's
+  reference and one-line description; Joey to agree); each step **narrows in** (tap the phrase
+  that catches you in Lectio; Meditatio shows only that phrase; Contemplatio is nearly empty);
+  steps **advance on their own, "End" is the only control**; a **soft chime + short buzz** between
+  steps; a closing screen with Call <partner>, Find resources, Done, **"This helped / Not for me"**
+  (learning), and the false-alarm link after a nudge; the notification shows **reference +
+  description** under the message; Home's button says **"Pray through it · 2 min"**. Built:
+  `lectioView.js` (the meditation), `passageBank.js` (replaced `verseBank.js`: Joey's ranking
+  method, applied to the passages' descriptions, synced to the notifiers as a plan with the
+  person's upcoming daily passages -- `DailyPassage.schedule` draws the next round ahead so
+  notification and Home agree), `RiskPassage.java` / `extension/lib/passagePicker.js` (the
+  first-today-then-situation rule, kept in step), and `RiskVerse.java` / the overlay's verse
+  feedback removed. Which AI: the embedding model (snowflake), not Qwen. **What the real model
+  taught us:** Joey's hub correction (subtract each item's mean closeness to all 36 situations)
+  leaves differences of a few hundredths between passages -- the 36 situation sentences mean
+  nearly the same thing to the model, and the passages are all about God's grace -- so one test
+  "this helped" made Romans 8:31-39 lead 29 of 36 situations. Now every signal is a z-score
+  (closeness vs. that passage's own spread across situations), with the person's recent
+  struggles weighted 0.25 (at VerseBank's 0.35, one passage led 15 of 36 for a lonely/stressed
+  person): 16 different passages lead with no struggles recorded, morning gets "fresh morning
+  mercies" (Lamentations 3), long-and-late gets "strength for the weary" (Isaiah 40), and one
+  "not for me" drops a passage from first in that situation without moving unrelated ones.
+  Honest limit: none of the 35 is specifically about temptation, so a keyword nudge gets
+  mercy/strength passages. Verified: `npm test` (picker rule, schedule-vs-Home agreement across
+  a round boundary, ranking with a stubbed model, phrase splitting, the extension's
+  notification/button/banner/pending alert); in the browser pane with the real embedding model
+  and YouVersion (the meditation start to finish, phrase taps carried into Meditatio and the
+  closing screen, partner-first on a high-risk nudge, "This helped" saved as thumbs + a
+  situation outcome, the false-alarm link recording a false alarm on the tapped part, "Reach out"
+  going to the check-in screen instead, the crisis modal opening on top, offline falling back to
+  a bundled verse); the Android Java compiles. **Not verified:** anything on a phone (the overlay
+  card and button, the fallback notification, the pending meditation round trip, the buzz -- the
+  manifest gained VIBRATE for it), the Java picker run against real data (it mirrors the
+  JavaScript rule, whose tests pass), the chime on a phone's speaker, the real extension in Chrome.
+
 - **Allowlist, not a blocklist**, for text capture, and it's user-editable.
   A blocklist means anything you didn't think to exclude — a new messaging
   app, a journal app — gets read by default. An allowlist means nothing

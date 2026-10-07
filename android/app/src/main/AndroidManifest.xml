@@ -135,6 +135,11 @@
          read or sent by it. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
+    <!-- Normal permission (granted at install, no dialog). The Lectio Divina meditation
+         (web/js/lectioView.js) gives a short buzz between its four steps; the WebView's
+         navigator.vibrate needs this to work at all. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <!-- Package visibility (API 30+): without this, PackageManager can't see other apps at all
          (not even to resolve a name/label) unless the app holds the restricted
          QUERY_ALL_PACKAGES permission, which requires special Play Store justification. This is
