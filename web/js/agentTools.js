@@ -4,9 +4,9 @@
 // Resources are picked by weighted keyword scoring, not by asking the model (a model-based pick cost ~16 s per message on a
 // phone). Each resource has `signals`: [pattern, weight] pairs run against the lowercased message. Weights add up once per
 // matching pattern: 4-5 = an explicit ask for that thing, 3 = a clear phrasing of it, 1-2 = supporting hints. Negative weights
-// cancel false alarms ("are you a counselor?" is a question about the AI, not a request for one). The highest score wins if it
-// reaches AGENT_MIN_SCORE; ties go to the earlier entry. Only an explicit ask or an urge happening now shows a card:
-// someone sharing a slip or a feeling gets a reply, not a resource they didn't ask for.
+// cancel false alarms ("are you a counselor?" is a question about the AI, not a request for one). Every resource scoring at
+// least AGENT_MIN_SCORE counts as an explicit ask; resourcePicker.js turns those, plus any named feeling, into the reply's
+// cards (up to 3 kinds) using what the person has rated helpful.
 const AGENT_MIN_SCORE = 3;
 
 // Books whose names can't be mistaken for a word or a name, so "romans 8" alone counts as a reference.
@@ -157,42 +157,17 @@ function agentInferTheme(lower) {
   return hit ? hit[0] : null;
 }
 
-// Sum of the weights of every signal that matches. A separate function (not inlined in agentPickResource) so the router
-// can be tested offline against labeled prompts without running the model.
+// Sum of the weights of every signal that matches. A separate function so the router can be tested offline against
+// labeled prompts without running the model (scripts/test-resource-picker.mjs).
 function agentScoreTool(tool, lower) {
   return tool.signals.reduce((sum, [re, weight]) => sum + (re.test(lower) ? weight : 0), 0);
 }
 
-function agentTopTool(lower) {
-  let best = null;
-  let bestScore = 0;
-  for (const tool of AGENT_TOOL_DEFS) {
-    const score = agentScoreTool(tool, lower);
-    if (score > bestScore) {
-      best = tool;
-      bestScore = score;
-    }
-  }
-  return bestScore >= AGENT_MIN_SCORE ? best : null;
-}
-
-// A short "yes" answers whatever the last reply offered ("Would a verse on grace help?"), so it's matched against that reply instead.
-function agentPickResource(userText, lastReply = "") {
-  let lower = userText.toLowerCase();
-  if (AGENT_AFFIRMATIVE.test(userText) && userText.length < 40 && lastReply) lower = lastReply.toLowerCase();
-  const tool = agentTopTool(lower);
-  if (tool) {
-    const theme = tool.themed ? agentInferTheme(lower) || (tool.name === "coping_toolkit" ? "in-the-moment" : null) : null;
-    return { resource: tool.name, theme };
-  }
-  // Nothing explicitly asked for, but they named a feeling (AGENT_THEME_WORDS) -- default to a
-  // verse for it rather than staying silent on resources. User's own framing: pointing to
-  // scripture should be one of the AI's first responses, not only shown when someone thinks to
-  // ask for one by name.
-  if (/\bare you\b/.test(lower)) return null;
-  const theme = agentInferTheme(lower);
-  return theme ? { resource: "scripture_search", theme } : null;
-}
+// Which kinds of resource a message gets (several now, plus what the person has rated helpful) is
+// decided by ResourcePicker.pick (resourcePicker.js), built on the scoring above. It keeps the old
+// single-pick rules: a short "yes" is matched against the last reply, "are you ...?" questions get
+// no card, and a named feeling with no explicit ask still gets a resource -- a verse by default,
+// per the user's framing that pointing to scripture should be one of the AI's first responses.
 
 const AGENT_SYSTEM_PROMPT = `You are an unnamed AI resource finder for the app Reclaim 128. You help someone fighting pornography use, from a Christian perspective, find resources: Bible verses, devotionals, Bible reading plans, articles, sermons, coping tools, small groups, accountability partners, and counselors. You never replace real people like a pastor, counselor, accountability partner, friend, or small group, and you never tell someone they don't need them.
 
@@ -208,21 +183,26 @@ Reply in 1 or 2 short, plain sentences.
 // async because small_group_finder/sermon_library/article_finder/counseling_directory all read
 // live from Supabase now (see ResourceRepo) -- every other branch below still resolves
 // synchronously, `await`ing a non-promise is a no-op.
-async function executeAgentTool(name, input) {
+// `options` ({ limit, rank, verseTopic }) comes only from the on-device AI agent: `limit` is this
+// tool's share of a multi-type reply's item budget, `rank` orders candidates by the person's learned
+// preferences (resourcePicker.js), and `verseTopic` is a meaning-based verse topic decision (see
+// agentFindVerse). Basic mode never passes it, so its results are exactly what they were.
+async function executeAgentTool(name, input, options = {}) {
   const theme = input && input.theme ? input.theme : null;
+  const { limit, rank, verseTopic } = options;
   switch (name) {
     case "scripture_search":
-      return agentFindVerse(theme, input && input.query ? input.query : null);
+      return agentFindVerse(theme, input && input.query ? input.query : null, rank, verseTopic);
     case "devotional_finder":
-      return ResourceRepo.getDevotional(theme);
+      return ResourceRepo.getDevotional(theme, rank);
     case "bible_plan_finder":
-      return { plans: ResourceRepo.getBiblePlans() };
+      return { plans: ResourceRepo.getBiblePlans(limit, rank) };
     case "article_finder":
-      return { articles: await ResourceRepo.getArticles() };
+      return { articles: await ResourceRepo.getArticles({ limit, rank }) };
     case "coping_toolkit":
-      return { mechanisms: ResourceRepo.getCopingMechanisms(theme) };
+      return { mechanisms: ResourceRepo.getCopingMechanisms(theme, limit, rank) };
     case "small_group_finder":
-      return { groups: await ResourceRepo.getSmallGroups(input && input.query) };
+      return { groups: await ResourceRepo.getSmallGroups(input && input.query, limit, rank) };
     case "accountability_match": {
       // Deterministic, not model-dependent: this is real personal data (or the deliberate
       // absence of it), never a generic sample list -- see PURPOSE.md. Up to 2 partners.
@@ -234,9 +214,9 @@ async function executeAgentTool(name, input) {
       return { contacts };
     }
     case "sermon_library":
-      return { sermons: await ResourceRepo.getSermons() };
+      return { sermons: await ResourceRepo.getSermons({ limit, rank }) };
     case "counseling_directory":
-      return { centers: await ResourceRepo.getCounselingCenters() };
+      return { centers: await ResourceRepo.getCounselingCenters({ limit, rank }) };
     default:
       return { error: `Unknown tool: ${name}` };
   }
@@ -308,43 +288,51 @@ function matchVerseTopic(userText) {
   return bestScore >= 1 ? best : null; // require at least one real word match, not just a coincidental partial
 }
 
-// One reference at random from the matched topic's semicolon-separated list -- varies which verse
+// One reference at random from a topic row's semicolon-separated list -- varies which verse
 // comes back for the same topic across conversations, same spirit as randomByTheme (resourceRepo.js).
-function pickVerseTopicReference(userText) {
-  const row = matchVerseTopic(userText);
+function verseTopicReference(row) {
   if (!row) return null;
   const refs = row.refs.split(";").map((r) => r.trim()).filter(Boolean);
   if (!refs.length) return null;
   return { topic: row.topic, reference: refs[Math.floor(Math.random() * refs.length)] };
 }
 
+function pickVerseTopicReference(userText) {
+  return verseTopicReference(matchVerseTopic(userText));
+}
+
 // Every verse Chat shows goes through the YouVersion Bible display (youversion.js, rendered by
 // app.js renderToolResult). `query` (the raw message, when available) is checked against the
 // 100-topic list first -- the closest real-circumstance match wins and is resolved live through
 // YouVersion by reference. Failing that: a detected theme keeps its hand-picked verse from
-// seedData.js, just fetched from YouVersion; a plain "share a verse" gets YouVersion's Verse of
-// the Day -- the same "Today's Verse" Home shows. No app key / offline / API error -> the local
-// verse, as before -- this is why the topic match is tried first but never replaces that fallback
-// chain, only sits in front of it.
-async function agentFindVerse(theme, query) {
-  const topicPick = pickVerseTopicReference(query);
+// seedData.js, just fetched from YouVersion. A plain "share a verse" (no theme, no topic) gets a
+// seeded verse on the gospel / God's grace (VERSE_DEFAULT_THEME) -- not YouVersion's Verse of the
+// Day, which it used to return: Home already shows that one (Nathaniel, 2026-10-07). No app key /
+// offline / API error -> the local verse, as before -- this is why the topic match is tried first
+// but never replaces that fallback chain, only sits in front of it.
+//
+// `verseTopic` comes from the AI agent when the embedding model is loaded: a topic matched by
+// meaning ({ topic, refs }), or null for "no topic" -- it then replaces the word-overlap match,
+// which fired on single generic words ("help" -> "Helping someone who is struggling"). Left
+// undefined (Basic mode, or no embedding model), the word-overlap match runs as before.
+const VERSE_DEFAULT_THEME = "grace";
+
+async function agentFindVerse(theme, query, rank, verseTopic) {
+  const topicPick = verseTopic === undefined ? pickVerseTopicReference(query) : verseTopicReference(verseTopic);
   if (topicPick && typeof YouVersion !== "undefined" && YouVersion.available()) {
     const display = await YouVersion.getVerse(topicPick.reference);
-    if (display) return { title: display.reference, body: null, youversion: display };
+    // topic: what a thumbs up/down on this verse teaches (resourceFeedback.js).
+    if (display) return { title: display.reference, body: null, youversion: display, topic: topicPick.topic };
   }
 
-  const local = ResourceRepo.getScripture(theme);
-  if (typeof YouVersion === "undefined" || !YouVersion.available()) return local;
-  const display = theme && local ? await YouVersion.getVerse(local.title) : await YouVersion.getTodaysVerse();
-  if (!display) return local;
-  return {
-    ...(local || {}),
-    title: display.reference,
-    // Local body only matches when it's the same verse; today's verse has no local text.
-    body: theme && local ? local.body : null,
-    todaysVerse: !theme,
-    youversion: display,
-  };
+  // graceDefault: the intro says "a verse about God's grace" instead of naming no theme.
+  const graceDefault = !theme;
+  const local = ResourceRepo.getScripture(theme || VERSE_DEFAULT_THEME, rank);
+  if (!local) return null;
+  if (typeof YouVersion === "undefined" || !YouVersion.available()) return { ...local, graceDefault };
+  const display = await YouVersion.getVerse(local.title);
+  if (!display) return { ...local, graceDefault };
+  return { ...local, title: display.reference, youversion: display, graceDefault };
 }
 
 function agentStreamText(text, onTextDelta) {

@@ -44,17 +44,29 @@ const ResourceRepo = (function () {
     return rows.map(parseRow);
   }
 
-  function randomByTheme(type, theme) {
+  // `rank` (optional, everywhere below): a function that reorders candidate rows best-first. The
+  // on-device AI agent passes one built from the person's thumbs up/down (resourcePicker.js); Basic
+  // mode passes nothing and keeps the old random picks. Theme filtering still happens first here.
+  function randomByTheme(type, theme, rank) {
     const rows = byType(type);
+    let candidates = rows;
     if (theme) {
       const matches = rows.filter((r) => r.tags.includes(theme));
-      if (matches.length) return matches[Math.floor(Math.random() * matches.length)];
+      if (matches.length) candidates = matches;
     }
-    return rows.length ? rows[Math.floor(Math.random() * rows.length)] : null;
+    if (!candidates.length) return null;
+    if (rank) return rank(candidates)[0];
+    return candidates[Math.floor(Math.random() * candidates.length)];
   }
 
-  function getScripture(theme) {
-    return randomByTheme("scripture", theme);
+  // Rows that carry a theme tag, by type -- lets the picker tell whether a kind of resource has
+  // anything to say about how someone feels before offering it unasked.
+  function hasTheme(type, theme) {
+    return DB.get("SELECT COUNT(*) AS n FROM resources WHERE type = ? AND tags LIKE ?", [type, `%"${theme}"%`]).n > 0;
+  }
+
+  function getScripture(theme, rank) {
+    return randomByTheme("scripture", theme, rank);
   }
 
   // The 100 user-provided topics (see verse_topics table in db.js) -- matched against raw chat
@@ -64,16 +76,16 @@ const ResourceRepo = (function () {
     return DB.all("SELECT topic, refs FROM verse_topics");
   }
 
-  async function getSermons() {
-    return fromSupabase("sermon");
+  async function getSermons({ limit, rank } = {}) {
+    return fromSupabase("sermon", { limit, rank });
   }
 
-  async function getArticles() {
-    return fromSupabase("article");
+  async function getArticles({ limit, rank } = {}) {
+    return fromSupabase("article", { limit, rank });
   }
 
-  function getDevotional(theme) {
-    return randomByTheme("devotional", theme);
+  function getDevotional(theme, rank) {
+    return randomByTheme("devotional", theme, rank);
   }
 
   // Two at most: in the middle of an urge, a long list is more overwhelming than helpful.
@@ -81,8 +93,11 @@ const ResourceRepo = (function () {
   // then whatever's left (already shuffled) -- preferred methods come from onboarding/preferences
   // (COPING_METHOD_OPTIONS in constants.js), read directly the same way getSmallGroups reads the
   // saved home location.
-  function getCopingMechanisms(theme, limit = 2) {
+  function getCopingMechanisms(theme, limit = 2, rank) {
     const rows = shuffle(byType("coping_mechanism"));
+    // The AI agent's ranker scores theme and preferred-method matches itself (alongside learned
+    // preferences), so it gets the whole list.
+    if (rank) return rank(rows).slice(0, limit);
     const prefs = typeof UserPreferencesStore !== "undefined" ? UserPreferencesStore.get() : null;
     const preferredMethods = (prefs && prefs.preferred_coping_methods) || [];
     const matchesTheme = theme ? rows.filter((r) => r.tags.includes(theme)) : [];
@@ -120,8 +135,8 @@ const ResourceRepo = (function () {
 
   // Two at most, same reasoning as everything else here -- there are only 4 today, but this
   // shouldn't silently start dumping all of them the moment a 5th gets added.
-  function getBiblePlans(limit = 2) {
-    const plans = shuffle(byType("bible_plan"));
+  function getBiblePlans(limit = 2, rank) {
+    const plans = rank ? rank(byType("bible_plan")) : shuffle(byType("bible_plan"));
     return plans.slice(0, limit).map((plan) => {
       const days = DB.all(
         "SELECT day_number, reference, reflection FROM bible_plan_days WHERE plan_id = ? ORDER BY day_number",
@@ -146,7 +161,7 @@ const ResourceRepo = (function () {
   // and at least some groups have coordinates -- closest first, real proximity instead of a
   // same-state coin flip. Falls back to the old text-detected-state match (then a nationwide
   // sample) when there's no saved home location, or none of the groups have coordinates yet.
-  async function getSmallGroups(query, limit = 2) {
+  async function getSmallGroups(query, limit = 2, rank) {
     const home = typeof UserPreferencesStore !== "undefined" ? UserPreferencesStore.get() : null;
     if (home && home.home_lat != null && home.home_lon != null) {
       let rows;
@@ -158,22 +173,25 @@ const ResourceRepo = (function () {
       }
       const withCoords = filterByGender(rows).filter((r) => r.latitude != null && r.longitude != null);
       if (withCoords.length) {
-        return withCoords
-          .map((r) => ({ ...r, distanceMeters: distanceMeters(home.home_lat, home.home_lon, r.latitude, r.longitude) }))
-          .sort((a, b) => a.distanceMeters - b.distanceMeters)
-          .slice(0, limit);
+        const located = withCoords.map((r) => ({
+          ...r,
+          distanceMeters: distanceMeters(home.home_lat, home.home_lon, r.latitude, r.longitude),
+        }));
+        // The ranker weighs distance itself (a liked ministry 500 miles away isn't useful).
+        if (rank) return rank(located).slice(0, limit);
+        return located.sort((a, b) => a.distanceMeters - b.distanceMeters).slice(0, limit);
       }
     }
 
     const state = detectState(query);
-    const rows = await fromSupabase("small_group", { state, limit });
+    const rows = await fromSupabase("small_group", { state, limit, rank });
     if (rows === null) return null;
-    if (state && !rows.length) return getSmallGroups(null, limit); // no match in that state -- fall back to a nationwide sample
+    if (state && !rows.length) return getSmallGroups(null, limit, rank); // no match in that state -- fall back to a nationwide sample
     return rows;
   }
 
-  async function getCounselingCenters() {
-    return fromSupabase("counseling_center");
+  async function getCounselingCenters({ limit, rank } = {}) {
+    return fromSupabase("counseling_center", { limit, rank });
   }
 
   // Shared by getSermons/getArticles/getCounselingCenters/getSmallGroups: capped at 2 and shuffled
@@ -181,10 +199,10 @@ const ResourceRepo = (function () {
   // more than it helps) and returns null on failure (network down, Supabase unreachable) so the
   // caller can show a short "couldn't reach" line instead of an empty or broken card. Deliberately
   // no on-device fallback for any of these -- see README's "Data storage".
-  async function fromSupabase(type, { state, limit = 2 } = {}) {
+  async function fromSupabase(type, { state, limit = 2, rank } = {}) {
     try {
-      const rows = await SupabaseClient.queryResources(type, state ? { state } : {});
-      return shuffle(filterByGender(rows)).slice(0, limit);
+      const rows = filterByGender(await SupabaseClient.queryResources(type, state ? { state } : {}));
+      return (rank ? rank(rows) : shuffle(rows)).slice(0, limit);
     } catch (e) {
       console.warn(`Couldn't reach Supabase for ${type}:`, e);
       return null;
@@ -192,6 +210,7 @@ const ResourceRepo = (function () {
   }
 
   return {
+    hasTheme,
     getScripture,
     getVerseTopics,
     getSermons,

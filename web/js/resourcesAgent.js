@@ -82,7 +82,7 @@ class ResourcesAgent {
         // With the YouVersion display the card already shows the verse (and its required
         // attribution), so the reply points to it instead of quoting a second copy.
         reply: match.youversion
-          ? `${match.todaysVerse ? "That's today's verse" : "Here's a verse"} from YouVersion — ${match.title}. This isn't a quick fix, but it's worth sitting with. Would a sermon on this, a devotional, or a small group to process it with be helpful?`
+          ? `Here's a verse from YouVersion — ${match.title}. This isn't a quick fix, but it's worth sitting with. Would a sermon on this, a devotional, or a small group to process it with be helpful?`
           : `${match.title} — "${match.body}" This isn't a quick fix, but it's worth sitting with. Would a sermon on this, a devotional, or a small group to process it with be helpful?`,
       };
     }

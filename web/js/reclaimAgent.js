@@ -1,5 +1,6 @@
-// Reclaim's AI agent: a keyword match picks at most one resource card, the app introduces it, and the on-device model (LocalModel)
-// writes a short reply that is streamed one checked sentence at a time.
+// Reclaim's AI agent: ResourcePicker chooses up to 3 kinds of resource card from keywords, the embedding model and the
+// person's thumbs up/down, the app introduces them, and with no cards the on-device model (LocalModel) writes a short
+// reply that is streamed one checked sentence at a time.
 const RECLAIM_HISTORY_CHARS = 5000; // ~1.3k tokens of the model's 4k context; past this the history is cut back to the last exchanges
 const RECLAIM_HISTORY_KEEP = 4;
 const RECLAIM_CLIP_CHARS = 400;
@@ -10,8 +11,10 @@ const clip = (text, n = RECLAIM_CLIP_CHARS) => (text.length > n ? `${text.slice(
 
 // The app, not the model, introduces each card: a small model asked to talk about specific resources misquotes or refuses them.
 function cardIntro(name, theme, output) {
-  if (name === "scripture_search" && output && output.todaysVerse) return "Here's today's verse from YouVersion.";
-  const about = theme && theme !== "in-the-moment" ? ` about ${theme}` : "";
+  if (name === "scripture_search" && output && output.graceDefault) return "Here's a verse about God's grace for you.";
+  let about = theme && theme !== "in-the-moment" ? ` about ${theme}` : "";
+  // A verse matched to one of the 100 topics with no theme named ("a verse about my marriage") says which.
+  if (!about && name === "scripture_search" && output && output.topic) about = ` about ${output.topic.toLowerCase()}`;
   return AGENT_TOOL_DEFS.find((t) => t.name === name).intro.replace("{about}", about);
 }
 
@@ -37,6 +40,33 @@ const RECLAIM_UNSAFE_SENTENCE = [
 
 const RECLAIM_SENTENCE_END = /^([\s\S]*?[.!?]+["'”’)]*)\s+/;
 
+// Supabase-backed tools resolve their list to null when the directory can't be reached.
+const RECLAIM_UNREACHABLE = {
+  small_group_finder: ["groups", "group directory"],
+  sermon_library: ["sermons", "sermon library"],
+  article_finder: ["articles", "article library"],
+  counseling_directory: ["centers", "counseling directory"],
+};
+
+function unreachableLabel(name, output) {
+  const u = RECLAIM_UNREACHABLE[name];
+  return u && output && output[u[0]] === null ? u[1] : null;
+}
+
+// What resourcePicker.js learns from: thumbs up/down (resourceFeedback.js) and the coping methods picked in onboarding.
+// Either failing (e.g. storage unavailable) just means picking without them.
+function learnedPreferences() {
+  let profile = null;
+  let preferredMethods = [];
+  try {
+    profile = ResourceFeedback.profile();
+  } catch (e) {}
+  try {
+    preferredMethods = UserPreferencesStore.get().preferred_coping_methods || [];
+  } catch (e) {}
+  return { profile, preferredMethods };
+}
+
 function isSafeSentence(sentence) {
   return !RECLAIM_UNSAFE_SENTENCE.some((re) => re.test(sentence));
 }
@@ -61,6 +91,9 @@ class ReclaimAgent {
     // previous conversation word for word, so this must never be edited or re-clipped between turns.
     this.modelHistory = [];
     this.recentShown = []; // last few replies as shown; small models copy their own earlier sentences word for word
+    // Resource keys shown in this conversation, ranked lower next time so liked items rotate. "Clear conversation"
+    // makes a new agent, which starts it over.
+    this.shownKeys = new Set();
     this.fallback = new ResourcesAgent();
     this._idCounter = 0;
   }
@@ -96,21 +129,48 @@ class ReclaimAgent {
     let shown = false;
     try {
       let intro = "";
-      const pick = agentPickResource(userText, previous);
-      if (pick) {
-        const input = pick.theme ? { theme: pick.theme, query: userText } : { query: userText };
-        const output = await executeAgentTool(pick.resource, input);
-        if (output && output.groups === null) {
-          // Supabase unreachable (small_group_finder only) -- say so instead of showing an empty card.
-          intro = "I couldn't reach the group directory right now — try again once you're online.";
-          revealer.push(intro);
-        } else {
+      const learned = learnedPreferences();
+      // The small embedding model's read of the message (localEmbedder.js): a feeling or ask the keywords missed,
+      // and the message's meaning for ranking. ~50 ms; null when it isn't loaded, and everything works without it.
+      const analysis = typeof LocalEmbedder !== "undefined" ? await LocalEmbedder.analyze(userText) : null;
+      const semantic = analysis && {
+        queryVec: analysis.queryVec,
+        taste: LocalEmbedder.tasteVector(ResourceFeedback.weightedRows()),
+        vectorFor: LocalEmbedder.vectorFor,
+        cosine: LocalEmbedder.cosine,
+      };
+      // Up to 3 kinds of resource and 4 items, chosen from the message plus what this person has rated helpful
+      // (resourcePicker.js). Instant arithmetic, no chat-model call -- having the chat model pick when unsure was tried
+      // and dropped (see PURPOSE.md).
+      const picks = ResourcePicker.pick(userText, previous, { ...learned, inferred: analysis });
+      const results = await Promise.all(
+        picks.map(async (p) => {
+          const input = p.theme ? { theme: p.theme, query: userText } : { query: userText };
+          const rank = ResourcePicker.ranker(p.resource, p.theme, learned.profile, learned.preferredMethods, semantic, this.shownKeys);
+          const verseTopic = ResourcePicker.verseTopicFor(p, analysis); // verse topic matched by meaning (localEmbedder.js)
+          const output = await executeAgentTool(p.resource, input, { limit: p.limit, rank, verseTopic });
+          return { ...p, input, output, unreachable: unreachableLabel(p.resource, output) };
+        })
+      );
+      // Supabase unreachable: an explicit ask says so instead of showing an empty card; an unasked addition is just left out.
+      const shownResults = results.filter((r) => !r.unreachable);
+      const missed = results.filter((r) => r.unreachable && r.explicit);
+      if (shownResults.length || missed.length) {
+        for (const r of shownResults) {
           const id = `tool_${++this._idCounter}`;
-          handlers.onToolCallStart({ id, name: pick.resource, input });
-          handlers.onToolCallEnd({ id, output });
-          intro = cardIntro(pick.resource, pick.theme, output);
-          revealer.push(intro);
+          // feedback: thumbs up/down on these cards (resourceFeedback.js) -- AI mode only; Basic mode never sets it.
+          handlers.onToolCallStart({ id, name: r.resource, input: r.input, feedback: true });
+          handlers.onToolCallEnd({ id, output: r.output });
+          if (r.resource !== "accountability_match") {
+            ResourcePicker.itemsOf(r.output).forEach((item) => this.shownKeys.add(ResourceFeedback.describe(r.resource, item).key));
+          }
         }
+        const sentences = [];
+        if (shownResults.length === 1) sentences.push(cardIntro(shownResults[0].resource, shownResults[0].theme, shownResults[0].output));
+        else if (shownResults.length > 1) sentences.push(ResourcePicker.intro(shownResults));
+        missed.forEach((r) => sentences.push(`I couldn't reach the ${r.unreachable} right now — try again once you're online.`));
+        intro = sentences.join(" ");
+        revealer.push(intro);
         // The app's one-sentence intro ("I found some Bible reading plans you could start.") is the whole reply when
         // resources are shown. The model used to add more, and its extra sentences were where the unreliable advice, theology,
         // invented resources and stray verse offers came from (see llm-prompt-tests). It also saves a model call.
@@ -172,6 +232,11 @@ class ReclaimAgent {
     try {
       preferences = buildUserPreferencesContext(UserPreferencesStore.get());
     } catch (e) {}
+    // Kinds of resources and themes they've rated, so a no-card reply that names one kind leans toward what has helped.
+    let rated = "";
+    try {
+      rated = ResourceFeedback.summary();
+    } catch (e) {}
     let feedback = "";
     try {
       feedback = RiskExplainer.feedbackContext();
@@ -180,6 +245,7 @@ class ReclaimAgent {
       `Right now it is ${describeTimeOfDay(new Date())}.`,
       personal && `About this person, from their own check-ins: ${personal}`,
       preferences && `What they told us when setting up the app: ${preferences}`,
+      rated,
       feedback && `What they've told the app about its check-ins being false alarms, in their words: ${feedback}`,
     ]
       .filter(Boolean)

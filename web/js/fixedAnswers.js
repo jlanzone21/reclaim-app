@@ -31,7 +31,7 @@ const FixedAnswers = (function () {
   const DATA =
     "In the Insights tab you can export your check-ins as a file (Export data) or clear them (Clear all check-in data). Your data is only on this device, so there is no other copy unless you export one. Removing the app also erases it.";
   const AI_DOWNLOAD =
-    "The AI runs on your device so your conversations never leave it. That's why it needs a one-time download of about 1 GB (Wi-Fi recommended). After that the chat works without internet, though looking up groups, sermons, articles, counselors, and Bible verses still needs a connection. How fast it replies depends on your device.";
+    "The AI runs on your device so your conversations never leave it. That's why it needs a one-time download of about 1.1 GB (Wi-Fi recommended). After that the chat works without internet, though looking up groups, sermons, articles, counselors, and Bible verses still needs a connection. How fast it replies depends on your device.";
   const BIBLE_VERSION =
     "Verses are shown through YouVersion, in the NIV when it's available and the BSB otherwise, along with the version's copyright notice. That's why you see \"Provided by YouVersion\" under a verse.";
   const SAMPLE_TAG =
