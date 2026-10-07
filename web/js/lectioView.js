@@ -17,7 +17,7 @@
  * Call <partner>, Find resources, Done, "This helped / Not for me" (teaches PassageBank which passages help
  * in which situations), and -- after a nudge -- the small "This was a false alarm" link.
  *
- * First, for 8 seconds, the passage's reference and one-line description. The text comes from YouVersion
+ * First the passage's reference and one-line description, with a Begin button. The text comes from YouVersion
  * (with the copyright attribution it requires); offline or on an API error the screen keeps the passage's
  * reference and the person reads it from their own Bible (NIV text can't be bundled) -- only with no passage
  * named at all does it fall back to a bundled verse. A small "In crisis? Get help"
@@ -25,9 +25,6 @@
  */
 const LectioView = (function () {
   const STEP_MS = 30000;
-  // Before step 1: the passage's reference and one-line description, a moment to settle (Nathaniel,
-  // 2026-10-07: "show the description before step 1"). Not one of the four steps, so not on the bars.
-  const INTRO_MS = 8000;
   const LOAD_TIMEOUT_MS = 8000;
   const STEPS = [
     { name: "Lectio", verb: "Read", text: "Read the passage slowly, out loud if you can, and then once more. Tap the word or phrase that catches your attention." },
@@ -39,7 +36,6 @@ const LectioView = (function () {
   let els = {};
   let hooks = {};
   let stepMs = STEP_MS;
-  let introMs = INTRO_MS;
   let s = null; // the open session
   let token = 0; // a late passage load for an earlier session must never land on a newer one
   let ticker = null;
@@ -116,21 +112,27 @@ const LectioView = (function () {
     showIntro();
   }
 
-  // The passage's reference and description, then step 1 on its own (same clock as the steps).
+  // Before step 1: the passage's reference and one-line description, and a Begin button -- the clock only
+  // starts when they're ready (Nathaniel, 2026-10-07: an 8-second pause here "feels rushed"). Not one of
+  // the four steps, so not on the bars. The tap also lets the chime play (browsers need a gesture first).
   function showIntro() {
     s.step = -1;
-    s.elapsed = 0;
-    s.startedAt = Date.now();
     els.root.dataset.step = "intro";
     els.count.textContent = "";
     els.kicker.textContent = s.fromNudge ? "A passage for right now" : "Today's passage";
-    els.instruction.textContent = "Take a slow breath. We'll begin in a moment.";
+    els.instruction.textContent = "Take a slow breath. Begin when you're ready.";
     const nodes = [line("lectio-intro-ref", s.reference)];
     if (s.description) nodes.push(line("lectio-intro-desc", s.description));
+    const begin = button("Begin", true, () => {
+      if (!s || s.step !== -1) return;
+      chime(false);
+      goTo(0);
+    });
+    begin.classList.add("lectio-begin");
+    nodes.push(begin);
     els.body.replaceChildren(...nodes);
     setProgress(-1, 0);
     clearInterval(ticker);
-    ticker = setInterval(tick, 200);
   }
 
   // ---- The passage ----
@@ -228,9 +230,8 @@ const LectioView = (function () {
   function tick() {
     if (!s || s.paused) return;
     const elapsed = s.elapsed + (Date.now() - s.startedAt);
-    const duration = s.step < 0 ? introMs : stepMs;
-    if (s.step >= 0) setProgress(s.step, Math.min(1, elapsed / stepMs));
-    if (elapsed < duration) return;
+    setProgress(s.step, Math.min(1, elapsed / stepMs));
+    if (elapsed < stepMs) return;
     if (s.step < STEPS.length - 1) {
       chime(false);
       goTo(s.step + 1);
@@ -583,9 +584,6 @@ const LectioView = (function () {
     // exposed for tests
     _parseVerses: parseVerses,
     _phrasesOf: phrasesOf,
-    _setStepMs: (ms) => {
-      stepMs = ms || STEP_MS;
-      introMs = ms ? Math.min(ms, INTRO_MS) : INTRO_MS;
-    },
+    _setStepMs: (ms) => (stepMs = ms || STEP_MS),
   };
 })();

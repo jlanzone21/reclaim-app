@@ -662,7 +662,8 @@ extension's notification ("Pray through Romans 8:31-39", with the reference and 
 description under the message), Android's full-screen check-in (a passage card and a button),
 and Android's fallback notification. Taking it — or tapping "Pray through it · 2 min" on Home's
 Today's Passage card — opens a full-screen, 2-minute **Lectio Divina** meditation
-(`web/js/lectioView.js`), the four movements Guigo II described, 30 seconds each:
+(`web/js/lectioView.js`): first the passage's reference and one-line description with a Begin
+button, then the four movements Guigo II described, 30 seconds each:
 
 1. **Lectio** — the whole passage; read it slowly, then tap the word or phrase that catches you.
 2. **Meditatio** — only that phrase, large (no tap → the first verse).

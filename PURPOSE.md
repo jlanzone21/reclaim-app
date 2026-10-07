@@ -2298,7 +2298,8 @@ reality:
   JavaScript rule, whose tests pass), the chime on a phone's speaker, the real extension in Chrome.
   **Follow-ups the same day (Nathaniel):** offline, the meditation keeps the named passage -- its
   reference, and "open your Bible or Bible app to this passage" -- instead of a random bundled verse;
-  the passage's description is shown for 8 s before step 1; the chime plays at media volume (on
+  the passage's reference and description come first, with a **Begin** button (an 8-second automatic
+  pause there felt rushed on the phone; the clock starts only on Begin); the chime plays at media volume (on
   Android the ringer switch doesn't silence it -- kept); and **six temptation passages** were added
   (1 Corinthians 10:12-14, Hebrews 2:14-18, James 1:12-17, James 4:6-10, 1 Peter 5:6-10, Psalm
   119:9-16; 41 in all). Adding passages no longer restarts everyone's rotation: the round in progress

@@ -1654,6 +1654,11 @@ body.lectio-open { overflow: hidden; }
   color: rgba(255, 255, 255, 0.85);
 }
 
+.lectio-begin {
+  width: 100%;
+  margin-top: 32px;
+}
+
 /* Offline: read the passage from your own Bible. */
 .lectio-offline-note {
   margin-top: 14px;
