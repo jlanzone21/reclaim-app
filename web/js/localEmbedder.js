@@ -16,22 +16,42 @@
  * Calibration (2026-10-06, real model in the browser): one description per theme separated
  * feelings from small talk badly ("my day was fine" scored closer to shame than real shame
  * messages). What works: several example messages per class plus a "none" class, the query prefix
- * on both sides, the top-3 average per class, and requiring a margin over "none". On held-out
- * messages the keyword lists missed, run through this file's own analyze(): themes at 0.04
- * caught 15/18 (11 exact theme, 4 a neighbouring one) with 0/18 small talk let through; asks at
- * 0.07 caught 6/12, 1 wrong kind ("something I could listen to on my commute" -> a verse, not
- * sermons) and 0/15 non-asks let through. scripts/embedding-calibration.js re-runs those sets.
+ * on both sides, the top-3 average per class, and requiring a margin over "none".
+ *
+ * Recalibrated 2026-10-07 after fresh everyday small talk got confident false positives ("I just
+ * got back from the gym" -> relapse, "my phone battery is low" -> shame): examples are now
+ * embedded one at a time (batching shifted results), "none" gained a few targeted everyday lines
+ * (EVERYDAY_NONE), the theme bar is 0.035, and good news is never read as a feeling (GOOD_NEWS).
+ * Run through this file's own analyze() on every held-out set in scripts/embedding-calibration.js
+ * (none of it used as examples): 32/38 real feelings caught (27 the exact theme) with 1/64
+ * small-talk lines let through ("my phone battery is low" -> shame); before this change it was
+ * 35/38 with 7 of the first 59 let through. Asks: 5/12 caught, 2 wrong kinds. Re-run that script
+ * after any change here.
  */
 const LocalEmbedder = (function () {
   const MODEL_ID = "snowflake-arctic-embed-s-q0f32-MLC-b4"; // b4: ~240 MB GPU memory; the b32 build needs ~1 GB
   const QUERY_PREFIX = "Represent this sentence for searching relevant passages: ";
-  const THEME_MARGIN = 0.04;
+  const THEME_MARGIN = 0.035;
   const ASK_MARGIN = 0.07;
+  const GOOD_NEWS = /\b(?:streak|proud|longest|going strong|days? (?:clean|free|strong)|so far so good)\b/i;
+  const SETBACK = /\b(?:broke|broken|lost|lose|ended|reset|gone|over|slip\w*|relaps\w*|fail\w*|gave in|caved|messed up)\b/i;
   const FAIL_NOTICE_KEY = "reclaim_embed_fail_notice_shown";
   const IDB_NAME = "reclaim-embeddings";
   const IDB_STORE = "vectors";
   const INDEX_CHUNK = 16;
   const QUERY_TIMEOUT_MS = 2500;
+
+  // Added to both "none" classes after fresh small talk got confident false positives (2026-10-07):
+  // "came back from a hike" / "back from church" -> relapse (near "I fell back into it"), "my
+  // battery is at 5 percent" -> perseverance, good streak news -> relapse. A broad list of 40
+  // everyday lines fixed those but cut real feelings caught from 26/28 to 21/28; these few targeted
+  // ones (good news, "back from...", devices) took fresh small-talk false positives from 4/15 to
+  // 0/15 at the same 9/10 on fresh real feelings.
+  const EVERYDAY_NONE = [
+    "I've been clean for a month now", "things are going really well", "I had a good week", "I'm doing better lately",
+    "I just got back from work", "we just got back from vacation", "I just came home from practice", "I'm heading to the gym",
+    "my car needs gas", "my laptop is about to die", "my streak is going strong", "I'm on a 10 day streak",
+  ];
 
   // Example messages, by theme (AGENT_THEME_WORDS' names) -- the calibrated set. Short, in the
   // person's own voice, deliberately free of the keywords that already catch these.
@@ -51,7 +71,7 @@ const LocalEmbedder = (function () {
     triggers: ["certain things always set me off", "being bored at night triggers me", "social media makes it worse", "scrolling Instagram gets me every time", "when I'm stressed I want to look"],
     growth: ["I want to grow closer to God", "I want to get serious about my faith", "I want to pray more", "I want to know God better"],
     struggle: ["this is really hard", "I'm struggling today", "today is a battle", "it's a rough day", "I'm having a hard time"],
-    none: ["hi", "hello there", "how are you", "thanks", "ok", "good morning", "what's the weather", "tell me a joke", "what's your name", "who made this app", "is this app private", "how do I change settings", "I had a sandwich for lunch", "my day was fine", "help me with homework", "what can you do", "cool", "bye", "good night", "I'm heading to bed", "lol", "what time is it", "the game was great", "I'm at work", "sounds good", "where do I find my check-ins", "can you remind me later", "I like this app", "what's new", "I'm driving home"],
+    none: [...EVERYDAY_NONE, "hi", "hello there", "how are you", "thanks", "ok", "good morning", "what's the weather", "tell me a joke", "what's your name", "who made this app", "is this app private", "how do I change settings", "I had a sandwich for lunch", "my day was fine", "help me with homework", "what can you do", "cool", "bye", "good night", "I'm heading to bed", "lol", "what time is it", "the game was great", "I'm at work", "sounds good", "where do I find my check-ins", "can you remind me later", "I like this app", "what's new", "I'm driving home"],
   };
 
   // Example asks, by tool. The "none" class includes feelings on purpose: naming a feeling isn't
@@ -66,7 +86,7 @@ const LocalEmbedder = (function () {
     scripture_search: ["give me a verse", "what does the bible say about this", "share some scripture", "a psalm for tonight"],
     coping_toolkit: ["what can I do right now to not give in", "help me get through this urge", "I need a distraction", "give me something to do instead", "a breathing exercise"],
     accountability_match: ["I need someone to hold me accountable", "who should I tell about this", "I need someone to check in on me"],
-    none: ["hi", "how are you", "thanks", "ok", "good morning", "tell me a joke", "who made this app", "is this app private", "how do I change settings", "my day was fine", "good night", "I'm at work", "sounds good", "I feel so alone", "I relapsed last night", "I'm so stressed", "I feel ashamed", "I'm struggling today", "I feel hopeless", "I'm anxious", "today was a good day", "I made it another week", "I hate this"],
+    none: [...EVERYDAY_NONE, "hi", "how are you", "thanks", "ok", "good morning", "tell me a joke", "who made this app", "is this app private", "how do I change settings", "my day was fine", "good night", "I'm at work", "sounds good", "I feel so alone", "I relapsed last night", "I'm so stressed", "I feel ashamed", "I'm struggling today", "I feel hopeless", "I'm anxious", "today was a good day", "I made it another week", "I hate this"],
   };
 
   // Which resources rows get indexed for ranking, by the tool that shows them.
@@ -159,14 +179,15 @@ const LocalEmbedder = (function () {
   }
 
   // Embeds whichever of [{ key, text }] aren't cached yet (or whose text changed), a chunk at a
-  // time so the page stays responsive. `query` adds the query prefix (example messages).
-  async function ensure(items, { query = false } = {}) {
+  // time so the page stays responsive. `query` adds the query prefix (example messages). `chunk`:
+  // texts per call -- batching pads them to the same length, which shifts the vectors a little.
+  async function ensure(items, { query = false, chunk: size = INDEX_CHUNK } = {}) {
     const todo = items.filter((it) => {
       const cached = vectors.get(it.key);
       return !cached || cached.h !== hash(it.text);
     });
-    for (let i = 0; i < todo.length; i += INDEX_CHUNK) {
-      const chunk = todo.slice(i, i + INDEX_CHUNK);
+    for (let i = 0; i < todo.length; i += size) {
+      const chunk = todo.slice(i, i + size);
       const vecs = await embedRaw(chunk.map((it) => (query ? QUERY_PREFIX : "") + it.text));
       const entries = chunk.map((it, j) => [it.key, { h: hash(it.text), v: vecs[j] }]);
       entries.forEach(([k, val]) => vectors.set(k, val));
@@ -175,12 +196,17 @@ const LocalEmbedder = (function () {
     }
   }
 
+  // Example messages are embedded one at a time, exactly like a person's message is in analyze():
+  // batched (padded) example vectors made the same calibration give different answers -- "who won
+  // the game" was a false positive with one batching and not another (2026-10-07). The "ex1:" key
+  // prefix retires the batched vectors cached before that. ~200 short texts, once, then cached.
   async function buildClasses(examples, prefix) {
+    const key = (label, t) => `ex1:${prefix}:${label}:${t}`;
     const items = [];
-    for (const [label, texts] of Object.entries(examples)) texts.forEach((t) => items.push({ key: `${prefix}:${label}:${t}`, text: t }));
-    await ensure(items, { query: true });
+    for (const [label, texts] of Object.entries(examples)) texts.forEach((t) => items.push({ key: key(label, t), text: t }));
+    await ensure(items, { query: true, chunk: 1 });
     const classes = {};
-    for (const [label, texts] of Object.entries(examples)) classes[label] = texts.map((t) => vectors.get(`${prefix}:${label}:${t}`).v);
+    for (const [label, texts] of Object.entries(examples)) classes[label] = texts.map((t) => vectors.get(key(label, t)).v);
     return classes;
   }
 
@@ -275,9 +301,14 @@ const LocalEmbedder = (function () {
       const queryVec = vecs[0];
       const t = classify(queryVec, themeClasses);
       const a = classify(queryVec, askClasses);
+      // Good news isn't a feeling to answer with resources: "I'm proud of my streak" and "longest
+      // streak ever for me" read as relapse (margins up to 0.17) because the relapse examples talk
+      // about streaks too, and examples alone didn't fix it. A real relapse with these words still
+      // gets caught -- by the loss words here, and by the keyword list (slip/relapse/fail).
+      const goodNews = GOOD_NEWS.test(text) && !SETBACK.test(text);
       return {
         queryVec,
-        theme: t.margin >= THEME_MARGIN ? t.label : null,
+        theme: t.margin >= THEME_MARGIN && !goodNews ? t.label : null,
         ask: a.margin >= ASK_MARGIN ? a.label : null,
         themeMargin: t.margin,
         askMargin: a.margin,
